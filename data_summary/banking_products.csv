@@ -1,0 +1,10 @@
+product_id,company_id,label,type,bank_name,service,currency,created_at
+PRODUCT_00001,COMP_1068,CHECKING_01,checking,Banco Sabadell Empresas,sabadell_emp,EUR,2026-02-19 15:46:46
+PRODUCT_00003,COMP_1198,CHECKING_01,checking,Banco Santander,santander_emp,EUR,2024-02-09 11:17:38
+PRODUCT_00004,COMP_1191,CHECKING_01,checking,iberCaja,ibercaja,EUR,2025-10-21 11:53:35
+PRODUCT_00007,COMP_0586,CHECKING_01,checking,Banco Sabadell Empresas,sabadell_emp,EUR,2026-03-03 14:37:27
+PRODUCT_00008,COMP_0034,CHECKING_01,checking,Bankinter Empresas,bankinter_emp,EUR,2025-05-22 14:56:19
+PRODUCT_00009,COMP_0677,CHECKING_01,checking,Banco Sabadell Empresas,sabadell_emp,EUR,2026-04-16 12:56:05
+PRODUCT_00010,COMP_0569,CHECKING_01,checking,Banco Santander Empresas,santander_emp,EUR,2026-05-21 08:57:39
+PRODUCT_00011,COMP_1213,CHECKING_01,checking,RuralVia,ruralvia_emp,EUR,2024-03-01 08:57:54
+PRODUCT_00012,COMP_0909,CHECKING_01,checking,Banca March,bancamarch,EUR,2024-04-03 07:36:47

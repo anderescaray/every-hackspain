@@ -1,0 +1,11 @@
+# Full dataset — too large for GitHub (>100 MB per file, ~615 MB total)
+data/
+data copy/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
