@@ -386,6 +386,12 @@ Guardar Parquet evita reprocessar 3,5M filas en cada cambio del score.
 
 ---
 
-## Próximo documento
+## Próximo paso
 
-Una vez generado `company_monthly_features.parquet`, el siguiente paso es documentar la **capa de scoring** (`docs/scoring.md`): cómo convertir estas features en el score 0–100 con componentes de nivel, momentum y estabilidad.
+Una vez generado `company_monthly_features.parquet`, continuar con la pipeline documentada en [README.md](./README.md):
+
+1. [scoring.md](./scoring.md) — score 0–100 (nivel + momentum + estabilidad)
+2. [explainability.md](./explainability.md) — drivers y descomposición
+3. [alerts-and-monitoring.md](./alerts-and-monitoring.md) — monitor proactivo
+4. [validation.md](./validation.md) — métricas proxy y leaderboard
+5. [product-and-demo.md](./product-and-demo.md) — Embat Pulse, API y demo
