@@ -1,6 +1,8 @@
 # Explicabilidad — HackSpain X-Ray · Embat
 
-Documentación de la capa que explica **por qué** una empresa tiene un score concreto y **qué lo movió** respecto al mes anterior.
+> **Estado: diseño pendiente, no hay explicaciones ni scores generados.** Ver [decisiones.md](./decisiones.md) para lo implementado. Los JSON, impactos y meses de anticipación siguientes son ejemplos, no resultados. El último mes completo es agosto de 2026. Para el GBM acordado se requiere SHAP; un giro de momentum frente a una caída del propio score no es una medición independiente de anticipación.
+
+Documentación de la futura capa que explica **por qué** una empresa tiene un score concreto y **qué lo movió** respecto al mes anterior.
 
 ## Entrada y salida
 

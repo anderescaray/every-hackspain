@@ -1,6 +1,8 @@
 # Alertas y monitorización — HackSpain X-Ray · Embat
 
-Documentación del sistema proactivo que **levanta la mano** cuando una empresa cambia de verdad, sin que nadie pregunte.
+> **Estado: diseño pendiente, no hay alertas generadas ni anticipación medida.** Ver [decisiones.md](./decisiones.md). Los umbrales son propuestas. No usar t+1 para suprimir una alerta emitida en t ni la media de todos los meses del año incluyendo futuro. El último mes completo es agosto de 2026. Las métricas del pitch requieren una regla observable independiente, falsos positivos reales y censura; alertas suprimidas / candidatas no es la tasa de falsas alarmas.
+
+Documentación del futuro sistema proactivo que **levanta la mano** cuando una empresa cambia de verdad, sin que nadie pregunte.
 
 ## Entrada y salida
 

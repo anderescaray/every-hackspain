@@ -18,6 +18,8 @@ STALE_PENDING_DAYS = 30                                        # D14
 
 def clean_invoices(inv: pd.DataFrame, log: CleaningLog, extraction_date: pd.Timestamp = EXTRACTION_DATE) -> pd.DataFrame:
     f = inv.copy()
+    f["amount"] = pd.to_numeric(f.amount)
+    f["exchange_rate"] = pd.to_numeric(f.exchange_rate)
 
     # F01 · Importe cero.
     mask = f.amount == 0
@@ -51,7 +53,7 @@ def clean_invoices(inv: pd.DataFrame, log: CleaningLog, extraction_date: pd.Time
     log.add(TABLE, "F06", "normalize", len(f), "nueva columna direction: AR (amount > 0, a cobrar) / AP (a pagar)")
 
     # --- Marcas para decisiones pendientes ---
-    keys = ["company_id", "counterparty_id", "document_type", "issuance_date", "due_date", "amount", "concept"]
+    keys = ["company_id", "counterparty_id", "document_type", "issuance_date", "due_date", "amount", "currency", "concept"]
     _flag(f, log, "D10", "is_possible_duplicate", f.duplicated(keys),
           "repetición exacta (empresa, contraparte, tipo, fechas, importe, concepto)")
     _flag(f, log, "D11", "is_ambiguous_document", f.document_type.isin(AMBIGUOUS_DOCUMENTS),
@@ -59,11 +61,16 @@ def clean_invoices(inv: pd.DataFrame, log: CleaningLog, extraction_date: pd.Time
     term = (f.due_date - f.issuance_date).dt.days
     _flag(f, log, "D12", "has_anomalous_term", term.isna() | (term < 0) | (term > MAX_TERM_DAYS),
           f"plazo < 0, > {MAX_TERM_DAYS} días o sin vencimiento válido")
-    _flag(f, log, "D13", "is_future_payment", (f.status == "paid") & (f.payment_date > extraction_date + pd.Timedelta(days=1)),
-          "paid con payment_date posterior a la extracción")
+    _flag(f, log, "D13", "is_future_payment", (f.status == "paid") & (f.payment_date.dt.normalize() > extraction_date.normalize()),
+          "paid con payment_date posterior al día de extracción")
+    _flag(f, log, "D22", "is_payment_before_issuance", f.payment_date < f.issuance_date,
+          "pago anterior a emisión: posible anticipo, no sirve para DSO/DPO")
     _flag(f, log, "D14", "is_stale_pending",
           (f.status == "pending") & (f.due_date < extraction_date - pd.Timedelta(days=STALE_PENDING_DAYS)),
           f"pending vencida hace > {STALE_PENDING_DAYS} días")
+    _flag(f, log, "D23", "has_invalid_exchange_rate",
+          f.exchange_rate.isna() | f.exchange_rate.le(0) | f.exchange_rate.abs().eq(float("inf")),
+          "exchange_rate no finito o no positivo; no se imputa")
     return f.reset_index(drop=True)
 
 

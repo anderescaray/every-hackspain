@@ -23,7 +23,8 @@ def row(i, company="C1", product="P1", date="2025-01-10", amount=100.0, status="
     return [f"t{i}", company, product, date, date, amount, 1.0, status, None, category, description, None]
 
 
-PRODUCTS = pd.DataFrame({"product_id": ["P1", "P2", "P3"], "company_id": ["C1", "C1", "C2"]})
+PRODUCTS = pd.DataFrame({"product_id": ["P1", "P2", "P3"], "company_id": ["C1", "C1", "C2"],
+                         "currency": ["EUR", "EUR", "EUR"]})
 GROUPS = pd.Series({"C1": "G1", "C2": "G1"})
 
 
@@ -70,6 +71,7 @@ def test_internal_transfer_and_intragroup_mirrors():
 def test_mirror_pairs_one_to_one():
     t = tx_frame([row(1, product="P1", amount=-10.0), row(2, product="P2", amount=10.0),
                   row(3, product="P2", amount=10.0)])
+    t["product_currency"] = "EUR"
     assert mirror_pairs(t, t.company_id).sum() == 2        # el segundo +10 no tiene pareja
 
 
@@ -136,7 +138,7 @@ def test_validate_detects_duplicate_keys():
         "debt_schedule_config": pd.DataFrame({"product_id": ["P2"], "company_id": ["C1"]}),
         "balances": pd.DataFrame({"product_id": ["P1"], "company_id": ["C1"]}),
         "invoices": pd.DataFrame({"operation_id": ["o1", "o1"], "company_id": ["C1", "C1"]}),
-        "transactions": pd.DataFrame({"transaction_id": ["t1"], "company_id": ["C1"]}),
+        "transactions": pd.DataFrame({"transaction_id": ["t1"], "company_id": ["C1"], "product_id": ["P1"]}),
     }
     with pytest.raises(ValidationError, match="invoices.operation_id no es único"):
         validate(tables)

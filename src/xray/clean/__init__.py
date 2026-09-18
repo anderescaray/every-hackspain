@@ -10,7 +10,7 @@ Salida en data/cleaned/:
 """
 import hashlib
 import json
-import shutil
+import tempfile
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 
 import xray
+from xray.artifacts import check_output_path, code_manifest, publish_bundle, sha256
 from xray.clean.invoices import clean_invoices
 from xray.clean.log import CleaningLog
 from xray.clean.tables import clean_table
@@ -32,11 +33,14 @@ def clean_all(raw: dict[str, pd.DataFrame]) -> tuple[dict[str, pd.DataFrame], Cl
     log = CleaningLog()
     cleaned = {name: clean_table(name, raw[name], log)
                for name in TABLES if name not in ("transactions", "invoices")}
-    products = pd.concat([raw["banking_products"][["product_id", "company_id"]],
-                          raw["debt_products"][["product_id", "company_id"]]])
+    products = pd.concat([raw["banking_products"][["product_id", "company_id", "currency"]],
+                          raw["debt_products"][["product_id", "company_id", "currency"]]])
     company_group = raw["companies"].set_index("company_id").group_id
     cleaned["transactions"] = clean_transactions(raw["transactions"], products, company_group, log)
     cleaned["invoices"] = clean_invoices(raw["invoices"], log)
+    balances = cleaned["balances"]
+    balances["is_unknown_product"] = ~balances.product_id.isin(products.product_id)
+    log.add("balances", "D24", "flag", balances.is_unknown_product.sum(), "producto sin moneda ni propietario verificable")
     validate(cleaned)
     return cleaned, log
 
@@ -44,6 +48,7 @@ def clean_all(raw: dict[str, pd.DataFrame]) -> tuple[dict[str, pd.DataFrame], Cl
 def run(raw_dir: Path = RAW_DIR, out_dir: Path = CLEANED_DIR, verbose: bool = True) -> pd.DataFrame:
     """Lee raw, limpia, valida y escribe la capa cleaned de forma atómica. Devuelve el log."""
     raw_dir, out_dir = Path(raw_dir), Path(out_dir)
+    check_output_path(out_dir, raw_dir)
     say = print if verbose else (lambda *a, **k: None)
 
     raw = {}
@@ -55,18 +60,20 @@ def run(raw_dir: Path = RAW_DIR, out_dir: Path = CLEANED_DIR, verbose: bool = Tr
 
     # Se escribe en una carpeta temporal y se sustituye al final: si algo falla,
     # la versión anterior de data/cleaned/ queda intacta.
-    tmp = out_dir.with_name(out_dir.name + ".tmp")
-    shutil.rmtree(tmp, ignore_errors=True)
-    tmp.mkdir(parents=True)
-    for name, df in cleaned.items():
-        df.to_parquet(tmp / f"{name}.parquet", index=False)
-        say(f"  escrito {name:22s} {len(df):>10,} filas ({len(raw[name]) - len(df):,} quitadas)")
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
     log_df = log.to_frame()
-    log_df.to_csv(tmp / "_cleaning_log.csv", index=False)
-    (tmp / "_manifest.json").write_text(
-        json.dumps(_manifest(raw_dir, raw, cleaned), indent=2, ensure_ascii=False), encoding="utf-8")
-    shutil.rmtree(out_dir, ignore_errors=True)
-    tmp.rename(out_dir)
+    with tempfile.TemporaryDirectory(prefix="cleaned-", dir=out_dir.parent) as directory:
+        tmp = Path(directory)
+        for name, df in cleaned.items():
+            df.to_parquet(tmp / f"{name}.parquet", index=False)
+            say(f"  escrito {name:22s} {len(df):>10,} filas ({len(raw[name]) - len(df):,} quitadas)")
+        log_df.to_csv(tmp / "_cleaning_log.csv", index=False)
+        manifest = _manifest(raw_dir, raw, cleaned)
+        manifest["code"] = code_manifest()
+        manifest["outputs_sha256"] = {path.name: sha256(path) for path in sorted(tmp.iterdir())}
+        (tmp / "_manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+        publish_bundle(tmp, out_dir, "_manifest.json")
     say(f"  OK -> {out_dir}")
     return log_df
 

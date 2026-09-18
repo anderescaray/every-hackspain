@@ -20,6 +20,9 @@ def clean_transactions(tx: pd.DataFrame, products: pd.DataFrame, company_group: 
                        log: CleaningLog) -> pd.DataFrame:
     """`products`: product_id + company_id de banking y debt. `company_group`: company_id -> group_id."""
     t = tx.copy()
+    t["amount"] = pd.to_numeric(t.amount)
+    t["exchange_rate"] = pd.to_numeric(t.exchange_rate)
+    t["product_currency"] = t.product_id.map(products.set_index("product_id").currency)
 
     # T01 · Importe cero: no es un movimiento de dinero.
     mask = t.amount == 0
@@ -43,18 +46,22 @@ def clean_transactions(tx: pd.DataFrame, products: pd.DataFrame, company_group: 
     # --- Marcas para decisiones pendientes ---
     absolute = t.amount.abs()
     _flag(t, log, "D01", "is_extreme_amount", absolute > EXTREME_AMOUNT, f"|amount| > {EXTREME_AMOUNT:,.0f}")
-    p99 = absolute.groupby(t.company_id).quantile(0.99)
-    _flag(t, log, "D02", "is_relative_outlier", absolute > RELATIVE_OUTLIER_FACTOR * t.company_id.map(p99),
-          f"|amount| > {RELATIVE_OUTLIER_FACTOR} × p99 de la empresa")
+    _flag(t, log, "D02", "is_relative_outlier", relative_outliers(t),
+          f"|amount| > {RELATIVE_OUTLIER_FACTOR} × p99 empresa-moneda en 6 meses anteriores; mínimo 100 filas")
     _flag(t, log, "D03", "is_sync_duplicate", sync_duplicates(t),
           f"repetición en empresa-mes con ≥ {SYNC_DUP_SHARE:.0%} de filas duplicadas")
-    internal = mirror_pairs(t, t.company_id)
-    _flag(t, log, "D04", "is_internal_transfer", internal, "espejo +X/−X el mismo día entre cuentas de la empresa")
-    _flag(t, log, "D05", "is_intragroup", mirror_pairs(t, t.company_id.map(company_group)) & ~internal,
-          "espejo +X/−X el mismo día entre empresas del grupo")
+    candidates = t.loc[(t.status == "booked") & ~t.is_sync_duplicate & t.exchange_rate.eq(1)]
+    internal = mirror_pairs(candidates, candidates.company_id).reindex(t.index, fill_value=False)
+    _flag(t, log, "D04", "is_internal_transfer", internal, "espejo +X/−X mismo día y moneda entre cuentas propias; booked y FX=1")
+    residual = candidates.loc[~internal.reindex(candidates.index)]
+    intragroup = mirror_pairs(residual, residual.company_id.map(company_group), different_company=True)
+    _flag(t, log, "D05", "is_intragroup", intragroup.reindex(t.index, fill_value=False),
+          "espejo +X/−X mismo día y moneda entre empresas del grupo, sin reutilizar traspasos")
     known = products.set_index("product_id").company_id
     _flag(t, log, "D06", "is_unknown_product", ~t.product_id.isin(known.index),
           "product_id no está en banking_products ni en debt_products")
+    _flag(t, log, "D23", "has_invalid_exchange_rate", ~np.isfinite(t.exchange_rate) | t.exchange_rate.le(0),
+          "exchange_rate no finito o no positivo; no se imputa")
     return t.reset_index(drop=True)
 
 
@@ -82,19 +89,39 @@ def sync_duplicates(t: pd.DataFrame) -> pd.Series:
     return t.duplicated(keys, keep="first") & (share >= SYNC_DUP_SHARE) & (rows >= SYNC_DUP_MIN_ROWS)
 
 
-def mirror_pairs(t: pd.DataFrame, unit: pd.Series) -> pd.Series:
+def relative_outliers(t: pd.DataFrame) -> pd.Series:
+    flags = pd.Series(False, index=t.index)
+    keys = ["company_id", "product_currency"]
+    months = t.date.dt.to_period("M").dt.to_timestamp()
+    reference = t.loc[t.status.eq("booked") & t.exchange_rate.eq(1)
+                      & t.amount.abs().le(EXTREME_AMOUNT)].copy()
+    reference["absolute"] = reference.amount.abs()
+    for month in sorted(months.dropna().unique()):
+        prior = reference.loc[reference.date.ge(month - pd.DateOffset(months=6)) & reference.date.lt(month)]
+        grouped = prior.groupby(keys).absolute
+        threshold = (grouped.quantile(0.99) * RELATIVE_OUTLIER_FACTOR).where(grouped.count() >= 100)
+        current = t.loc[months == month]
+        limits = threshold.reindex(pd.MultiIndex.from_frame(current[keys])).to_numpy()
+        flags.loc[current.index] = current.amount.abs().to_numpy() > limits
+    return flags
+
+
+def mirror_pairs(t: pd.DataFrame, unit: pd.Series, different_company: bool = False) -> pd.Series:
     """True para los movimientos +X / −X del mismo día dentro de `unit` en cuentas distintas.
 
     Empareja 1 a 1 (el k-ésimo +X con el k-ésimo −X), así un importe repetido no se reutiliza.
     """
     d = pd.DataFrame({"unit": unit, "product_id": t.product_id, "amount": t.amount,
+                      "company_id": t.company_id, "currency": t.product_currency,
                       "day": t.date.dt.normalize(), "abs": t.amount.abs()}, index=t.index)
-    d = d[d.unit.notna() & (d.amount != 0)]
-    d["k"] = d.groupby(["unit", "day", "abs", np.sign(d.amount)]).cumcount()
-    keys = ["unit", "day", "abs", "k"]
+    d = d[d.unit.notna() & d.currency.notna() & (d.amount != 0)]
+    d["k"] = d.groupby(["unit", "currency", "day", "abs", np.sign(d.amount)]).cumcount()
+    keys = ["unit", "currency", "day", "abs", "k"]
     pairs = (d[d.amount > 0].reset_index()
              .merge(d[d.amount < 0].reset_index(), on=keys, suffixes=("_in", "_out")))
     pairs = pairs[pairs.product_id_in != pairs.product_id_out]
+    if different_company:
+        pairs = pairs[pairs.company_id_in != pairs.company_id_out]
     ids = pd.concat([pairs["index_in"], pairs["index_out"]])
     return pd.Series(t.index.isin(ids), index=t.index)
 

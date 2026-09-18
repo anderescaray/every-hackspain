@@ -1,221 +1,64 @@
-# Validación — HackSpain X-Ray · Embat
+# Validación — X-Ray
 
-Documentación de la estrategia para medir calidad del score **sin labels visibles**, generalizar al test oculto e iterar con el leaderboard.
+Estado y resultados comprobados: [decisiones.md](./decisiones.md). Esta revisión separa la **validación de datos/features ya implementada** de la **evaluación de modelo todavía pendiente**. Las métricas numéricas ilustrativas del diseño anterior no eran resultados experimentales y se han retirado.
 
-## Contexto
+## Implementado
 
-- **Train visible:** ~1.286 empresas, 250 grupos, 24 meses
-- **Test oculto:** 60–80 empresas que el sistema no ha visto
-- **Evaluación:** leaderboard (acierto) + jurado (anticipación, producto, explicación)
-
-No hay columna `target` en los CSV. La validación combina **proxies internos** y **feedback del script de scoring** de los organizadores.
-
----
-
-## Principio clave: validar por grupo
-
-Empresas del mismo `group_id` son filiales de un holding. **Nunca** mezclar filiales entre train y validation.
-
-```python
-from sklearn.model_selection import GroupKFold
-
-gkf = GroupKFold(n_splits=5)
-for train_idx, val_idx in gkf.split(X, groups=df["group_id"]):
-    ...
+```bash
+python -m pytest -q
+python -X utf8 scripts/02_validate_features.py
+python -X utf8 scripts/02_validate_features.py --check-prefix 2026-02-01
 ```
 
-| Split incorrecto | Split correcto |
-|---|---|
-| 80% empresas random | 80% **grupos** completos |
-| Filial A en train, filial B en test del mismo holding | Todo el holding en train o en test |
+La validación de ficheros comprueba:
 
----
+- Hashes de las entradas y salidas; mismo manifiesto de limpieza que durante el build.
+- Calendario completo septiembre de 2024–agosto de 2026 por unidad y moneda; 30.864 filas en el panel primario de este dataset.
+- Unicidad de claves, proporciones en [0,1], importes de entrada/salida no negativos, conteos consistentes y vencido no mayor que abierto.
+- Ausencia de infinitos. `NaN` es correcto para datos no observados, ventanas incompletas y denominadores cero.
+- Ausencia de snapshots en el panel y correspondencia del catálogo con la allowlist del código.
+- Opcionalmente, regeneración hasta un corte anterior y comparación de todas las columnas históricas de los tres paneles para las mismas claves. Las monedas nuevas solo añaden filas vacías antes de aparecer.
 
-## Métricas proxy (sin labels)
+Tests sintéticos adicionales: independencia respecto a futuros movimientos/facturas y al saldo final; fechas de pago a cierre y vencimientos conocidos; ventanas naturales con huecos; pendientes OLS y z-score excluyendo t; separación de monedas; ratios de grupo recalculados; cobertura de cuentas; cambios de universo por onboarding; liquidaciones de deuda; preservación de artefactos, rollback y detección de manipulación de Parquet. Repetir el build de la misma fixture produce los mismos hashes de artefactos (el timestamp del manifiesto sí cambia).
 
-### 1. Anticipación del momentum
+El informe `_feature_quality.json` cuantifica missingness y cobertura. **No mide acierto predictivo**.
 
-¿El momentum en `t` predice la dirección del nivel en `t+3`?
+## Lo que la validación temporal no demuestra
 
-```python
-future_level_delta = level(t+3) - level(t)
-corr(momentum(t), future_level_delta)
-```
+El dataset contiene estados finales y carece de timestamps de ingestión/revisiones:
 
-| Resultado | Interpretación |
-|---|---|
-| > 0.4 | Buena señal anticipatoria |
-| 0.2 – 0.4 | Aceptable; iterar pesos |
-| < 0.2 | Momentum no aporta; revisar features |
+- No podemos reconstruir exactamente lo que Embat sabía en t.
+- T02 elimina provisionales al encontrar el booked final; F02 elimina cancelaciones finales sin fecha de cancelación.
+- Las facturas pueden haberse importado tarde; faltan pagos parciales y fecha de desconexión del ERP.
+- Los saldos se reconstruyen desde una foto posterior y no prueban que el libro esté completo.
 
-### 2. Estabilidad temporal del score
+Por tanto, el test de prefijo protege los cálculos sobre `cleaned`; no certifica un backtest histórico de producción. Los artefactos retrospectivos están fuera de `model_features`.
 
-Penalizar scores que saltan sin razón (ruido):
+## Próximo paso: etiquetas y split
 
-```python
-score_volatility = df.groupby("company_id")["delta_vs_prev"].std().mean()
-```
+Antes de modelar, registrar en decisiones:
 
-Objetivo: baja volatilidad mes a mes salvo en empresas con cambio real.
+1. Unidad que evalúa el leaderboard, formato, etiqueta, horizonte, métrica y desempate.
+2. Si no hay etiqueta oficial disponible: elegir 2–3 eventos observables y reglas fijas para t+3 / t+6.
+3. Separar columnas reservadas para el target y predictores. Los eventos bancarios están en un fichero aparte para facilitar esa separación.
+4. Censurar futuros incompletos y desapariciones de datos. Agosto de 2026 no tiene seis meses de seguimiento; nunca rellenar esa etiqueta con 0.
 
-### 3. Separación bache vs tendencia
+Split **siempre por `group_id`**, conservando todas las filiales en el mismo fold. Añadir cortes temporales y purgar del train los ejemplos cuyo horizonte de etiqueta atraviese el inicio de validación. Imputación, escalado, selección de columnas y calibración se ajustan solo con train; no usar distribuciones del test oculto.
 
-Identificar meses con caída puntual de cashflow seguidos de recuperación:
+La selección de `is_training_eligible` garantiza un mínimo de cobertura bancaria, no que exista target ni información suficiente en ERP o en otras monedas. Informar sensibilidad a cobertura parcial y tamaño del universo de entrenamiento.
 
-```python
-# "Bache": caída en t, recuperación > 80% en t+1
-# Penalizar si el score cae > 5 pts en t pero no en t+1 (falso deterioro)
-false_alarm_rate = ...
-```
+## Anticipación sin circularidad (pendiente)
 
-Objetivo: `false_alarm_rate < 30%`
+Definir **antes** de ajustar parámetros:
 
-### 4. Balance direccional
+- `t_señal`: primer cruce del umbral de alerta del modelo.
+- `t_evidente`: evento observable según regla independiente del modelo, sin recurrir al propio score ni a sus features reservadas.
+- `lead_time = t_evidente - t_señal`.
 
-El enunciado exige detectar **mejora** igual que **deterioro**:
+Reportar mediana, p25/p75, falsas alarmas con el mismo umbral, cobertura y censura. Una recuperación observada en t+1 puede etiquetar retrospectivamente un bache, pero no puede suprimir en el backtest una alerta que se habría emitido en t.
 
-```python
-n_improving  = (trajectory == "improving").sum()
-n_deteriorating = (trajectory == "deteriorating").sum()
-ratio = n_improving / n_deteriorating
-```
+Comparar momentum(t) con el futuro **score del mismo modelo** sirve como diagnóstico interno, no demuestra anticipación financiera. Tampoco son falsas alarmas las candidatas suprimidas por un filtro.
 
-No buscar ratio 1:1 (más empresas estables en la realidad), pero evitar ratio < 0.1 (solo detector de quiebras).
+## Criterio de comunicación
 
-### 5. Correlación nivel vs momentum en M24
-
-Empresas con nivel alto y momentum bajo (caso Velasco) deben tener score **menor** que empresas con nivel similar y momentum alto:
-
-```python
-# En el cuartil superior de level(M24), correlación level vs score debe ser < correlación momentum vs score
-```
-
----
-
-## Backtest temporal
-
-Simular predicción en el pasado usando solo datos hasta el mes `t`:
-
-| Escenario | Train | Evaluar |
-|---|---|---|
-| Predicción 6m | Meses 1–18 | Score y trayectoria en 19–24 |
-| Predicción 3m | Meses 1–21 | Score en 22–24 |
-
-```python
-# Para cada empresa, calcular score con datos hasta M18
-score_m18 = compute_score(features[:M18])
-
-# Comparar con score real M24
-error = abs(score_m18_extrapolated - score_m24_actual)
-```
-
-Útil para ajustar pesos nivel/momentum/estabilidad antes del leaderboard.
-
----
-
-## Validación de features
-
-Ejecutar tras `01_build_monthly_features.py`:
-
-| Check | Condición |
-|---|---|
-| Completitud | 1.286 × 24 = 30.864 filas |
-| Unicidad | UNIQUE(company_id, month) |
-| Nulls críticos | `tx_net_cashflow` sin nulls |
-| Saldo M24 | `cash_balance` ≈ `balance_total` ± 10% |
-| Outliers | Ninguna feature > p99.9 sin flag |
-
-Script: `scripts/02_validate_features.py` (referenciado en feature-engineering.md).
-
----
-
-## Validación del score
-
-Ejecutar tras `02_compute_scores.py`:
-
-| Check | Condición |
-|---|---|
-| Rango | `0 ≤ score ≤ 100` |
-| Componentes | `0 ≤ level, momentum, stability ≤ 1` |
-| Delta coherente | `delta_vs_prev = score(t) - score(t-1)` |
-| Distribución | No > 80% empresas en rango 45–55 (score comprimido) |
-| Varianza por mes | std(score) > 5 en cada mes |
-
----
-
-## Validación de explicaciones
-
-| Check | Condición |
-|---|---|
-| Drivers | Exactamente 1–3 drivers por empresa/mes |
-| Impacto suma razonable | `sum(|impact_points|)` ≈ `|delta_vs_prev|` ± 2 |
-| Inflexión | Presente en empresas con `trajectory = deteriorating` |
-
----
-
-## Validación de alertas
-
-| Check | Condición |
-|---|---|
-| Falsos positivos (bache) | Tasa < 30% tras filtros |
-| Lead time medio | > 2 meses en `REGIME_CHANGE` |
-| Cobertura | > 70% deterioros con alerta previa |
-| Severidad | No > 50% alertas en severidad high (fatiga) |
-
----
-
-## Iteración con el leaderboard
-
-Flujo recomendado durante el hackathon:
-
-```
-1. Scoring v1 con pesos default (0.4/0.4/0.2)
-2. Export CSV → script organizadores → métrica leaderboard
-3. Ajustar pesos / umbrales / ventanas
-4. Repetir hasta convergencia o límite de tiempo
-```
-
-### Qué ajustar según feedback
-
-| Síntoma en leaderboard | Ajuste |
-|---|---|
-| Score muy comprimido (poca separación) | Aumentar peso momentum; revisar normalización |
-| Buen ranking estático, malo en trayectoria | Subir peso momentum a 0.45–0.50 |
-| Muchos falsos positivos en alertas | Endurecer filtros de persistencia |
-| No detecta mejoras | Revisar sub-score `mom_invoicing` y `STRONG_IMPROVEMENT` |
-
-**No** ajustar features o pesos usando empresas del test oculto directamente (no las tenéis). Usar group k-fold en train como proxy.
-
----
-
-## Informe de validación (para pitch)
-
-Generar un resumen de una página:
-
-```markdown
-## Validación interna
-
-- Group 5-fold: correlación momentum→futuro = 0.42
-- Lead time medio alertas: 2.8 meses
-- Tasa falsos positivos (bache): 22%
-- Leaderboard iteración 3: [métrica que den los organizadores]
-
-Conclusión: el score anticipa cambios ~3 meses antes del impacto visible en nivel.
-```
-
----
-
-## Scripts de referencia
-
-```
-scripts/
-  02_validate_features.py
-  05_validate.py              # métricas proxy + alertas + informe
-  06_export_leaderboard.py
-```
-
----
-
-## Próximo paso
-
-Producto, API y demo navegable → [product-and-demo.md](./product-and-demo.md).
+No hay score entrenado, métrica del leaderboard, lead time ni tasa de falsas alarmas verificados todavía. No utilizar cifras de ejemplo en el pitch. Sí se puede mostrar el pipeline, las trayectorias de features, su trazabilidad y los límites de los datos sintéticos.

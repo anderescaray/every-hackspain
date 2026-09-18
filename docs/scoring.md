@@ -1,6 +1,8 @@
 # Scoring — HackSpain X-Ray · Embat
 
-Documentación de la capa que convierte features mensuales en un **score de salud financiera 0–100** por empresa y mes.
+> **Estado: diseño previo, no implementado.** La implementación terminada es limpieza + features; ver [decisiones.md](./decisiones.md). El enfoque acordado vigente es GBM a 3/6 meses, nivel y momentum separados y SHAP desde el primer modelo. Los pesos 40/40/20 y nombres de features de abajo son una propuesta de baseline, no decisiones cerradas ni un score generado. Usar la lista `model_features` del catálogo; snapshots y niveles absolutos de morosidad ERP quedan fuera. Normalización aprendida solo en train. Una regla que mira t+1 no se puede ejecutar en t.
+
+Documentación de diseño de la futura capa que convierte features mensuales en un **score de salud financiera 0–100** por empresa y mes.
 
 ## Entrada y salida
 

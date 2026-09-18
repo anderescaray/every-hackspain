@@ -49,8 +49,10 @@ every.hackspain/
 ## Running the pipeline
 
 ```bash
-python scripts/00_clean_data.py   # data/raw -> data/cleaned (~20 s)
-python -m pytest                  # unit tests
+python -X utf8 scripts/00_clean_data.py
+python -X utf8 scripts/01_build_monthly_features.py
+python -X utf8 scripts/02_validate_features.py
+python -m pytest -q
 ```
 
 In code, read the cleaned layer with `from xray.io import read_cleaned` (add `src/` to the path, or run `pip install -e .`). The cleaning rules, and the decisions that are still open, are documented in [`docs/decisiones.md`](docs/decisiones.md).
