@@ -30,14 +30,30 @@ For that reason, `data/` is listed in `.gitignore` and is **not** pushed to this
 
 ## Getting the full dataset
 
-Contact the HackSpain organizers or your track lead to obtain the full `data/` folder. Once you have it, place it at the repo root:
+Contact the HackSpain organizers or your track lead to obtain the full dataset. Put the original CSV files in `data/raw/`, and do not modify them:
 
 ```
 every.hackspain/
-├── data/           ← full dataset (local only, gitignored)
-├── data_summary/   ← sample extracts (in git)
-└── README.md
+├── data/                  ← local only, gitignored
+│   ├── raw/               ← original CSVs (never modified)
+│   ├── cleaned/           ← output of the cleaning step (parquet + log + manifest)
+│   └── processed/         ← features, scores and product artifacts
+├── data_summary/          ← sample extracts (in git)
+├── docs/                  ← technical docs + decisiones.md (data decisions log)
+├── notebooks/             ← exploration (01) and cleaning analysis (02)
+├── scripts/               ← pipeline entry points (00_clean_data.py, ...)
+├── src/xray/              ← pipeline code
+└── tests/
 ```
+
+## Running the pipeline
+
+```bash
+python scripts/00_clean_data.py   # data/raw -> data/cleaned (~20 s)
+python -m pytest                  # unit tests
+```
+
+In code, read the cleaned layer with `from xray.io import read_cleaned` (add `src/` to the path, or run `pip install -e .`). The cleaning rules, and the decisions that are still open, are documented in [`docs/decisiones.md`](docs/decisiones.md).
 
 ## Dataset overview
 

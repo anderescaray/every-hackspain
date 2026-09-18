@@ -5,7 +5,10 @@ Guía de implementación del reto de salud financiera: desde datos crudos hasta 
 ## Flujo del sistema
 
 ```
-CSV (9 ficheros)
+data/raw/  CSV originales (9 ficheros)
+      │
+      ▼
+[0] Limpieza ─────────────► data/cleaned/*.parquet   (ver decisiones.md)
       │
       ▼
 [1] Feature Engineering ──► company_monthly_features.parquet
@@ -25,6 +28,7 @@ CSV (9 ficheros)
 
 | # | Documento | Qué cubre |
 |---|---|---|
+| 0 | [decisiones.md](./decisiones.md) | Reglas de limpieza aplicadas y decisiones de datos pendientes |
 | 1 | [feature-engineering.md](./feature-engineering.md) | ETL, features mensuales por empresa, normalización |
 | 2 | [scoring.md](./scoring.md) | Score 0–100: nivel, momentum, estabilidad |
 | 3 | [explainability.md](./explainability.md) | Drivers, descomposición, timeline de cambios |
@@ -35,6 +39,7 @@ CSV (9 ficheros)
 ## Artefactos generados
 
 ```
+data/cleaned/                        # capa limpia (una tabla por parquet)
 data/processed/
   company_monthly_features.parquet   # ~30.864 filas
   company_monthly_scores.parquet     # ~30.864 filas
@@ -45,6 +50,7 @@ data/processed/
 backend/                             # FastAPI
 frontend/                            # Next.js demo
 scripts/
+  00_clean_data.py                   # hecho: data/raw -> data/cleaned
   01_build_monthly_features.py
   02_compute_scores.py
   03_generate_explanations.py

@@ -9,3 +9,8 @@ Thumbs.db
 *.swo
 .idea/
 .vscode/
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
