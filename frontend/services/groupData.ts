@@ -1,6 +1,7 @@
 import path from "node:path";
 import { groupDetailSchema, type GroupDetail } from "../types/groupDetail";
 import { readGeneratedAnalysis } from "./generatedAnalysis";
+import { readPulseDocument } from "./pulseSnapshot";
 
 export class GroupDataError extends Error {
   constructor(readonly issues: string[] = []) {
@@ -11,8 +12,11 @@ export class GroupDataError extends Error {
 
 export async function getGroupDetail(groupId: string): Promise<GroupDetail | null> {
   if (!/^GROUP_\d{4,10}$/.test(groupId)) return null;
-  const directory = process.env.GROUP_ANALYSIS_DIR || path.join(process.cwd(), "public", "generated", "groups");
-  const file = await readGeneratedAnalysis(path.join(directory, `${groupId}.json`), () => new GroupDataError());
+  const fixtureMode = process.env.COMPANY_DATA_MODE === "fixtures";
+  const directory = process.env.GROUP_ANALYSIS_DIR;
+  const file = fixtureMode && directory
+    ? await readGeneratedAnalysis(path.join(directory, `${groupId}.json`), () => new GroupDataError())
+    : await readPulseDocument(`groups/${groupId}.json`, () => new GroupDataError());
   if (!file) return null;
   const parsed = groupDetailSchema.safeParse(file.payload);
   if (!parsed.success) throw new GroupDataError(parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));

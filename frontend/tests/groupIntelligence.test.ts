@@ -19,7 +19,8 @@ test("el grupo conserva sociedades, relaciones y recomendaciones sin Group Healt
   const value = groupDetailSchema.parse(group());
   assert.equal(value.members.length, 6);
   assert.equal(value.members.filter((member) => member.trajectory === "deteriorating").length, 2);
-  assert.equal("health_score" in value, false);
+  assert.equal(value.health_score, null);
+  assert.equal(value.status, "insufficient_evidence");
   assert.equal("group_health_score" in value, false);
   assert.equal(value.recommendations.length, 7);
   assert.ok(value.relations.some((relation) => relation.status === "identified"));

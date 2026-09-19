@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { canonicalCashTruthSchema, pulseEnvelopeShape, pulseSchema, pulseStatusSchema } from "./pulse";
 
 const text = z.string().min(1).max(5000);
 const score = z.number().finite().min(0).max(100);
@@ -12,10 +13,10 @@ const refs = z.array(text).max(50);
 const trajectorySchema = z.enum(["improving", "deteriorating", "stable"]);
 const dimensionKeySchema = z.enum(["momentum", "cash_generation", "resilience", "debt"]);
 const cashCategorySchema = z.enum(["operating", "circulation", "support", "uncertain"]);
-const dimensionsSchema = z.object({ momentum: score, cash_generation: score, resilience: score, debt: score }).strict();
+const dimensionsSchema = z.object({ momentum: score.nullable(), cash_generation: score.nullable(), resilience: score.nullable(), debt: score.nullable() }).strict();
 const weightsSchema = z.object({ momentum: z.number().min(0).max(1), cash_generation: z.number().min(0).max(1), resilience: z.number().min(0).max(1), debt: z.number().min(0).max(1) }).strict().refine((weights) => Math.abs(Object.values(weights).reduce((sum, weight) => sum + weight, 0) - 1) < 1e-9, "Los pesos deben sumar 1");
 const modelSchema = z.object({ version: text, provisional: z.boolean(), weights: weightsSchema });
-const historySchema = z.object({ month: date, health_score: score.int() });
+const historySchema = z.object({ month: date, health_score: score.nullable() });
 const driverSchema = z.object({ id: text, driver: text, affected_dimensions: z.array(dimensionKeySchema).min(1).max(4), impact: amount, direction: z.enum(["positive", "negative", "neutral"]), explanation: text, evidence_count: count, evidence_refs: refs });
 const cashComponentSchema = z.object({ category: cashCategorySchema, label: text, gross_movement: amount.nonnegative(), net_amount: amount.nullable(), explanation: text, confidence: score.nullable(), evidence_refs: refs });
 const cashAccountSchema = z.object({
@@ -64,7 +65,7 @@ const cashTruthSchema = z.object({
   total_gross_movement: amount.nonnegative(),
   account_flows: accountFlowsSchema.nullable().optional(),
   own_account_circulation: ownAccountCirculationSchema.nullable().optional(),
-  apparent_net: amount,
+  apparent_net: amount.nullable(),
   components: z.array(cashComponentSchema).length(4),
   headline: text,
   explanation: text,
@@ -85,22 +86,26 @@ const evidenceSchema = z.object({ id: text, title: text, period: text, explanati
 const scenarioKeySchema = z.enum(["customer_term", "collection_delay", "supplier_term", "internal_support"]);
 const scenarioInputsSchema = z.object({ customer_term: amount, collection_delay: amount, supplier_term: amount, internal_support: amount }).strict();
 const simulationInputSchema = z.object({ key: scenarioKeySchema, label: text, unit: z.enum(["days", "%"]), baseline: amount.nonnegative(), min: amount, max: amount, step: amount.positive(), explanation: text });
-const scenarioSchema = z.object({ id: text, label: text, inputs: scenarioInputsSchema, health_score: score.int(), impacts: z.array(z.object({ key: scenarioKeySchema, label: text, points: amount })).max(4), explanation: text });
-const simulationSchema = z.object({ inputs: z.array(simulationInputSchema).length(4), scenarios: z.array(scenarioSchema).max(1000), example_id: text.nullable(), methodology: text });
+const scenarioSchema = z.object({ id: text, label: text, inputs: scenarioInputsSchema, health_score: score.nullable(), impacts: z.array(z.object({ key: scenarioKeySchema, label: text, points: amount })).max(4), explanation: text });
+const simulationSchema = z.object({ inputs: z.array(simulationInputSchema).max(4), scenarios: z.array(scenarioSchema).max(1000), example_id: text.nullable(), methodology: text });
 
 export const companyDetailSchema = z.object({
-  schema_version: z.literal("2.0"),
+  schema_version: z.literal("3.0"),
+  ...pulseEnvelopeShape,
+  status: pulseStatusSchema,
+  pulse: pulseSchema,
+  canonical_cash_truth: canonicalCashTruthSchema,
   source: z.enum(["generated", "fixture"]),
   company_id: z.string().regex(/^COMP_\d{4,10}$/),
   group_id: text.nullable(),
   as_of: date,
   currency: z.literal("EUR"),
-  health_score: score.int(),
+  health_score: score.nullable(),
   dimensions: dimensionsSchema,
   health_score_model: modelSchema,
   assessment: text,
   confidence: score.nullable(),
-  trajectory: trajectorySchema,
+  trajectory: trajectorySchema.nullable(),
   summary: text,
   history: z.array(historySchema).max(24),
   drivers_period: text,
@@ -119,6 +124,21 @@ export const companyDetailSchema = z.object({
   unique(company.cash_truth.components.map((component) => component.category), ["cash_truth", "components"]);
   unique(company.simulation.inputs.map((input) => input.key), ["simulation", "inputs"]);
   unique(company.simulation.scenarios.map((scenario) => scenario.id), ["simulation", "scenarios"]);
+  const source = company.pulse;
+  for (const key of ["run_id", "score_version", "classification_version", "cleaning_version", "facts_version", "config_version", "as_of", "currency", "company_id"] as const) {
+    if (company[key] !== source[key]) issue("Procedencia distinta del resultado Pulse", [key]);
+  }
+  const expectedStatus = Object.values(source.pillars).every((pillar) => pillar.score === null) ? "insufficient_evidence" : source.status;
+  if (company.status !== expectedStatus) issue("Estado de identificación incoherente", ["status"]);
+  if (company.health_score !== source.health || company.health_score_model.version !== source.score_version) issue("Health debe copiar el resultado Pulse", ["health_score"]);
+  const aliases = { cash_generation: "generation", momentum: "momentum", resilience: "resilience", debt: "debt_obligations" } as const;
+  for (const key of Object.keys(aliases) as (keyof typeof aliases)[]) {
+    const pillar = source.pillars[aliases[key]];
+    if (company.dimensions[key] !== pillar.score || company.health_score_model.weights[key] !== pillar.weight) issue("Pilar/peso distinto del resultado Pulse", ["dimensions", key]);
+  }
+  for (const key of ["company_id", "currency", "as_of", "classification_version", "facts_version"] as const) {
+    if (company.canonical_cash_truth[key] !== company[key]) issue("Cash Truth pertenece a otro perímetro o método", ["canonical_cash_truth", key]);
+  }
   const evidenceIds = new Set(company.evidence.map((group) => group.id));
   const explanations = [...company.drivers, ...company.alerts, company.cash_truth, company.cash_truth.own_account_circulation, ...company.cash_truth.components, company.time_borrowed.ar, company.time_borrowed.ap];
   if (explanations.some((entry) => entry?.evidence_refs.some((ref) => !evidenceIds.has(ref)))) issue("Referencia de evidencia inexistente", ["evidence"]);

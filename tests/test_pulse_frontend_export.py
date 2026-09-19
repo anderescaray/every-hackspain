@@ -1,0 +1,149 @@
+"""Pulse web contract regressions. Written for later execution; no validation fit.
+
+These tests deliberately remain separate from explicit legacy-export tests.
+"""
+import copy
+import json
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+from xray.artifacts import recursive_hashes, sha256
+from xray.product.frontend_export import WebEnvelope, company_detail, group_detail, portfolio_export, run
+from xray.pulse import score_company
+
+
+def _source(debt=3.0, observed=True):
+    rows = []
+    for month in pd.date_range("2026-03-01", periods=6, freq="MS"):
+        rows.append({"company_id": "COMP_1084", "currency": "EUR", "month": month,
+                     "operating_inflows": 110.12345, "operating_outflows": 100.0,
+                     "operating_net_cash": 10.12345, "debt_principal_paid": debt,
+                     "debt_interest_paid": 0.0, "verified_financing_fees": 0.0,
+                     "debt_service_paid": debt, "history_observed": observed,
+                     "uncertain_inflows": 0.0, "uncertain_outflows": 0.0, "excluded_inflows": 0.0,
+                     "excluded_outflows": 0.0, "classified_amount": 210.12345 + debt,
+                     "uncertain_amount": 0.0, "active_product_ids": ["P1"], "flags": []})
+    score = score_company(pd.DataFrame(rows), company_id="COMP_1084", currency="EUR",
+                          as_of="2026-08-31", run_id="pulse-contract-fixture").to_dict()
+    cash = {"schema_version": "1.0", "company_id": "COMP_1084", "currency": "EUR", "as_of": score["as_of"],
+            "classification_version": score["classification_version"], "facts_version": score["facts_version"],
+            "summary": {"net_operating_cash": 60.7407, "eligible_net_cash": 60.7407 - 6 * debt},
+            "classes": [{"economic_class": "operating", "amount_abs": 1260.7407},
+                        {"economic_class": "debt_service", "amount_abs": 6 * debt}],
+            "evidence": {"window_start": "2026-03-01", "window_end": "2026-08-31"},
+            "coverage": {"transaction_count": 18}, "flags": [], "critical_movements": []}
+    envelope = WebEnvelope(run_id=score["run_id"], snapshot_id="web-" + "1" * 64,
+                           **{key: score[key] for key in ("score_version", "classification_version", "cleaning_version",
+                                                         "facts_version", "config_version", "as_of", "currency")})
+    return score, cash, envelope
+
+
+def test_complete_health_and_contributions_are_copied_without_rounding():
+    score, cash, envelope = _source()
+    before = copy.deepcopy(score)
+    detail = company_detail(score, cash, "GROUP_0001", envelope)
+    assert score == before and detail["pulse"] == before
+    assert detail["health_score"] == score["health"]
+    assert detail["dimensions"]["cash_generation"] == score["pillars"]["generation"]["score"]
+    assert detail["pulse"]["contributions"] == score["contributions"]
+    assert detail["health_score"] != round(detail["health_score"])
+    assert detail["canonical_cash_truth"] == cash
+    assert detail["health_score_model"]["version"] == "PulseFourPillars-v1.0"
+
+
+def test_comp1084_unknown_debt_preserves_partial_company_and_portfolio():
+    score, cash, envelope = _source(debt=0.0)
+    detail = company_detail(score, cash, None, envelope)
+    assert detail["status"] == "partial"
+    assert detail["health_score"] is None and detail["dimensions"]["debt"] is None
+    assert detail["dimensions"]["cash_generation"] is not None
+    assert detail["pulse"]["pillars"]["debt_obligations"]["evidence_status"] == "unknown"
+    portfolio = portfolio_export({"COMP_1084": detail}, envelope)
+    assert len(portfolio["items"]) == 1 and portfolio["items"][0]["has_detail"]
+    assert portfolio["items"][0]["health_score"] is None
+    assert portfolio["items"][0]["missing_components"] == ["debt_obligations"]
+    assert detail["history"] == [{"month": score["as_of"], "health_score": None}]
+
+
+def test_all_missing_is_insufficient_without_changing_original_engine_status():
+    score, cash, envelope = _source(observed=False)
+    detail = company_detail(score, cash, None, envelope)
+    assert detail["status"] == "insufficient_evidence"
+    assert detail["pulse"]["status"] == "partial"
+    assert all(value is None for value in detail["dimensions"].values())
+
+
+def test_zero_is_not_missing_and_group_health_is_never_average():
+    score, cash, envelope = _source()
+    score["pillars"]["generation"]["score"] = 0.0
+    score["pillars"]["generation"]["health_contribution"] = 0.0
+    score["contributions"]["generation"] = 0.0
+    score["health"] = sum(score["contributions"].values())
+    detail = company_detail(score, cash, "GROUP_0001", envelope)
+    assert detail["dimensions"]["cash_generation"] == 0.0
+    group = group_detail("GROUP_0001", [detail], envelope)
+    assert group["health_score"] is None and group["status"] == "insufficient_evidence"
+    assert group["members"][0]["health_score"] == score["health"]
+
+
+@pytest.mark.parametrize("key,value", [("run_id", "different-run"), ("score_version", "financial_smoothed_v2"),
+                                       ("as_of", "2026-07-31"), ("classification_version", "legacy")])
+def test_legacy_or_mixed_source_fails_closed(key, value):
+    score, cash, envelope = _source()
+    score[key] = value
+    with pytest.raises(ValueError):
+        company_detail(score, cash, None, envelope)
+
+
+def test_tampered_contributions_rejected_not_recomputed():
+    score, cash, envelope = _source()
+    score["contributions"]["generation"] += 1
+    with pytest.raises(ValueError, match="contribution"):
+        company_detail(score, cash, None, envelope)
+
+
+def _write_run(root: Path) -> Path:
+    score, cash, envelope = _source(debt=0.0)
+    folder = root / "runs" / score["run_id"]
+    (folder / "companies" / "COMP_1084" / "EUR").mkdir(parents=True)
+    (folder / "cleaned").mkdir()
+    pd.DataFrame([{"company_id": "COMP_1084", "group_id": "GROUP_0001"}]).to_parquet(folder / "cleaned/companies.parquet")
+    for name, value in (("score", score), ("cash_truth", cash)):
+        (folder / "companies/COMP_1084/EUR" / f"{name}.json").write_text(json.dumps(value))
+    manifest = {"run_id": score["run_id"], "as_of": score["as_of"], "companies": ["COMP_1084"],
+                "versions": {key: value for key, value in envelope.to_dict().items() if key.endswith("_version")},
+                "outputs_sha256": recursive_hashes(folder)}
+    (folder / "manifest.json").write_text(json.dumps(manifest))
+    return folder
+
+
+def test_atomic_snapshot_replay_and_recursive_integrity(tmp_path):
+    source = _write_run(tmp_path / "input")
+    output = tmp_path / "generated"
+    manifest = run(source, output, verbose=False)
+    pointer = json.loads((output / "current.json").read_text())
+    target = output / "snapshots" / pointer["snapshot_id"]
+    assert pointer["run_id"] == manifest["run_id"]
+    assert pointer["manifest_sha256"] == sha256(target / "manifest.json")
+    assert recursive_hashes(target, exclude=("manifest.json",)) == manifest["outputs_sha256"]
+    before = recursive_hashes(target)
+    assert run(source, output, verbose=False) == manifest
+    assert recursive_hashes(target) == before
+    old_pointer = (output / "current.json").read_bytes()
+    (target / "companies/COMP_1084.json").write_text("{}")
+    with pytest.raises(ValueError, match="integrity"):
+        run(source, output, verbose=False)
+    assert (output / "current.json").read_bytes() == old_pointer
+
+
+def test_symlink_snapshot_destination_cannot_escape(tmp_path):
+    source = _write_run(tmp_path / "input")
+    output, outside = tmp_path / "generated", tmp_path / "outside"
+    output.mkdir()
+    outside.mkdir()
+    (output / "snapshots").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ValueError, match="Symbolic"):
+        run(source, output, verbose=False)
+    assert list(outside.iterdir()) == []

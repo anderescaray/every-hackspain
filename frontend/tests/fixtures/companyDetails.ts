@@ -9,7 +9,7 @@ import type {
   TimingSide,
   TransactionEvidence,
 } from "../../types/companyDetail";
-import { HEALTH_SCORE_MODEL } from "../../lib/healthScore";
+import { fixtureFields, fixtureModel, syncFixtureIdentity } from "./pulseData";
 
 const cashPeriod = "sep 2025 – ago 2026";
 const beforePeriod = "ene – mar 2026";
@@ -20,7 +20,7 @@ function scoreSnapshot(health_score: number, dimensions: HealthDimensions, score
     month: new Date(Date.UTC(2024, 8 + index, 1)).toISOString().slice(0, 10),
     health_score: index === scores.length - 1 ? health_score : value,
   }));
-  return { health_score, dimensions, health_score_model: HEALTH_SCORE_MODEL, history };
+  return { health_score, dimensions: Object.fromEntries(Object.keys(dimensions).map((key) => [key, health_score])) as HealthDimensions, health_score_model: fixtureModel, history };
 }
 
 function dateAfter(date: string, days: number): string {
@@ -267,7 +267,8 @@ const growthEvidence: EvidenceGroup = {
 
 export const fixtureCompanies: Record<string, CompanyDetail> = {
   COMP_0356: {
-    schema_version: "2.0",
+    ...fixtureFields("COMP_0356", 72),
+    schema_version: "3.0",
     source: "fixture",
     company_id: "COMP_0356",
     group_id: "GROUP_0042",
@@ -295,7 +296,8 @@ export const fixtureCompanies: Record<string, CompanyDetail> = {
     simulation: simulation(mainAr, mainAp, 78, 71),
   },
   COMP_0655: {
-    schema_version: "2.0",
+    ...fixtureFields("COMP_0655", 79),
+    schema_version: "3.0",
     source: "fixture",
     company_id: "COMP_0655",
     group_id: "GROUP_0087",
@@ -322,7 +324,8 @@ export const fixtureCompanies: Record<string, CompanyDetail> = {
     simulation: simulation(comparisonAr, comparisonAp, 85, 78),
   },
   COMP_1171: {
-    schema_version: "2.0",
+    ...fixtureFields("COMP_1171", 61),
+    schema_version: "3.0",
     source: "fixture",
     company_id: "COMP_1171",
     group_id: "GROUP_0194",
@@ -402,3 +405,5 @@ function standaloneFixture(companyId: string, hasSupport: boolean): CompanyDetai
 
 fixtureCompanies.COMP_9001 = standaloneFixture("COMP_9001", true);
 fixtureCompanies.COMP_9002 = standaloneFixture("COMP_9002", false);
+
+for (const company of Object.values(fixtureCompanies)) syncFixtureIdentity(company);

@@ -6,7 +6,9 @@ import { dateLabel, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { SectionHeading } from "./InsightPrimitives";
 import styles from "./insights.module.css";
 
-export function TrajectoryChart({ history, trajectory }: { history: HistoryPoint[]; trajectory: Trajectory }) {
+export function TrajectoryChart({ history: observations, trajectory }: { history: HistoryPoint[]; trajectory: Trajectory | null }) {
+  const history = observations.filter((point): point is HistoryPoint & { health_score: number } => point.health_score !== null);
+  const direction = trajectory ? trajectoryLabels[trajectory] : "Trayectoria no evaluable";
   const [activeIndex, setActiveIndex] = useState(Math.max(0, history.length - 1));
   const chartId = useId();
   const current = history[Math.min(activeIndex, history.length - 1)];
@@ -19,12 +21,12 @@ export function TrajectoryChart({ history, trajectory }: { history: HistoryPoint
   return (
     <section className={styles.panel} aria-label="Trayectoria">
       <SectionHeading number="01" title="Trayectoria" description="No solo cómo está la empresa. Hacia dónde va."><span className={styles.periodBadge}>{history.length} meses</span></SectionHeading>
-      {!current || !first || !last ? <p className={styles.emptyState}>No hay histórico disponible para esta empresa.</p> : <>
-        <div className={styles.chartSummary}><div><strong>{first.health_score} <span aria-hidden="true">→</span> {last.health_score}</strong><span className={trajectory === "improving" ? styles.positiveText : trajectory === "deteriorating" ? styles.negativeText : styles.muted}>{signedNumber(last.health_score - first.health_score)} puntos · {trajectoryLabels[trajectory]}</span></div></div>
+      {!current || !first || !last ? <p className={styles.emptyState}>No hay Health Score identificado en el histórico publicado. Los valores ausentes no se dibujan como cero.</p> : <>
+        <div className={styles.chartSummary}><div><strong>{first.health_score} <span aria-hidden="true">→</span> {last.health_score}</strong><span className={trajectory === "improving" ? styles.positiveText : trajectory === "deteriorating" ? styles.negativeText : styles.muted}>{history.length > 1 ? `${signedNumber(last.health_score - first.health_score)} puntos · ` : "Una observación · "}{direction}</span></div></div>
         <div className={styles.chartLegend}><span><i className={styles.scoreDot} />Health Score</span><span className={styles.chartReadout}>{dateLabel(current.month, true)} · {current.health_score} / 100</span></div>
         <svg viewBox="0 0 760 266" className={styles.chart} role="img" aria-labelledby={`${chartId}-title ${chartId}-description`}>
           <title id={`${chartId}-title`}>{`Trayectoria del Health Score: de ${first.health_score} a ${last.health_score}`}</title>
-          <desc id={`${chartId}-description`}>{`${history.length} observaciones mensuales de ${dateLabel(first.month, true)} a ${dateLabel(last.month, true)}. ${trajectoryLabels[trajectory]}. Usa el selector de mes o la tabla para consultar cada valor.`}</desc>
+          <desc id={`${chartId}-description`}>{`${history.length} observaciones mensuales de ${dateLabel(first.month, true)} a ${dateLabel(last.month, true)}. ${direction}. Usa el selector de mes o la tabla para consultar cada valor.`}</desc>
           <defs><linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3878f6" stopOpacity="0.15" /><stop offset="100%" stopColor="#3878f6" stopOpacity="0" /></linearGradient></defs>
           {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1="44" x2="724" y1={y(value)} y2={y(value)} stroke="#e4e8f0" strokeDasharray={value === 0 ? undefined : "3 5"} /><text x="30" y={y(value) + 4} textAnchor="end" fill="#5c6478" fontSize="11">{value}</text></g>)}
           <polygon points={`${x(0)},224 ${points} ${x(history.length - 1)},224`} fill={`url(#${chartId}-fill)`} />
