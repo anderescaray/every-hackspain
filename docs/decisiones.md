@@ -807,3 +807,32 @@ python -m pytest -q -p no:asyncio backend/tests         # API
 - Cash Truth clasifica por reglas de limpieza y categoría del banco; el bucket `uncertain` (18 %) es información, no error. Las categorías AI (§15) no se usan aún en los buckets.
 - Confidence no está calibrada contra ningún resultado; ordena evidencia, no acierto.
 - No hay anticipación medida publicada (`lead_time.json` pendiente en F3) ni despliegue público: la API corre en local.
+
+## 17. Encaje D25–D30 / FE10 / V2 estacional con D31 — 19-09-2026 (noche)
+
+Revisión cruzada tras leer `docs/jev-categorias.md`. Lo implementado en §14/FE10 (anotaciones, cobertura, estacionalidad en V2, commit `fcb2bb3`) y D31 (§15, commit `c32901f`) son complementarios; ninguna pieza requiere cambios en la otra. Tabla de solapes y decisiones propuestas, pendientes de acuerdo del equipo.
+
+### SC18 · Solapes verificados
+
+| Pieza mía | Pieza D31 | Relación | Decisión propuesta |
+|---|---|---|---|
+| D26–D28 `is_scf_adjustment`, `is_repo_pair`, `is_cash_disposal` | Jev clasifica los mismos textos como `bank_adjustment`/`internal_transfer`/`cash` → `ai_nonoperating` | Redundantes y coherentes; el flag es exacto por plantilla | Excluir de `tx_cash_*` **por flag**; D31 cubre el resto |
+| D29 `is_gateway_cost` | Jev manda `[fecha] stripe_fee/network_cost` a `fee` | Complementarios: D31 recompone `tx_fees_paid` desde 2025-01; D29 permite **excluirlos** de `interest_charge` antes de 2025-01, que D31 no toca | Servicio de deuda = `interest_charge & ~is_gateway_cost` |
+| D30 `event_type` (regex + signo) | `noul_unpaid_return` (10.307 filas ≥0,7), `noul_overdraft_or_seizure` (3.960) | Los Noul distinguen «devolución de fianza/error» de «recibo devuelto por impago», que el regex no separa; son multilingües | Fusionar en `event_type` con prioridad regex exacto D30 > Noul ≥0,7; publicar `event_source` |
+| FE10 `coverage_state` | — | Independiente: D31 no altera `tx_count`/`tx_usable_count`; sí sube `tx_operating_amount_share` (0,557 → 0,630) | Ninguna |
+| Fallback por signo (`hallazgos` §11.5, no implementado) | D31 resuelve el 29 % de filas / 30 % del importe sin categoría con categoría real | D31 es mejor donde hay plantilla; el fallback sigue haciendo falta para el **13 % del importe totalmente redactado** y para **plantillas no vistas del test oculto** (créditos agotados) | Implementar fallback solo sobre filas que sigan `uncategorized` tras D31, excluyendo D04/D05/D26/D27; publicar `categorized_amount_share` |
+| Referencia congelada V2 (cuantiles + factores estacionales) | Features con D31 desplazan `tx_inflow/outflow` (+6,4 % / +11,8 %) | Mezclar referencia base con features D31 mueve el nivel | Si D31 pasa a default, **reajustar la referencia** en el mismo cambio y regenerar `processed`/`scores_v2` |
+
+### SC19 · Riesgos que D31 no elimina
+
+1. Test oculto con bancos extranjeros: sin plantilla conocida, el caso COMP_0045 (score 100 por salidas invisibles) se repetiría; solo el fallback por signo lo evita.
+2. El 85 % de acuerdo es contra la categoría del banco, no accuracy; `interest_or_debt` sigue sin usarse (acuerdo 4/10).
+3. Estacionalidad: los factores de V2 se estiman sobre `tx_lfl_inflow_growth`; con D31 el crecimiento incluye más flujo operativo y los factores deben reestimarse (automático en `fit`).
+
+### SC20 · Orden propuesto
+
+1. D31 a default + reajuste de referencia V2 + regeneración (un solo commit coordinado).
+2. Fallback por signo residual con `categorized_amount_share`.
+3. Fusión Noul → `event_type`; migrar `stress_events` a `event_type`.
+4. Exclusión D26–D28 por flag y D29 en servicio de deuda.
+5. Consumo de `coverage_state` en momentum de V2 más allá del `provisional` actual (deltas solo entre meses `ok` consecutivos).
