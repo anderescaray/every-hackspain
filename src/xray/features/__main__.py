@@ -12,8 +12,13 @@ def main():
     parser.add_argument("--start-month", default="2024-09-01")
     parser.add_argument("--end-month", default="2026-08-01")
     parser.add_argument("--extraction-date", default="2026-09-01")
+    parser.add_argument("--ai-categories", type=Path, default=None,
+                        help="D31: template_categories.parquet generado una vez con Jev; rellena filas uncategorized")
+    parser.add_argument("--ai-min-confidence", type=float, default=0.7)
     args = parser.parse_args()
-    config = FeatureConfig(args.start_month, args.end_month, args.extraction_date)
+    config = FeatureConfig(args.start_month, args.end_month, args.extraction_date,
+                           ai_categories_path=str(args.ai_categories) if args.ai_categories else None,
+                           ai_min_confidence=args.ai_min_confidence)
     run(args.cleaned_dir, args.out_dir, config)
 
 

@@ -8,6 +8,7 @@
 |---|---|---|
 | Limpieza reproducible | Implementada y revisada; flags, validación, hashes y publicación con respaldo. Anotaciones semánticas D25–D30/F07 (pólizas operativas, SCF, repos, pasarela, eventos de estrés, fecha prevista ERP) | `src/xray/clean/`, [decisiones.md](./decisiones.md) §14, [hallazgos-datos.md](./hallazgos-datos.md) |
 | Features mensuales | Implementadas: empresa, empresa-moneda y grupo-moneda; nivel, dinámica y calidad | `src/xray/features/`, [feature-engineering.md](./feature-engineering.md) |
+| **Categorías AI (D31)** | Artefacto estático generado una vez con TypeSafe Jev para el 39 % de importe sin categoría; opt-in vía `--ai-categories`. A/B: 1.024 empresa-mes recuperan el filtro operativo, +55 empresas puntuadas en agosto | [jev-categorias.md](./jev-categorias.md), decisiones §15 |
 | Contexto retrospectivo | Saldos reconstruidos, cobertura de liquidez y deuda final, separados del modelo | [feature-engineering.md](./feature-engineering.md) |
 | Validación de features | Tests, hashes, checks de contrato e invariancia de prefijo | [validation.md](./validation.md) |
 | Score V1 (control) | `financial_baseline_v1`: nivel, momentum, referencia y contribuciones. Ruidoso (mediana de cambio mensual 8,8 puntos); conservado como control en `scores/` | [scoring.md](./scoring.md), [explainability.md](./explainability.md) |

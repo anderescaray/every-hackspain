@@ -14,3 +14,7 @@ Thumbs.db
 __pycache__/
 *.egg-info/
 .pytest_cache/
+
+# secrets
+.env
+data/enriched/

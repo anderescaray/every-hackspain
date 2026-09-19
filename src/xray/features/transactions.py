@@ -1,5 +1,6 @@
 import pandas as pd
 
+from xray.features.ai_categories import NONOPERATING, apply_ai_categories, load_template_categories
 from xray.features.temporal import divide
 
 
@@ -10,13 +11,17 @@ FIXED = {"salary", "social_security", "tax", "utility"}
 FLAGS = ["is_extreme_amount", "is_relative_outlier", "is_sync_duplicate", "is_unknown_product"]
 AMOUNTS = ["tx_cash_inflow", "tx_cash_outflow", "tx_inflow", "tx_outflow", "tx_fixed_cost",
            "tx_fees_paid", "debt_principal_paid", "debt_interest_paid", "tx_uncategorized_amount",
-           "tx_internal_amount", "tx_intragroup_amount"]
+           "tx_internal_amount", "tx_intragroup_amount", "tx_ai_categorized_amount", "tx_ai_nonoperating_amount"]
 
 
 def prepare_transactions(tables, config):
     t = tables["transactions"].copy()
     t["amount"] = t.amount.astype(float)
     t = t.loc[t.date.lt(config.stop)].rename(columns={"product_currency": "currency"})
+    if config.ai_categories_path:
+        t = apply_ai_categories(t, load_template_categories(config.ai_categories_path), config.ai_min_confidence)
+    else:
+        t["category_source"] = "none"
     t["group_id"] = t.company_id.map(tables["companies"].set_index("company_id").group_id)
     t["month"] = t.date.dt.to_period("M").dt.to_timestamp()
     eligible = t.status.eq("booked") & t.exchange_rate.eq(1) & ~t[FLAGS].any(axis=1)
@@ -31,7 +36,9 @@ def prepare_transactions(tables, config):
         scope = eligible & ~t.is_intragroup if name.startswith("debt_") else operating
         t[name] = (-t.amount).clip(lower=0).where(scope & t.category.isin(categories), 0.)
     for name, mask in (("tx_uncategorized_amount", t.category.eq("uncategorized")),
-                       ("tx_internal_amount", t.is_internal_transfer), ("tx_intragroup_amount", t.is_intragroup)):
+                       ("tx_internal_amount", t.is_internal_transfer), ("tx_intragroup_amount", t.is_intragroup),
+                       ("tx_ai_categorized_amount", t.category_source.eq("ai")),
+                       ("tx_ai_nonoperating_amount", t.category.eq(NONOPERATING))):
         t[name] = t.amount.abs().where(eligible & mask, 0.)
     tokens = t.description.fillna("").str.findall(r"\bCOUNTERPARTY_\d+\b")
     extracted = tokens.str[0].where(tokens.str.len().eq(1))

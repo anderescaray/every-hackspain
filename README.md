@@ -51,6 +51,7 @@ every.hackspain/
 │   └── processed/         ← features, scores y artefactos del producto
 ├── data_summary/          ← muestras y diccionario (en git)
 ├── docs/                  ← documentación técnica, producto y decisiones.md
+├── resources/             ← artefactos estáticos versionados (categorías Jev, D31)
 ├── notebooks/             ← exploración (01) y análisis de limpieza (02)
 ├── scripts/               ← puntos de entrada del pipeline (00_…, 01_…)
 ├── src/xray/              ← código del pipeline
@@ -62,6 +63,8 @@ every.hackspain/
 ```bash
 python -X utf8 scripts/00_clean_data.py
 python -X utf8 scripts/01_build_monthly_features.py
+# opcional (D31): rellena movimientos sin categoría con el artefacto estático de Jev
+# python -X utf8 scripts/01_build_monthly_features.py --ai-categories resources/jev_categories/template_categories.parquet
 python -X utf8 scripts/02_validate_features.py
 python -X utf8 scripts/03_compute_scores.py fit                 # V1 control -> data/processed/scores/
 python -X utf8 scripts/04_validate_scores.py

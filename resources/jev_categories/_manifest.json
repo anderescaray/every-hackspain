@@ -1,0 +1,93 @@
+{
+  "created_at": "2026-09-19T13:58:27.234754+00:00",
+  "model": "jev-latest",
+  "questions": {
+    "block": {
+      "type": "choice",
+      "instructions": "Classify this bank transaction into the economic block it belongs to. Use the narrative, the sign (positive = money in, negative = money out) and the amount. Placeholders like [COMPANY], [NUM], COUNTERPARTY_n are anonymised tokens.",
+      "criteria": {
+        "operating_inflow": "Money received from customers: invoice collections, remittances, card/POS settlements, receivables, sales proceeds",
+        "supplier_payment": "Payment to a supplier or vendor for goods/services, rent, purchases, subscriptions, invoices paid",
+        "utility": "Recurring utility or telecom bill: electricity, water, gas, phone, internet, insurance premium",
+        "salary": "Payroll, wages, salary transfer to employees",
+        "social_security": "Social security / pension / employer contributions to public bodies (TGSS, Sécurité sociale, Krankenkasse, etc.)",
+        "tax": "Tax payment or tax refund to/from a tax authority (VAT, IVA, IRPF, corporate tax, withholding, customs)",
+        "bank_fee": "Bank commission, service fee, card fee, maintenance fee, stamp duty on fees",
+        "interest_or_debt": "Loan repayment, leasing installment, interest charge, credit line amortisation, financing costs",
+        "internal_transfer": "Transfer between the company's own accounts, treasury sweep, investment placement/return, intra-group funding",
+        "cash": "Cash withdrawal or cash deposit at branch/ATM",
+        "bank_adjustment": "Technical bank entry: balance adjustment, correction, reversal, regularisation, period closing, no economic meaning",
+        "unknown": "Text is too short, redacted or ambiguous to decide"
+      }
+    },
+    "is_unpaid_return": {
+      "type": "noul",
+      "instructions": "This transaction is a returned/rejected direct debit, bounced bill or unpaid receivable caused by non-payment (not a refund, deposit return or transfer returned by error)."
+    },
+    "is_overdraft_or_seizure": {
+      "type": "noul",
+      "instructions": "This transaction is an overdraft charge/regularisation, a court or tax-authority seizure/garnishment (embargo, penhora, saisie), or a late-payment surcharge."
+    }
+  },
+  "coarse_map": {
+    "operating_inflow": "op_in",
+    "supplier_payment": "op_out",
+    "utility": "op_out",
+    "salary": "op_out",
+    "social_security": "op_out",
+    "tax": "op_out",
+    "interest_or_debt": "debt",
+    "bank_fee": "fee",
+    "internal_transfer": "nonop",
+    "cash": "nonop",
+    "bank_adjustment": "nonop",
+    "unknown": "unknown"
+  },
+  "bank_to_block": {
+    "collection": "operating_inflow",
+    "bulk_collection": "operating_inflow",
+    "pos_settlement": "operating_inflow",
+    "cash_settlement": "operating_inflow",
+    "cash_settlements": "operating_inflow",
+    "payment": "supplier_payment",
+    "bulk_payment": "supplier_payment",
+    "utility": "utility",
+    "salary": "salary",
+    "social_security": "social_security",
+    "tax": "tax",
+    "tax_refund": "tax",
+    "fee": "bank_fee",
+    "interest_charge": "interest_or_debt",
+    "debt_repayment": "interest_or_debt",
+    "transfer": "internal_transfer",
+    "investment_deployment": "internal_transfer",
+    "investment_return": "internal_transfer",
+    "cash_withdrawal": "cash",
+    "pos_withdrawal": "cash"
+  },
+  "universe": {
+    "filter": "status==booked & |amount|<=1e8 & template non-empty",
+    "top_categorized": 5000,
+    "templates": 145818,
+    "uncategorized": 140818,
+    "categorized": 5000
+  },
+  "answered": 145620,
+  "unanswered": 198,
+  "sign_conflicts_vetoed": 3089,
+  "template_fn": "upper; COUNTERPARTY_n->CP; [TOKEN]->T; digits->#; non-letters->space; collapse spaces",
+  "state_fields": [
+    "bank_narrative",
+    "direction",
+    "typical_amount"
+  ],
+  "files": {
+    "template_categories.parquet": "448d70d1a91ecfa3c1c10e6067f83527b129a9abf76ddc4203a8390de23d1aa5",
+    "responses.jsonl": "0626f6c3bf5197cb89ec1c654ce4e01c459e5dd29bbd09fe72a29a1303bb9995",
+    "transactions.parquet(input)": "bf5a96d1fb85e4a1d6796d361da6dd4b992ae30471477d7d2434fa0f2f0d8fe7"
+  },
+  "code_sha256": {
+    "jev_categorize_all.py": "b6ff08549e88b494353d9366bad40a78024cd03fcd82133c16151dae85fb2cb1",
+    "jev_categorize_prototype.py": "32183696642c14b1b77f1e460074567578e786ef337e06b21355f53029c2eee2"
+  }
+}
