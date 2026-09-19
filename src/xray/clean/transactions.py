@@ -56,6 +56,8 @@ def clean_transactions(tx: pd.DataFrame, products: pd.DataFrame, company_group: 
     known = products.set_index("product_id").company_id
     _flag(t, log, "D06", "is_unknown_product", ~t.product_id.isin(known.index),
           "product_id no está en banking_products ni en debt_products")
+    _flag(t, log, "D38", "is_technical_placeholder", t.amount.abs().eq(999_999_999),
+          "ajuste técnico de 999.999.999: sigue en los flujos (D32); solo invalida la caja reconstruida anterior")
     _flag(t, log, "D23", "has_invalid_exchange_rate", ~np.isfinite(t.exchange_rate) | t.exchange_rate.le(0),
           "exchange_rate no finito o no positivo; informativo, la conversión usa xray.fx (D32)")
     annotate_products(t, products, log)

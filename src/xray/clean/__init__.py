@@ -22,6 +22,7 @@ from xray.artifacts import check_output_path, code_manifest, publish_bundle, sha
 from xray.clean.invoices import clean_invoices
 from xray.clean.log import CleaningLog
 from xray.clean.tables import clean_table
+from xray.clean.balances import sentinel_balances
 from xray.clean.transactions import clean_transactions
 from xray.clean.validate import validate
 from xray.io import TABLES, read_raw
@@ -41,6 +42,9 @@ def clean_all(raw: dict[str, pd.DataFrame]) -> tuple[dict[str, pd.DataFrame], Cl
     balances = cleaned["balances"]
     balances["is_unknown_product"] = ~balances.product_id.isin(products.product_id)
     log.add("balances", "D24", "flag", balances.is_unknown_product.sum(), "producto sin moneda ni propietario verificable")
+    balances["is_sentinel_balance"] = sentinel_balances(balances, products, cleaned["transactions"])
+    log.add("balances", "D38", "flag", balances.is_sentinel_balance.sum(),
+            "saldo de cuenta >= 100 M€ que no se explica por la actividad de la cuenta (valor de relleno)")
     validate(cleaned)
     return cleaned, log
 

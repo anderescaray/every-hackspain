@@ -17,7 +17,7 @@ El exporter **no calcula, ajusta, redondea ni completa** Health o pilares. Tampo
 - `health_score` y `dimensions` copian valores **nullable** del motor. Los alias `cash_generation ← generation` y `debt ← debt_obligations` sólo cambian nombres.
 - Cada empresa conserva `pulse` y `canonical_cash_truth` completos: features, contribuciones, límites, evidencia, confidence, flags, sensibilidad y trazabilidad originales.
 - Los estados de presentación son `complete`, `partial` e `insufficient_evidence`. Este último identifica cuatro pilares nulos; no cambia el `status` del objeto Pulse original. Cero no equivale a `null`.
-- La UI actual es una vista **EUR explícita**, sin conversión FX. El batch incluye todas las empresas/monedas; el manifiesto web registra los paneles de otra moneda y las empresas sin panel EUR. Ninguna empresa se excluye por Health nulo.
+- La UI es una vista en **EUR**. Desde D32 el libro de caja convierte todas las monedas a EUR con un tipo fijo por moneda (`xray.fx`), así que cada empresa tiene un único panel EUR con todas sus cuentas; el manifiesto web sigue registrando cualquier panel de otra moneda o empresa sin panel EUR. Ninguna empresa se excluye por Health nulo.
 - No se inventan Health de grupo, histórico, pronósticos, emparejamientos de transferencias, apoyo confirmado ni confianza escalar. Los apartados sin producto de datos quedan vacíos o no evaluables.
 - La columna heredada «Cobertura» consume una confianza escalar que este motor no define: aparece «No evaluable». El objeto `pulse.confidence` sí conserva cobertura histórica, clasificación, incertidumbre, perímetro, moneda y evidencia de deuda; no se confunde una de esas métricas con un índice compuesto.
 

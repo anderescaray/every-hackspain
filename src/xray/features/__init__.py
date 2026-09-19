@@ -11,7 +11,7 @@ import pyarrow
 
 from xray.artifacts import cash_classification_manifest, check_output_path, code_manifest, publish_bundle, sha256
 from xray.features.config import FeatureConfig
-from xray.features.context import debt_snapshot, liquidity_summary, reconstruct_liquidity
+from xray.features.context import debt_snapshot, liquidity_snapshot, liquidity_summary, reconstruct_liquidity
 from xray.features.coverage import STATES, add_coverage_state
 from xray.features.invoices import invoice_features, prepare_invoices
 from xray.features.temporal import add_ratios, add_temporal, model_columns
@@ -61,6 +61,7 @@ def build_features(tables: dict[str, pd.DataFrame], config: FeatureConfig | None
     result["reconstructed_liquidity_context"] = reconstruct_liquidity(tables, config)
     result["company_currency_liquidity_context"] = liquidity_summary(result["reconstructed_liquidity_context"], currency)
     result["debt_snapshot_context"] = debt_snapshot(tables, config)
+    result["liquidity_snapshot_context"] = liquidity_snapshot(tables, config)
     validate_features(result, companies, config)
     return result
 
@@ -130,7 +131,8 @@ def feature_catalog(artifacts):
         "training_filter": "is_training_eligible; evaluar aparte la cobertura de moneda y cuentas",
         "group_split_key": "group_id",
         "excluded_artifacts": ["stress_events_reserved", "reconstructed_liquidity_context",
-                               "company_currency_liquidity_context", "debt_snapshot_context"],
+                               "company_currency_liquidity_context", "debt_snapshot_context",
+                               "liquidity_snapshot_context"],
         "columns": {name: {"dtype": str(panel[name].dtype), "model_candidate": name in allowed,
                            "role": "feature" if name in allowed else "context_or_quality"} for name in panel},
     }
