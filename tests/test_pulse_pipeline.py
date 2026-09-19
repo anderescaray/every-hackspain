@@ -70,7 +70,7 @@ def test_raw_to_immutable_run_reconciles_and_repeats(tmp_path):
     assert "companies/COMP_1084/EUR/cash_truth.json" in first["outputs_sha256"]
     assert "source_snapshot/transactions.parquet" in first["outputs_sha256"]
     score = _score(out, first)
-    assert score["status"] == "complete"
+    assert score["status"] == "complete_verified"
     assert score["health"] == sum(p["health_contribution"] for p in score["pillars"].values())
     assert score["lineage"]["history_mode"] == "retrospective_restatement"
     assert score["lineage"]["knowledge_cutoff"] == "2026-09-01"

@@ -127,6 +127,13 @@ def extract_features(facts: pd.DataFrame, *, company_id: str, currency: str,
     else:
         debt_status, debt_reason = "verified", "six_month_identified_observed_service"
     debt_reason_missing = ("zero_operating_inflows" if i == 0 else None) if debt_status == "verified" else debt_reason
+    debt_assessment = None
+    if "debt_bounds" in policy:
+        from xray.pulse.debt import assess_debt
+        debt_assessment = assess_debt(frame, sums, base_reason=base_reason, debt_finite=debt_finite,
+                                      currency_issue=currency_issue, policy=policy)
+        debt_status, debt_reason = debt_assessment["evidence_status"], debt_assessment["reason"]
+        debt_reason_missing = None if debt_assessment["point_score"] is not None else debt_reason
 
     g_raw = m_raw = d_raw = s_raw = None
     if not op_reason:
@@ -153,6 +160,8 @@ def extract_features(facts: pd.DataFrame, *, company_id: str, currency: str,
                                                 service, i, debt_reason_missing,
                                                 breakdown={k: sums[k] for k in ("debt_principal_paid", "debt_interest_paid", "verified_financing_fees")}),
     }
+    if debt_assessment is not None:
+        features["observed_debt_service_burden"].update(debt_assessment=debt_assessment, raw=debt_assessment["raw"])
     diagnostics = resilience_diagnostics(nets, o, policy["diagnostics"]["material_deficit_share"])
     abs_total = _sum(frame, "classified_amount")
     uncertain = _sum(frame, "uncertain_amount")
@@ -162,7 +171,7 @@ def extract_features(facts: pd.DataFrame, *, company_id: str, currency: str,
                 for v in frame.get("active_product_ids", pd.Series([None] * len(frame)))]
     active_sets = [set(v) for v in products if v]
     perimeter = "stable_observed" if len(active_sets) == 6 and all(s == active_sets[0] for s in active_sets) else "changed_or_unverified"
-    confidence = {"history_coverage": float(observed.sum()) / 6,
+    confidence: dict[str, Any] = {"history_coverage": float(observed.sum()) / 6,
                   "classification_coverage": coverage, "uncertain_amount_share": None if coverage is None else 1 - coverage,
                   "perimeter_consistency": perimeter,
                   "currency_consistency": {"status": "partial" if currency_issue else "unverified_source_coverage", "currency": currency,
@@ -173,6 +182,9 @@ def extract_features(facts: pd.DataFrame, *, company_id: str, currency: str,
     evidence = {"observed_product_ids": sorted(set().union(*active_sets)) if active_sets else [],
                 "perimeter_method": "active_account_sets_not_verified_observability",
                 "monthly_product_ids": products, "facts_months": window["months"], "debt_evidence_status": debt_status}
+    if debt_assessment is not None:
+        confidence["debt_evidence"].update({key: debt_assessment[key] for key in
+                                           ("identified_service", "service_absence_verified", "score_range", "uncertainty")})
     if base_reason:
         flags.append(base_reason)
     if debt_status != "verified":

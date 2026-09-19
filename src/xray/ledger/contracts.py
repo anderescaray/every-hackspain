@@ -6,10 +6,16 @@ from typing import Any, Literal
 import numpy as np
 import pandas as pd
 
+from xray.ledger.debt_uncertainty import (
+    DEBT_UNCERTAINTY_STATUSES,
+    DEBT_UNCERTAINTY_VERSION,
+    DebtUncertaintyStatus,
+)
+
 SCHEMA_VERSION = "1.0"
 CLEANING_VERSION = "cleaning-v1"
 CLASSIFICATION_VERSION = "cash-truth-v1"
-FACTS_VERSION = "monthly-facts-v1"
+FACTS_VERSION = "monthly-facts-v1.1"
 ECONOMIC_CLASSES = (
     "operating", "own_account_circulation", "group_or_internal", "external_financing",
     "debt_service", "investment", "uncertain",
@@ -55,12 +61,22 @@ class LedgerTransaction:
     is_uncertain: bool
     flags: list[str] = field(default_factory=list)
     source_lineage: dict[str, Any] = field(default_factory=dict)
+    debt_uncertainty_status: DebtUncertaintyStatus = "not_applicable"
+    debt_uncertainty_rule: str = "DU00-outside-eligible-uncertain-outflows"
+    debt_uncertainty_evidence_refs: list[str] = field(default_factory=list)
+    debt_uncertainty_version: str = DEBT_UNCERTAINTY_VERSION
 
     def __post_init__(self) -> None:
         if self.economic_class not in ECONOMIC_CLASSES:
             raise ValueError("Unknown economic class")
         if not np.isfinite(self.amount):
             raise ValueError("Ledger amount must be finite")
+        if self.debt_uncertainty_status not in DEBT_UNCERTAINTY_STATUSES:
+            raise ValueError("Unknown Debt uncertainty assessment")
+        if self.debt_uncertainty_status != "not_applicable" and (not self.is_uncertain or self.amount >= 0):
+            raise ValueError("Debt uncertainty requires an uncertain outflow")
+        if self.debt_uncertainty_status == "debt_impossible" and not self.debt_uncertainty_evidence_refs:
+            raise ValueError("Financial impossibility requires affirmative evidence")
         if sum((self.included_in_operating_inflows, self.included_in_operating_outflows,
                 self.included_in_debt_service)) > 1:
             raise ValueError("A transaction cannot contribute to two financial flows")
@@ -95,6 +111,11 @@ class MonthlyFacts:
     history_observed: bool
     debt_evidence_status: DebtEvidenceStatus
     debt_evidence_reason: str
+    debt_possible_uncertain_outflows: float | None = None
+    debt_impossible_uncertain_outflows: float | None = None
+    debt_unresolved_uncertain_outflows: float | None = None
+    potentially_financial_uncertain_outflows: float | None = None
+    debt_uncertainty_version: str = DEBT_UNCERTAINTY_VERSION
     active_product_ids: list[str] = field(default_factory=list)
     facts_version: str = FACTS_VERSION
     classification_version: str = CLASSIFICATION_VERSION

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pulseEnvelopeShape, pulseStatusSchema } from "./pulse";
+import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue } from "./pulse";
 
 const text = z.string().min(1).max(2000);
 const score = z.number().finite().min(0).max(100);
@@ -18,6 +18,7 @@ const itemSchema = z.object({
   trajectory_stage: z.enum(["confirmed", "emerging"]).nullable(),
   confidence: score.nullable(),
   score_status: statusSchema,
+  ...identificationFields,
   status_reason: text.nullable(),
   main_signal: text.nullable(),
   main_signal_impact: amount.nullable(),
@@ -43,7 +44,8 @@ export const portfolioSchema = z.object({
   const ids = portfolio.items.map((item) => item.company_id);
   if (new Set(ids).size !== ids.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Identificadores duplicados", path: ["items"] });
   portfolio.items.forEach((item, index) => {
-    if ((item.score_status === "complete") !== (item.health_score !== null)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Una empresa sin puntuar no puede tener Health Score", path: ["items", index] });
+    const invalid = identificationIssue(portfolio.score_version, item);
+    if (invalid) ctx.addIssue({ code: z.ZodIssueCode.custom, message: invalid, path: ["items", index] });
     if (item.run_id !== portfolio.run_id) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Cartera con runs mezclados", path: ["items", index] });
     if (item.trajectory === null && item.trajectory_stage !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Sin trayectoria no hay fase", path: ["items", index] });
   });

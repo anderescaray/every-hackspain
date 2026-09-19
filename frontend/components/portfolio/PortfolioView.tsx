@@ -53,7 +53,7 @@ export function PortfolioView({ portfolio, query, page }: { portfolio: Portfolio
     <form className={styles.filters} method="get" action="/" aria-label="Filtros de la cartera">
       <label>Trayectoria<select name="trajectory" defaultValue={query.trajectory}><option value="all">Todas</option>{(["deteriorating", "improving", "stable"] as const).map((v) => <option key={v} value={v}>{trajectoryLabels[v]}</option>)}</select></label>
       <label>Atención<select name="attention" defaultValue={query.attention}><option value="all">Todas</option>{(["high", "medium", "low", "unknown"] as const).map((v) => <option key={v} value={v}>{attentionLabels[v]}</option>)}</select></label>
-      <label>Estado<select name="status" defaultValue={query.status}><option value="all">Todos</option>{(["complete", "partial", "insufficient_evidence"] as const).map((v) => <option key={v} value={v}>{statusLabels[v]}</option>)}</select></label>
+      <label>Estado<select name="status" defaultValue={query.status}><option value="all">Todos</option>{(["complete", "complete_verified", "complete_bounded", "partial", "insufficient_evidence"] as const).map((v) => <option key={v} value={v}>{statusLabels[v]}</option>)}</select></label>
       <label>Grupo<input name="group" defaultValue={query.group} placeholder="GROUP_0042" maxLength={40} /></label>
       <label>Buscar<input name="q" defaultValue={query.q} placeholder="COMP_0356" maxLength={40} /></label>
       <label>Ordenar por<select name="sort" defaultValue={query.sort}>{SORT_KEYS.map((k) => <option key={k} value={k}>{sortLabels[k]}</option>)}</select></label>

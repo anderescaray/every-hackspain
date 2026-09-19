@@ -1,4 +1,5 @@
 import type { Portfolio, PortfolioAttention, PortfolioItem, PortfolioStatus } from "../types/portfolio";
+import { isCompleteStatus } from "../types/pulse";
 import type { Trajectory } from "../types/companyDetail";
 
 export const SORT_KEYS = ["attention", "health_score", "delta_vs_prev", "confidence", "support_dependency_ratio", "company_id"] as const;
@@ -19,7 +20,7 @@ export const DEFAULT_QUERY: PortfolioQuery = { trajectory: "all", attention: "al
 const ATTENTION_RANK: Record<PortfolioAttention, number> = { high: 3, medium: 2, low: 1, unknown: 0 };
 
 export const attentionLabels: Record<PortfolioAttention, string> = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin evaluar" };
-export const statusLabels: Record<PortfolioStatus, string> = { complete: "Identificada", partial: "No plenamente identificada", insufficient_evidence: "Evidencia insuficiente" };
+export const statusLabels: Record<PortfolioStatus, string> = { complete: "Identificada", complete_verified: "Identificada · verificada", complete_bounded: "Identificada · acotada", partial: "No plenamente identificada", insufficient_evidence: "Evidencia insuficiente" };
 export const sortLabels: Record<SortKey, string> = {
   attention: "Atención", health_score: "Health Score", delta_vs_prev: "Cambio mensual", confidence: "Cobertura",
   support_dependency_ratio: "Dependencia de apoyo", company_id: "Identificador",
@@ -34,7 +35,7 @@ export function parseQuery(params: Record<string, string | string[] | undefined>
   return {
     trajectory: pick(single("trajectory"), ["all", "improving", "deteriorating", "stable"] as const, "all"),
     attention: pick(single("attention"), ["all", "high", "medium", "low", "unknown"] as const, "all"),
-    status: pick(single("status"), ["all", "complete", "partial", "insufficient_evidence"] as const, "all"),
+    status: pick(single("status"), ["all", "complete", "complete_verified", "complete_bounded", "partial", "insufficient_evidence"] as const, "all"),
     group: (single("group") ?? "").trim().slice(0, 40),
     q: (single("q") ?? "").trim().slice(0, 40),
     sort: pick(single("sort"), SORT_KEYS, "attention"),
@@ -48,7 +49,7 @@ export function filterItems(items: PortfolioItem[], query: PortfolioQuery): Port
   return items.filter((item) =>
     (query.trajectory === "all" || item.trajectory === query.trajectory)
     && (query.attention === "all" || item.attention === query.attention)
-    && (query.status === "all" || item.score_status === query.status)
+    && (query.status === "all" || (query.status === "complete" ? isCompleteStatus(item.score_status) : item.score_status === query.status))
     && (!group || (item.group_id ?? "").toUpperCase() === group)
     && (!q || item.company_id.includes(q) || (item.group_id ?? "").toUpperCase().includes(q)));
 }

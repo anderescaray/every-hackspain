@@ -24,8 +24,10 @@ from xray.paths import ROOT
 from xray.pulse.contracts import PILLARS
 
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
-METHOD = "PulseFourPillars-v1.0"
-EXPORTER_VERSION = "pulse-frontend-v1"
+METHOD = "PulseFourPillars-v1.0.1"
+SUPPORTED_METHODS = {"PulseFourPillars-v1.0": "pulse-config-v1", METHOD: "pulse-config-v1.0.1"}
+COMPLETE_STATUSES = {"complete", "complete_verified", "complete_bounded"}
+EXPORTER_VERSION = "pulse-frontend-v1.1"
 ALIASES = {"momentum": "momentum", "cash_generation": "generation",
            "resilience": "resilience", "debt": "debt_obligations"}
 VERSIONS = ("score_version", "classification_version", "cleaning_version", "facts_version", "config_version")
@@ -73,8 +75,11 @@ class WebEnvelope:
 
 def _validate_score(score: dict[str, Any], cash: dict[str, Any], envelope: WebEnvelope) -> None:
     """Integrity assertions only; never manufacture or replace engine values."""
-    if score.get("score_version") != METHOD or score.get("schema_version") != "1.0":
-        raise ValueError("Only the PulseFourPillars-v1.0 score contract is supported; no legacy fallback")
+    method = score.get("score_version")
+    if method not in SUPPORTED_METHODS or score.get("schema_version") != "1.0":
+        raise ValueError("Only registered PulseFourPillars contracts are supported; no legacy fallback")
+    if score.get("config_version") != SUPPORTED_METHODS[method]:
+        raise ValueError("Score methodology and configuration version disagree")
     for key, expected in envelope.to_dict().items():
         if key != "snapshot_id" and score.get(key) != expected:
             raise ValueError(f"Mixed score provenance: {key}")
@@ -108,15 +113,77 @@ def _validate_score(score: dict[str, Any], cash: dict[str, Any], envelope: WebEn
         raise ValueError("Missing component metadata disagrees")
     health = score["health"]
     if missing:
-        if health is not None or score["status"] != "partial":
+        allowed = {"partial", "insufficient_evidence"} if method == METHOD else {"partial"}
+        if health is not None or score["status"] not in allowed:
             raise ValueError("Incomplete Pulse evidence cannot supply Health")
-    elif health is None or score["status"] != "complete" or not math.isclose(
+    elif health is None or score["status"] not in (
+        {"complete_verified", "complete_bounded"} if method == METHOD else {"complete"}
+    ) or not math.isclose(
         math.fsum(contributions), health, rel_tol=0, abs_tol=1e-10
     ):
         raise ValueError("Complete source Health does not reconcile")
+    if method == METHOD:
+        _validate_bounded_contract(score)
+    elif score["pillars"]["debt_obligations"].get("evidence_status") == "bounded":
+        raise ValueError("Historical v1.0 cannot contain bounded Debt")
     # Check every nested value, including features and robustness, is finite JSON.
     _json(score)
     _json(cash)
+
+
+def _validate_bounded_contract(score: dict[str, Any]) -> None:
+    """Validate supplied identification bounds, never derive a replacement score."""
+    debt = score["pillars"]["debt_obligations"]
+    required = {"identified_score", "score_range", "score_range_width", "score_estimation", "reason",
+                "identified_service", "service_bounds", "service_absence_verified", "uncertainty", "evidence_status"}
+    if not required <= debt.keys() or not {"health_evidence", "identified_range"} <= score.keys():
+        raise ValueError("Missing bounded Debt contract fields")
+    if not {"debt_principal_paid", "debt_interest_paid", "verified_financing_fees", "debt_service_paid",
+            "observed_months", "required_months", "history_complete"} <= debt["identified_service"].keys():
+        raise ValueError("Missing identified service breakdown")
+    if not {"debt_possible_uncertain_outflows", "debt_impossible_uncertain_outflows",
+            "debt_unresolved_uncertain_outflows", "potentially_financial_uncertain_outflows", "version"} <= debt["uncertainty"].keys():
+        raise ValueError("Missing Debt uncertainty breakdown")
+    if debt["uncertainty"]["version"] != "debt-uncertainty-v1":
+        raise ValueError("Unsupported Debt uncertainty evidence version")
+    status = debt["evidence_status"]
+    if status not in {"verified", "bounded", "partial", "unknown"} or debt["reason"] != debt["evidence_reason"]:
+        raise ValueError("Invalid bounded Debt evidence")
+    interval = debt["score_range"]
+    lo, hi = interval["min"], interval["max"]
+    if (lo is None) != (hi is None) or (lo is not None and not 0 <= lo <= hi <= 100):
+        raise ValueError("Invalid Debt identification range")
+    if debt["score"] is not None and (lo is None or not lo <= debt["score"] <= hi):
+        raise ValueError("Debt point is outside its identification range")
+    if status == "bounded" and (debt["score"] is None or debt["score_estimation"] != "bounded_midpoint"):
+        raise ValueError("Bounded Debt must retain its point estimation provenance")
+    if status == "verified" and (debt["score"] is None or debt["score_estimation"] != "identified"):
+        raise ValueError("Verified Debt must retain its identified score")
+    if status in {"unknown", "partial"} and debt["score"] is not None:
+        raise ValueError("Unidentified Debt cannot supply a point score")
+    if debt["service_absence_verified"] is not False:
+        raise ValueError("This method cannot certify absence of debt service")
+    expected_evidence = {"complete_verified": "verified", "complete_bounded": "bounded",
+                         "partial": "partial", "insufficient_evidence": "unknown"}[score["status"]]
+    if score["health_evidence"] != expected_evidence:
+        raise ValueError("Health evidence disagrees with identification status")
+    if score["status"] in {"complete_verified", "complete_bounded"} and status != expected_evidence:
+        raise ValueError("Complete Health must preserve Debt evidence status")
+    identified = score["identified_range"]
+    if identified is not None:
+        if identified["kind"] != "identification_bounds_not_confidence_interval" or not 0 <= identified["min"] <= identified["max"] <= 100:
+            raise ValueError("Invalid Health identification range")
+        if score["health"] is not None and not identified["min"] <= score["health"] <= identified["max"]:
+            raise ValueError("Health point is outside its identification range")
+        if score["health"] is not None and (identified["min"] != score["health_min"] or identified["max"] != score["health_max"]):
+            raise ValueError("Complete Health bounds disagree with supplied identification range")
+    elif score["health"] is not None:
+        raise ValueError("Identified Health requires supplied identification bounds")
+
+
+def _identification_fields(score: dict[str, Any]) -> dict[str, Any]:
+    # Historical v1.0 has no bounded contract: retain that absence explicitly.
+    return {key: score[key] for key in ("identified_range", "health_evidence") if key in score}
 
 
 def _status(score: dict[str, Any]) -> str:
@@ -170,16 +237,20 @@ def company_detail(score: dict[str, Any], cash: dict[str, Any], group_id: str | 
     _validate_score(score, cash, envelope)
     status = _status(score)
     missing = ", ".join(score["missing_components"])
-    assessment = "Health disponible" if status == "complete" else "Health no evaluable · evidencia parcial"
+    assessment = "Health disponible" if status in COMPLETE_STATUSES else "Health no evaluable · evidencia parcial"
+    if status == "complete_bounded":
+        assessment = "Health identificado con incertidumbre acotada"
     if status == "insufficient_evidence":
         assessment = "Evidencia insuficiente para evaluar los pilares"
     reason = f"Componentes no evaluables: {missing}." if missing else "Los cuatro pilares están identificados."
+    if status == "complete_bounded":
+        reason = "Deuda y Health incluyen una estimación acotada; el intervalo identifica la incertidumbre observada."
     direction = score["direction"] if score["direction"] in {"improving", "deteriorating", "stable"} else None
     period = f"Seis meses completos hasta {score['as_of']}"
     return {"schema_version": "3.0", "source": "generated", **envelope.to_dict(),
             "company_id": _identifier(score["company_id"], "COMP"), "group_id": group_id,
             "status": status, "health_score": score["health"], "dimensions": _dimensions(score),
-            "health_score_model": {"version": score["score_version"], "provisional": status != "complete",
+            "health_score_model": {"version": score["score_version"], "provisional": status not in {"complete", "complete_verified"},
                                    "weights": {alias: score["pillars"][name]["weight"] for alias, name in ALIASES.items()}},
             "assessment": assessment, "confidence": None, "trajectory": direction,
             "summary": f"{reason} Diagnóstico de caja y alerta temprana, no probabilidad de impago. Momentum es nowcast, no forecast.",
@@ -198,6 +269,7 @@ def portfolio_export(details: dict[str, dict[str, Any]], envelope: WebEnvelope) 
         change = score.get("change", {})
         missing = score["missing_components"]
         items.append({"company_id": cid, "group_id": detail["group_id"], "run_id": envelope.run_id,
+                      **_identification_fields(score),
                       "health_score": score["health"], "dimensions": detail["dimensions"],
                       "delta_vs_prev": change.get("delta") if change.get("comparable_to_previous") else None,
                       "trajectory": detail["trajectory"], "trajectory_stage": None, "confidence": None,
@@ -207,7 +279,7 @@ def portfolio_export(details: dict[str, dict[str, Any]], envelope: WebEnvelope) 
                       "support_dependency_ratio": None, "attention": "unknown", "has_detail": True})
     return {"schema_version": "2.0", "source": "generated", **envelope.to_dict(),
             "period": f"Seis meses completos hasta {envelope.as_of}",
-            "summary": f"{len(items)} empresas observadas en {envelope.currency}; incluye evidencia parcial. Fuente única: {METHOD}.",
+            "summary": f"{len(items)} empresas observadas en {envelope.currency}; incluye evidencia parcial. Fuente única: {envelope.score_version}.",
             "items": items}
 
 
@@ -217,6 +289,7 @@ def group_detail(group_id: str, details: list[dict[str, Any]], envelope: WebEnve
     members = []
     for detail in sorted(details, key=lambda value: value["company_id"]):
         members.append({"company_id": detail["company_id"], "health_score": detail["health_score"],
+                        **_identification_fields(detail["pulse"]),
                         "dimensions": detail["dimensions"], "score_status": detail["status"],
                         "missing_components": detail["pulse"]["missing_components"], "trajectory": detail["trajectory"],
                         "role": "unknown", "available_liquidity": None, "identified_debt": None, "obligations_due": None,
@@ -297,8 +370,8 @@ def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "E
     _safe_destination(out_dir)
     source = verify_run(run_dir)
     source_hash = sha256(run_dir / "manifest.json")
-    if source.get("versions", {}).get("score_version") != METHOD:
-        raise ValueError("A verified PulseFourPillars-v1.0 run is required; legacy export is research-only")
+    if source.get("versions", {}).get("score_version") not in SUPPORTED_METHODS:
+        raise ValueError("A verified registered PulseFourPillars run is required; legacy export is research-only")
     version_fields = {key: source["versions"][key] for key in VERSIONS}
     identity = {"source_manifest_sha256": source_hash, "exporter_sha256": sha256(Path(__file__)),
                 "export_dependencies_sha256": {"artifacts.py": sha256(Path(__file__).parents[1] / "artifacts.py"),
@@ -334,7 +407,7 @@ def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "E
             group_details.setdefault(detail["group_id"], []).append(detail)
     counts = {"companies": len(details), "groups": len(group_details),
               "statuses": {status: sum(d["status"] == status for d in details.values())
-                           for status in ("complete", "partial", "insufficient_evidence")},
+                           for status in ("complete", "complete_verified", "complete_bounded", "partial", "insufficient_evidence")},
               "excluded_currency_panels": len(excluded)}
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".pulse-web-", dir=out_dir) as directory:
@@ -353,5 +426,5 @@ def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "E
             raise ValueError("Source run changed during export; current snapshot was not replaced")
         target = _publish(staged, out_dir, manifest)
     if verbose:
-        print(f"{METHOD}: {counts['companies']} empresas · {counts['groups']} grupos · {counts['statuses']} -> {target}")
+        print(f"{envelope.score_version}: {counts['companies']} empresas · {counts['groups']} grupos · {counts['statuses']} -> {target}")
     return manifest

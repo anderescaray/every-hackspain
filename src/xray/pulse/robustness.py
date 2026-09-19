@@ -59,7 +59,9 @@ def evaluate_robustness(ledger: pd.DataFrame | None, window: FeatureWindow, base
                                         start_month=window.window["start"])
             # Restriction is a sensitivity assumption, not stronger knowledge about the remaining debt service.
             original = window.frame.set_index("month")
-            for col in ("uncertain_outflows", "excluded_outflows", "unknown_currency_count", "ambiguous_currency_count", "excluded_row_count"):
+            for col in ("uncertain_outflows", "excluded_outflows", "unknown_currency_count", "ambiguous_currency_count", "excluded_row_count",
+                        "debt_possible_uncertain_outflows", "debt_impossible_uncertain_outflows",
+                        "debt_unresolved_uncertain_outflows", "potentially_financial_uncertain_outflows"):
                 if col in original:
                     frame[col] = frame.month.map(original[col])
             add("observed_common_account_perimeter", frame,

@@ -1,6 +1,7 @@
 """Approved mechanical invariants, not financial calibration or outcome validation."""
 import copy
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,8 @@ def facts(nets=None, outflow=100., principal=2., interest=1., fees=0.):
 
 
 def score(frame=None, **kwargs):
+    # These regression cases freeze the original strict V1 methodology.
+    kwargs.setdefault("config", load_config(Path(__file__).parents[1] / "src/xray/pulse/configs/pulse_four_pillars_v1.json"))
     return score_company(facts() if frame is None else frame, company_id="COMP_1084", currency="EUR",
                          as_of="2026-06-30", **kwargs)
 

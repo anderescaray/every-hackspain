@@ -1,0 +1,1781 @@
+{
+  "company": {
+    "schema_version": "3.0",
+    "source": "fixture",
+    "run_id": "pulse-contract-fixture",
+    "snapshot_id": "web-1111111111111111111111111111111111111111111111111111111111111111",
+    "score_version": "PulseFourPillars-v1.0.1",
+    "classification_version": "cash-truth-v1",
+    "cleaning_version": "cleaning-v1",
+    "facts_version": "monthly-facts-v1.1",
+    "config_version": "pulse-config-v1.0.1",
+    "as_of": "2026-08-31",
+    "currency": "EUR",
+    "company_id": "COMP_1084",
+    "group_id": "GROUP_0001",
+    "status": "complete_bounded",
+    "health_score": 77.64752663417283,
+    "dimensions": {
+      "momentum": 50.0,
+      "cash_generation": 70.2469,
+      "resilience": 100.0,
+      "debt": 85.24383317086415
+    },
+    "health_score_model": {
+      "version": "PulseFourPillars-v1.0.1",
+      "provisional": true,
+      "weights": {
+        "momentum": 0.15,
+        "cash_generation": 0.4,
+        "resilience": 0.25,
+        "debt": 0.2
+      }
+    },
+    "assessment": "Health identificado con incertidumbre acotada",
+    "confidence": null,
+    "trajectory": "stable",
+    "summary": "Deuda y Health incluyen una estimación acotada; el intervalo identifica la incertidumbre observada. Diagnóstico de caja y alerta temprana, no probabilidad de impago. Momentum es nowcast, no forecast.",
+    "history": [
+      {
+        "month": "2026-08-31",
+        "health_score": 77.64752663417283
+      }
+    ],
+    "drivers_period": "Seis meses completos hasta 2026-08-31",
+    "drivers": [],
+    "cash_truth": {
+      "period": "2026-03-01 – 2026-08-31",
+      "total_gross_movement": 1278.7407,
+      "apparent_net": 42.7407,
+      "own_account_circulation": null,
+      "account_flows": null,
+      "components": [
+        {
+          "category": "operating",
+          "label": "Generación operativa identificada",
+          "gross_movement": 1260.7407,
+          "net_amount": 60.7407,
+          "explanation": "Neto operativo del Cash Truth canónico; excluye financiación, servicio de deuda y circulación propia.",
+          "confidence": null,
+          "evidence_refs": []
+        },
+        {
+          "category": "circulation",
+          "label": "Circulación propia observada",
+          "gross_movement": 0.0,
+          "net_amount": 0.0,
+          "explanation": "Clasificación canónica de circulación propia. Sin evidencia explícita de ambos tramos no se afirma emparejamiento ni neto cero.",
+          "confidence": null,
+          "evidence_refs": []
+        },
+        {
+          "category": "support",
+          "label": "Flujos candidatos intragrupo",
+          "gross_movement": 0.0,
+          "net_amount": 0.0,
+          "explanation": "Flujos candidatos internos o de grupo; no acreditan por sí solos apoyo financiero ni libre disponibilidad de caja.",
+          "confidence": null,
+          "evidence_refs": []
+        },
+        {
+          "category": "uncertain",
+          "label": "Otros flujos no operativos y no identificados",
+          "gross_movement": 18.0,
+          "net_amount": null,
+          "explanation": "Agrupa para esta vista financiación externa, servicio de deuda, inversión y movimientos inciertos. Las clases y sus importes se conservan por separado en canonical_cash_truth; no todos son desconocidos.",
+          "confidence": null,
+          "evidence_refs": []
+        }
+      ],
+      "headline": "Flujos observados según el Cash Truth canónico.",
+      "explanation": "Caja operativa, circulación y otros flujos separados; no es saldo bancario, solvencia ni prueba de apoyo confirmado.",
+      "confidence": null,
+      "evidence_refs": [],
+      "evidence_summary": [
+        "18 movimientos observados; detalle por transaction_id en el ledger del run."
+      ],
+      "correction": null,
+      "comparison": null
+    },
+    "time_borrowed": {
+      "ar": null,
+      "ap": null
+    },
+    "alerts": [],
+    "evidence": [],
+    "simulation": {
+      "inputs": [],
+      "scenarios": [],
+      "example_id": null,
+      "methodology": "No hay escenarios publicados para este run Pulse. No se simulan puntuaciones en la interfaz."
+    },
+    "pulse": {
+      "company_id": "COMP_1084",
+      "currency": "EUR",
+      "as_of": "2026-08-31",
+      "score_version": "PulseFourPillars-v1.0.1",
+      "classification_version": "cash-truth-v1",
+      "run_id": "pulse-contract-fixture",
+      "status": "complete_bounded",
+      "health": 77.64752663417283,
+      "pillars": {
+        "generation": {
+          "score": 70.2469,
+          "weight": 0.4,
+          "health_contribution": 28.09876,
+          "features": {
+            "generation_ratio": {
+              "raw": 0.1012345,
+              "numerator": 60.740700000000004,
+              "denominator": 600.0,
+              "window6m": {
+                "months": [
+                  "2026-03-01",
+                  "2026-04-01",
+                  "2026-05-01",
+                  "2026-06-01",
+                  "2026-07-01",
+                  "2026-08-01"
+                ],
+                "start": "2026-03-01",
+                "end": "2026-08-31",
+                "count": 6,
+                "observed_months": 6
+              },
+              "formula_id": "generation-net-over-outflows-v1",
+              "anchors": [
+                [
+                  -0.25,
+                  0
+                ],
+                [
+                  0,
+                  50
+                ],
+                [
+                  0.25,
+                  100
+                ]
+              ],
+              "missing_reason": null,
+              "score": 70.2469
+            }
+          }
+        },
+        "momentum": {
+          "score": 50.0,
+          "weight": 0.15,
+          "health_contribution": 7.5,
+          "features": {
+            "operating_net_trend": {
+              "raw": 0.0,
+              "numerator": 0.0,
+              "denominator": 100.0,
+              "window6m": {
+                "months": [
+                  "2026-03-01",
+                  "2026-04-01",
+                  "2026-05-01",
+                  "2026-06-01",
+                  "2026-07-01",
+                  "2026-08-01"
+                ],
+                "start": "2026-03-01",
+                "end": "2026-08-31",
+                "count": 6,
+                "observed_months": 6
+              },
+              "formula_id": "theil-sen-six-month-net-v1",
+              "anchors": [
+                [
+                  -0.25,
+                  0
+                ],
+                [
+                  0,
+                  50
+                ],
+                [
+                  0.25,
+                  100
+                ]
+              ],
+              "missing_reason": null,
+              "theil_sen_beta": 0.0,
+              "semantics": "nowcast_not_forecast",
+              "score": 50.0
+            }
+          }
+        },
+        "resilience": {
+          "score": 100.0,
+          "weight": 0.25,
+          "health_contribution": 25.0,
+          "features": {
+            "operating_downside_ratio": {
+              "raw": 0.0,
+              "numerator": 0.0,
+              "denominator": 600.0,
+              "window6m": {
+                "months": [
+                  "2026-03-01",
+                  "2026-04-01",
+                  "2026-05-01",
+                  "2026-06-01",
+                  "2026-07-01",
+                  "2026-08-01"
+                ],
+                "start": "2026-03-01",
+                "end": "2026-08-31",
+                "count": 6,
+                "observed_months": 6
+              },
+              "formula_id": "observed-operating-downside-v1",
+              "anchors": [
+                [
+                  0,
+                  100
+                ],
+                [
+                  0.25,
+                  0
+                ]
+              ],
+              "missing_reason": null,
+              "score": 100.0
+            }
+          },
+          "diagnostics": {
+            "negative_months": 0,
+            "material_negative_months": 0,
+            "open_negative_episode": false,
+            "episode_duration": 0,
+            "recovery_duration": null,
+            "worst_month": 10.12345,
+            "recovery_definition": "observed_months_since_last_negative_not_future_recovery"
+          }
+        },
+        "debt_obligations": {
+          "score": 85.24383317086415,
+          "weight": 0.2,
+          "health_contribution": 17.048766634172832,
+          "features": {
+            "observed_debt_service_burden": {
+              "raw": 0.027242154146096945,
+              "numerator": 18.0,
+              "denominator": 660.7407000000001,
+              "window6m": {
+                "months": [
+                  "2026-03-01",
+                  "2026-04-01",
+                  "2026-05-01",
+                  "2026-06-01",
+                  "2026-07-01",
+                  "2026-08-01"
+                ],
+                "start": "2026-03-01",
+                "end": "2026-08-31",
+                "count": 6,
+                "observed_months": 6
+              },
+              "formula_id": "observed-debt-service-pressure-v1",
+              "anchors": [
+                [
+                  0,
+                  100
+                ],
+                [
+                  0.1,
+                  50
+                ],
+                [
+                  0.3,
+                  0
+                ]
+              ],
+              "missing_reason": null,
+              "breakdown": {
+                "debt_principal_paid": 18.0,
+                "debt_interest_paid": 0.0,
+                "verified_financing_fees": 0.0
+              },
+              "debt_assessment": {
+                "evidence_status": "bounded",
+                "reason": "potential_financial_uncertainty_within_score_tolerance",
+                "identified_service": {
+                  "debt_principal_paid": 18.0,
+                  "debt_interest_paid": 0.0,
+                  "verified_financing_fees": 0.0,
+                  "debt_service_paid": 18.0,
+                  "observed_months": 6,
+                  "required_months": 6,
+                  "history_complete": true
+                },
+                "service_absence_verified": false,
+                "uncertainty": {
+                  "debt_possible_uncertain_outflows": 0.0,
+                  "debt_impossible_uncertain_outflows": 0.0,
+                  "debt_unresolved_uncertain_outflows": 3.0,
+                  "potentially_financial_uncertain_outflows": 3.0,
+                  "version": "debt-uncertainty-v1"
+                },
+                "service_bounds": {
+                  "min": 18.0,
+                  "max": 21.0
+                },
+                "identified_score": 86.37892292695153,
+                "score_range": {
+                  "min": 84.10874341477678,
+                  "max": 86.37892292695153
+                },
+                "score_range_width": 2.2701795121747494,
+                "score_estimation": "bounded_midpoint",
+                "point_score": 85.24383317086415,
+                "raw": 0.027242154146096945
+              },
+              "score": 85.24383317086415
+            }
+          },
+          "evidence_status": "bounded",
+          "evidence_reason": "potential_financial_uncertainty_within_score_tolerance",
+          "semantics": "observed_debt_service_pressure",
+          "reason": "potential_financial_uncertainty_within_score_tolerance",
+          "identified_service": {
+            "debt_principal_paid": 18.0,
+            "debt_interest_paid": 0.0,
+            "verified_financing_fees": 0.0,
+            "debt_service_paid": 18.0,
+            "observed_months": 6,
+            "required_months": 6,
+            "history_complete": true
+          },
+          "service_absence_verified": false,
+          "uncertainty": {
+            "debt_possible_uncertain_outflows": 0.0,
+            "debt_impossible_uncertain_outflows": 0.0,
+            "debt_unresolved_uncertain_outflows": 3.0,
+            "potentially_financial_uncertain_outflows": 3.0,
+            "version": "debt-uncertainty-v1"
+          },
+          "service_bounds": {
+            "min": 18.0,
+            "max": 21.0
+          },
+          "identified_score": 86.37892292695153,
+          "score_range": {
+            "min": 84.10874341477678,
+            "max": 86.37892292695153
+          },
+          "score_range_width": 2.2701795121747494,
+          "score_estimation": "bounded_midpoint"
+        }
+      },
+      "known_weight": 1.0,
+      "health_min": 77.42050868295536,
+      "health_max": 77.87454458539031,
+      "missing_components": [],
+      "confidence": {
+        "history_coverage": 1.0,
+        "classification_coverage": 0.9976594329882792,
+        "uncertain_amount_share": 0.0023405670117208066,
+        "perimeter_consistency": "stable_observed",
+        "currency_consistency": {
+          "status": "unverified_source_coverage",
+          "currency": "EUR",
+          "method": "separate_currency_panel_no_conversion",
+          "unknown_currency_count": 0.0,
+          "ambiguous_currency_count": 0.0
+        },
+        "debt_evidence": {
+          "status": "bounded",
+          "reason": "potential_financial_uncertainty_within_score_tolerance",
+          "scope": "observed_cash_service_not_total_contractual_obligations",
+          "identified_service": {
+            "debt_principal_paid": 18.0,
+            "debt_interest_paid": 0.0,
+            "verified_financing_fees": 0.0,
+            "debt_service_paid": 18.0,
+            "observed_months": 6,
+            "required_months": 6,
+            "history_complete": true
+          },
+          "service_absence_verified": false,
+          "score_range": {
+            "min": 84.10874341477678,
+            "max": 86.37892292695153
+          },
+          "uncertainty": {
+            "debt_possible_uncertain_outflows": 0.0,
+            "debt_impossible_uncertain_outflows": 0.0,
+            "debt_unresolved_uncertain_outflows": 3.0,
+            "potentially_financial_uncertain_outflows": 3.0,
+            "version": "debt-uncertainty-v1"
+          }
+        }
+      },
+      "lineage": {
+        "config_hash": "d6fabaaa4336b402dbd849d325479f3759dbaaf35ce4ce5bb5de658183a118c7"
+      },
+      "schema_version": "1.0",
+      "config_version": "pulse-config-v1.0.1",
+      "facts_version": "monthly-facts-v1.1",
+      "cleaning_version": "cleaning-v1",
+      "bounds_kind": "identification_bounds_not_confidence_interval",
+      "direction": "stable",
+      "raw_features": {
+        "generation_ratio": 0.1012345,
+        "operating_net_trend": 0.0,
+        "operating_downside_ratio": 0.0,
+        "observed_debt_service_burden": 0.027242154146096945
+      },
+      "normalized_features": {
+        "generation_ratio": 70.2469,
+        "operating_net_trend": 50.0,
+        "operating_downside_ratio": 100.0,
+        "observed_debt_service_burden": 85.24383317086415
+      },
+      "contributions": {
+        "generation": 28.09876,
+        "momentum": 7.5,
+        "resilience": 25.0,
+        "debt_obligations": 17.048766634172832
+      },
+      "economic_facts": {
+        "operating_inflows": 660.7407000000001,
+        "operating_outflows": 600.0,
+        "operating_net_cash": 60.740700000000004,
+        "debt_principal_paid": 18.0,
+        "debt_interest_paid": 0.0,
+        "verified_financing_fees": 0.0,
+        "debt_service_paid": 18.0
+      },
+      "evidence": {
+        "observed_product_ids": [
+          "P1"
+        ],
+        "perimeter_method": "active_account_sets_not_verified_observability",
+        "monthly_product_ids": [
+          [
+            "P1"
+          ],
+          [
+            "P1"
+          ],
+          [
+            "P1"
+          ],
+          [
+            "P1"
+          ],
+          [
+            "P1"
+          ],
+          [
+            "P1"
+          ]
+        ],
+        "facts_months": [
+          "2026-03-01",
+          "2026-04-01",
+          "2026-05-01",
+          "2026-06-01",
+          "2026-07-01",
+          "2026-08-01"
+        ],
+        "debt_evidence_status": "bounded",
+        "source_refs": {
+          "ledger": "ledger.parquet",
+          "facts": "monthly_facts.parquet"
+        },
+        "feature_lineage": {
+          "generation_ratio": {
+            "company_id": "COMP_1084",
+            "currency": "EUR",
+            "months": [
+              "2026-03-01",
+              "2026-04-01",
+              "2026-05-01",
+              "2026-06-01",
+              "2026-07-01",
+              "2026-08-01"
+            ],
+            "ledger_inclusion_fields": [
+              "included_in_operating_inflows",
+              "included_in_operating_outflows"
+            ]
+          },
+          "operating_net_trend": {
+            "company_id": "COMP_1084",
+            "currency": "EUR",
+            "months": [
+              "2026-03-01",
+              "2026-04-01",
+              "2026-05-01",
+              "2026-06-01",
+              "2026-07-01",
+              "2026-08-01"
+            ],
+            "ledger_inclusion_fields": [
+              "included_in_operating_inflows",
+              "included_in_operating_outflows"
+            ]
+          },
+          "operating_downside_ratio": {
+            "company_id": "COMP_1084",
+            "currency": "EUR",
+            "months": [
+              "2026-03-01",
+              "2026-04-01",
+              "2026-05-01",
+              "2026-06-01",
+              "2026-07-01",
+              "2026-08-01"
+            ],
+            "ledger_inclusion_fields": [
+              "included_in_operating_inflows",
+              "included_in_operating_outflows"
+            ]
+          },
+          "observed_debt_service_burden": {
+            "company_id": "COMP_1084",
+            "currency": "EUR",
+            "months": [
+              "2026-03-01",
+              "2026-04-01",
+              "2026-05-01",
+              "2026-06-01",
+              "2026-07-01",
+              "2026-08-01"
+            ],
+            "ledger_inclusion_fields": [
+              "included_in_debt_service"
+            ]
+          }
+        },
+        "critical_analysis": {
+          "method_version": "critical-loo-v1",
+          "ledger_rows_in_window": 0,
+          "candidate_count": 0,
+          "evaluated_count": 0,
+          "candidate_limit": 36,
+          "result_limit": 10,
+          "candidate_search_truncated": false,
+          "preselection": "identified_operating_or_service_then_identification_signflip_and_normalized_impact"
+        }
+      },
+      "flags": [
+        "debt_evidence_bounded"
+      ],
+      "critical_movements": [],
+      "change": {
+        "previous_health": null,
+        "delta": null,
+        "comparable_to_previous": false,
+        "interpretation": "no_previous_result",
+        "attribution": {
+          "economic": {},
+          "evidence": {},
+          "methodology": {}
+        }
+      },
+      "robustness": {
+        "level": "not_evaluated",
+        "baseline_health": 77.64752663417283,
+        "tested_range": {
+          "min": 77.64752663417283,
+          "max": 77.64752663417283
+        },
+        "diagnosis_stable": null,
+        "tested_assumptions": [],
+        "sensitive_to": [],
+        "version": "deterministic-assumptions-v1",
+        "range_kind": "deterministic_sensitivity_not_confidence_interval",
+        "includes_baseline": true
+      },
+      "health_evidence": "bounded",
+      "identified_range": {
+        "min": 77.42050868295536,
+        "max": 77.87454458539031,
+        "kind": "identification_bounds_not_confidence_interval"
+      }
+    },
+    "canonical_cash_truth": {
+      "schema_version": "1.0",
+      "company_id": "COMP_1084",
+      "currency": "EUR",
+      "as_of": "2026-08-31",
+      "classification_version": "cash-truth-v1",
+      "facts_version": "monthly-facts-v1.1",
+      "summary": {
+        "net_operating_cash": 60.7407,
+        "eligible_net_cash": 42.7407
+      },
+      "classes": [
+        {
+          "economic_class": "operating",
+          "amount_abs": 1260.7407
+        },
+        {
+          "economic_class": "debt_service",
+          "amount_abs": 18.0
+        }
+      ],
+      "evidence": {
+        "window_start": "2026-03-01",
+        "window_end": "2026-08-31"
+      },
+      "coverage": {
+        "transaction_count": 18
+      },
+      "flags": [],
+      "critical_movements": []
+    }
+  },
+  "portfolio": {
+    "schema_version": "2.0",
+    "source": "generated",
+    "run_id": "pulse-contract-fixture",
+    "snapshot_id": "web-1111111111111111111111111111111111111111111111111111111111111111",
+    "score_version": "PulseFourPillars-v1.0.1",
+    "classification_version": "cash-truth-v1",
+    "cleaning_version": "cleaning-v1",
+    "facts_version": "monthly-facts-v1.1",
+    "config_version": "pulse-config-v1.0.1",
+    "as_of": "2026-08-31",
+    "currency": "EUR",
+    "period": "Seis meses completos hasta 2026-08-31",
+    "summary": "1 empresas observadas en EUR; incluye evidencia parcial. Fuente única: PulseFourPillars-v1.0.1.",
+    "items": [
+      {
+        "company_id": "COMP_1084",
+        "group_id": "GROUP_0001",
+        "run_id": "pulse-contract-fixture",
+        "identified_range": {
+          "min": 77.42050868295536,
+          "max": 77.87454458539031,
+          "kind": "identification_bounds_not_confidence_interval"
+        },
+        "health_evidence": "bounded",
+        "health_score": 77.64752663417283,
+        "dimensions": {
+          "momentum": 50.0,
+          "cash_generation": 70.2469,
+          "resilience": 100.0,
+          "debt": 85.24383317086415
+        },
+        "delta_vs_prev": null,
+        "trajectory": "stable",
+        "trajectory_stage": null,
+        "confidence": null,
+        "score_status": "complete_bounded",
+        "status_reason": null,
+        "missing_components": [],
+        "robustness": "not_evaluated",
+        "main_signal": "Health identificado con incertidumbre acotada",
+        "main_signal_impact": null,
+        "support_dependency_ratio": null,
+        "attention": "unknown",
+        "has_detail": true
+      }
+    ]
+  },
+  "group": {
+    "schema_version": "2.0",
+    "source": "generated",
+    "run_id": "pulse-contract-fixture",
+    "snapshot_id": "web-1111111111111111111111111111111111111111111111111111111111111111",
+    "score_version": "PulseFourPillars-v1.0.1",
+    "classification_version": "cash-truth-v1",
+    "cleaning_version": "cleaning-v1",
+    "facts_version": "monthly-facts-v1.1",
+    "config_version": "pulse-config-v1.0.1",
+    "as_of": "2026-08-31",
+    "currency": "EUR",
+    "group_id": "GROUP_0001",
+    "health_score": null,
+    "status": "insufficient_evidence",
+    "period": "Seis meses completos hasta 2026-08-31",
+    "summary": "1 sociedades observadas. No se calcula ni promedia un Health Score de grupo.",
+    "coverage": {
+      "known_company_count": null,
+      "confidence": null,
+      "explanation": "Perímetro observado en la moneda de esta vista, no perímetro jurídico completo."
+    },
+    "available_liquidity": {
+      "value": null,
+      "covered_company_ids": [],
+      "explanation": "Liquidez disponible: no existe una posición consolidada identificada en este run.",
+      "evidence_refs": []
+    },
+    "identified_debt": {
+      "value": null,
+      "covered_company_ids": [],
+      "explanation": "Deuda contractual: no existe una posición consolidada identificada en este run.",
+      "evidence_refs": []
+    },
+    "obligations": {
+      "value": null,
+      "covered_company_ids": [],
+      "explanation": "Obligaciones futuras: no existe una posición consolidada identificada en este run.",
+      "evidence_refs": [],
+      "horizon": "No evaluable"
+    },
+    "limitations": [
+      "Sin Health Score de grupo; no se promedian empresas.",
+      "No se presume caja fungible ni apoyo confirmado.",
+      "Sólo sociedades con un panel en la moneda explícita de esta vista."
+    ],
+    "members": [
+      {
+        "company_id": "COMP_1084",
+        "health_score": 77.64752663417283,
+        "identified_range": {
+          "min": 77.42050868295536,
+          "max": 77.87454458539031,
+          "kind": "identification_bounds_not_confidence_interval"
+        },
+        "health_evidence": "bounded",
+        "dimensions": {
+          "momentum": 50.0,
+          "cash_generation": 70.2469,
+          "resilience": 100.0,
+          "debt": 85.24383317086415
+        },
+        "score_status": "complete_bounded",
+        "missing_components": [],
+        "trajectory": "stable",
+        "role": "unknown",
+        "available_liquidity": null,
+        "identified_debt": null,
+        "obligations_due": null,
+        "cash_generation_net": 60.7407,
+        "internal_received": null,
+        "internal_provided": null,
+        "confidence": null,
+        "attention": "unknown",
+        "summary": "Health identificado con incertidumbre acotada",
+        "outlook": {
+          "status": "insufficient",
+          "horizon": "No disponible",
+          "summary": "Este run contiene diagnóstico observado, no pronóstico de necesidades futuras.",
+          "funding_need": null,
+          "confidence": null,
+          "evidence_refs": []
+        },
+        "evidence_refs": []
+      }
+    ],
+    "insights": [],
+    "alerts": [],
+    "concentration": [],
+    "recent_changes": [],
+    "relations": [],
+    "recommendations": [],
+    "evidence": []
+  },
+  "unknown_score": {
+    "company_id": "COMP_1084",
+    "currency": "EUR",
+    "as_of": "2026-08-31",
+    "score_version": "PulseFourPillars-v1.0.1",
+    "classification_version": "cash-truth-v1",
+    "run_id": "pulse-contract-fixture",
+    "status": "partial",
+    "health": null,
+    "pillars": {
+      "generation": {
+        "score": 70.2469,
+        "weight": 0.4,
+        "health_contribution": 28.09876,
+        "features": {
+          "generation_ratio": {
+            "raw": 0.1012345,
+            "numerator": 60.740700000000004,
+            "denominator": 600.0,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "generation-net-over-outflows-v1",
+            "anchors": [
+              [
+                -0.25,
+                0
+              ],
+              [
+                0,
+                50
+              ],
+              [
+                0.25,
+                100
+              ]
+            ],
+            "missing_reason": null,
+            "score": 70.2469
+          }
+        }
+      },
+      "momentum": {
+        "score": 50.0,
+        "weight": 0.15,
+        "health_contribution": 7.5,
+        "features": {
+          "operating_net_trend": {
+            "raw": 0.0,
+            "numerator": 0.0,
+            "denominator": 100.0,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "theil-sen-six-month-net-v1",
+            "anchors": [
+              [
+                -0.25,
+                0
+              ],
+              [
+                0,
+                50
+              ],
+              [
+                0.25,
+                100
+              ]
+            ],
+            "missing_reason": null,
+            "theil_sen_beta": 0.0,
+            "semantics": "nowcast_not_forecast",
+            "score": 50.0
+          }
+        }
+      },
+      "resilience": {
+        "score": 100.0,
+        "weight": 0.25,
+        "health_contribution": 25.0,
+        "features": {
+          "operating_downside_ratio": {
+            "raw": 0.0,
+            "numerator": 0.0,
+            "denominator": 600.0,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "observed-operating-downside-v1",
+            "anchors": [
+              [
+                0,
+                100
+              ],
+              [
+                0.25,
+                0
+              ]
+            ],
+            "missing_reason": null,
+            "score": 100.0
+          }
+        },
+        "diagnostics": {
+          "negative_months": 0,
+          "material_negative_months": 0,
+          "open_negative_episode": false,
+          "episode_duration": 0,
+          "recovery_duration": null,
+          "worst_month": 10.12345,
+          "recovery_definition": "observed_months_since_last_negative_not_future_recovery"
+        }
+      },
+      "debt_obligations": {
+        "score": null,
+        "weight": 0.2,
+        "health_contribution": null,
+        "features": {
+          "observed_debt_service_burden": {
+            "raw": null,
+            "numerator": 0.0,
+            "denominator": 660.7407000000001,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "observed-debt-service-pressure-v1",
+            "anchors": [
+              [
+                0,
+                100
+              ],
+              [
+                0.1,
+                50
+              ],
+              [
+                0.3,
+                0
+              ]
+            ],
+            "missing_reason": "no_identified_service_is_not_verified_absence",
+            "breakdown": {
+              "debt_principal_paid": 0.0,
+              "debt_interest_paid": 0.0,
+              "verified_financing_fees": 0.0
+            },
+            "debt_assessment": {
+              "evidence_status": "unknown",
+              "reason": "no_identified_service_is_not_verified_absence",
+              "identified_service": {
+                "debt_principal_paid": 0.0,
+                "debt_interest_paid": 0.0,
+                "verified_financing_fees": 0.0,
+                "debt_service_paid": 0.0,
+                "observed_months": 6,
+                "required_months": 6,
+                "history_complete": true
+              },
+              "service_absence_verified": false,
+              "uncertainty": {
+                "debt_possible_uncertain_outflows": 0.0,
+                "debt_impossible_uncertain_outflows": 0.0,
+                "debt_unresolved_uncertain_outflows": 0.0,
+                "potentially_financial_uncertain_outflows": 0.0,
+                "version": "debt-uncertainty-v1"
+              },
+              "service_bounds": {
+                "min": 0.0,
+                "max": null
+              },
+              "identified_score": null,
+              "score_range": {
+                "min": null,
+                "max": null
+              },
+              "score_range_width": null,
+              "score_estimation": null,
+              "point_score": null,
+              "raw": null
+            },
+            "score": null
+          }
+        },
+        "evidence_status": "unknown",
+        "evidence_reason": "no_identified_service_is_not_verified_absence",
+        "semantics": "observed_debt_service_pressure",
+        "reason": "no_identified_service_is_not_verified_absence",
+        "identified_service": {
+          "debt_principal_paid": 0.0,
+          "debt_interest_paid": 0.0,
+          "verified_financing_fees": 0.0,
+          "debt_service_paid": 0.0,
+          "observed_months": 6,
+          "required_months": 6,
+          "history_complete": true
+        },
+        "service_absence_verified": false,
+        "uncertainty": {
+          "debt_possible_uncertain_outflows": 0.0,
+          "debt_impossible_uncertain_outflows": 0.0,
+          "debt_unresolved_uncertain_outflows": 0.0,
+          "potentially_financial_uncertain_outflows": 0.0,
+          "version": "debt-uncertainty-v1"
+        },
+        "service_bounds": {
+          "min": 0.0,
+          "max": null
+        },
+        "identified_score": null,
+        "score_range": {
+          "min": null,
+          "max": null
+        },
+        "score_range_width": null,
+        "score_estimation": null
+      }
+    },
+    "known_weight": 0.8,
+    "health_min": 60.59876,
+    "health_max": 80.59876,
+    "missing_components": [
+      "debt_obligations"
+    ],
+    "confidence": {
+      "history_coverage": 1.0,
+      "classification_coverage": 1.0,
+      "uncertain_amount_share": 0.0,
+      "perimeter_consistency": "stable_observed",
+      "currency_consistency": {
+        "status": "unverified_source_coverage",
+        "currency": "EUR",
+        "method": "separate_currency_panel_no_conversion",
+        "unknown_currency_count": 0.0,
+        "ambiguous_currency_count": 0.0
+      },
+      "debt_evidence": {
+        "status": "unknown",
+        "reason": "no_identified_service_is_not_verified_absence",
+        "scope": "observed_cash_service_not_total_contractual_obligations",
+        "identified_service": {
+          "debt_principal_paid": 0.0,
+          "debt_interest_paid": 0.0,
+          "verified_financing_fees": 0.0,
+          "debt_service_paid": 0.0,
+          "observed_months": 6,
+          "required_months": 6,
+          "history_complete": true
+        },
+        "service_absence_verified": false,
+        "score_range": {
+          "min": null,
+          "max": null
+        },
+        "uncertainty": {
+          "debt_possible_uncertain_outflows": 0.0,
+          "debt_impossible_uncertain_outflows": 0.0,
+          "debt_unresolved_uncertain_outflows": 0.0,
+          "potentially_financial_uncertain_outflows": 0.0,
+          "version": "debt-uncertainty-v1"
+        }
+      }
+    },
+    "lineage": {
+      "config_hash": "d6fabaaa4336b402dbd849d325479f3759dbaaf35ce4ce5bb5de658183a118c7"
+    },
+    "schema_version": "1.0",
+    "config_version": "pulse-config-v1.0.1",
+    "facts_version": "monthly-facts-v1.1",
+    "cleaning_version": "cleaning-v1",
+    "bounds_kind": "identification_bounds_not_confidence_interval",
+    "direction": "stable",
+    "raw_features": {
+      "generation_ratio": 0.1012345,
+      "operating_net_trend": 0.0,
+      "operating_downside_ratio": 0.0,
+      "observed_debt_service_burden": null
+    },
+    "normalized_features": {
+      "generation_ratio": 70.2469,
+      "operating_net_trend": 50.0,
+      "operating_downside_ratio": 100.0,
+      "observed_debt_service_burden": null
+    },
+    "contributions": {
+      "generation": 28.09876,
+      "momentum": 7.5,
+      "resilience": 25.0,
+      "debt_obligations": null
+    },
+    "economic_facts": {
+      "operating_inflows": 660.7407000000001,
+      "operating_outflows": 600.0,
+      "operating_net_cash": 60.740700000000004,
+      "debt_principal_paid": 0.0,
+      "debt_interest_paid": 0.0,
+      "verified_financing_fees": 0.0,
+      "debt_service_paid": 0.0
+    },
+    "evidence": {
+      "observed_product_ids": [
+        "P1"
+      ],
+      "perimeter_method": "active_account_sets_not_verified_observability",
+      "monthly_product_ids": [
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ]
+      ],
+      "facts_months": [
+        "2026-03-01",
+        "2026-04-01",
+        "2026-05-01",
+        "2026-06-01",
+        "2026-07-01",
+        "2026-08-01"
+      ],
+      "debt_evidence_status": "unknown",
+      "source_refs": {
+        "ledger": "ledger.parquet",
+        "facts": "monthly_facts.parquet"
+      },
+      "feature_lineage": {
+        "generation_ratio": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_operating_inflows",
+            "included_in_operating_outflows"
+          ]
+        },
+        "operating_net_trend": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_operating_inflows",
+            "included_in_operating_outflows"
+          ]
+        },
+        "operating_downside_ratio": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_operating_inflows",
+            "included_in_operating_outflows"
+          ]
+        },
+        "observed_debt_service_burden": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_debt_service"
+          ]
+        }
+      },
+      "critical_analysis": {
+        "method_version": "critical-loo-v1",
+        "ledger_rows_in_window": 0,
+        "candidate_count": 0,
+        "evaluated_count": 0,
+        "candidate_limit": 36,
+        "result_limit": 10,
+        "candidate_search_truncated": false,
+        "preselection": "identified_operating_or_service_then_identification_signflip_and_normalized_impact"
+      }
+    },
+    "flags": [
+      "debt_evidence_unknown"
+    ],
+    "critical_movements": [],
+    "change": {
+      "previous_health": null,
+      "delta": null,
+      "comparable_to_previous": false,
+      "interpretation": "no_previous_result",
+      "attribution": {
+        "economic": {},
+        "evidence": {},
+        "methodology": {}
+      }
+    },
+    "robustness": {
+      "level": "not_evaluated",
+      "baseline_health": null,
+      "tested_range": {
+        "min": null,
+        "max": null
+      },
+      "diagnosis_stable": null,
+      "tested_assumptions": [],
+      "sensitive_to": [],
+      "version": "deterministic-assumptions-v1",
+      "range_kind": "deterministic_sensitivity_not_confidence_interval",
+      "includes_baseline": false
+    },
+    "health_evidence": "partial",
+    "identified_range": null
+  },
+  "wide_score": {
+    "company_id": "COMP_1084",
+    "currency": "EUR",
+    "as_of": "2026-08-31",
+    "score_version": "PulseFourPillars-v1.0.1",
+    "classification_version": "cash-truth-v1",
+    "run_id": "pulse-contract-fixture",
+    "status": "partial",
+    "health": null,
+    "pillars": {
+      "generation": {
+        "score": 70.2469,
+        "weight": 0.4,
+        "health_contribution": 28.09876,
+        "features": {
+          "generation_ratio": {
+            "raw": 0.1012345,
+            "numerator": 60.740700000000004,
+            "denominator": 600.0,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "generation-net-over-outflows-v1",
+            "anchors": [
+              [
+                -0.25,
+                0
+              ],
+              [
+                0,
+                50
+              ],
+              [
+                0.25,
+                100
+              ]
+            ],
+            "missing_reason": null,
+            "score": 70.2469
+          }
+        }
+      },
+      "momentum": {
+        "score": 50.0,
+        "weight": 0.15,
+        "health_contribution": 7.5,
+        "features": {
+          "operating_net_trend": {
+            "raw": 0.0,
+            "numerator": 0.0,
+            "denominator": 100.0,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "theil-sen-six-month-net-v1",
+            "anchors": [
+              [
+                -0.25,
+                0
+              ],
+              [
+                0,
+                50
+              ],
+              [
+                0.25,
+                100
+              ]
+            ],
+            "missing_reason": null,
+            "theil_sen_beta": 0.0,
+            "semantics": "nowcast_not_forecast",
+            "score": 50.0
+          }
+        }
+      },
+      "resilience": {
+        "score": 100.0,
+        "weight": 0.25,
+        "health_contribution": 25.0,
+        "features": {
+          "operating_downside_ratio": {
+            "raw": 0.0,
+            "numerator": 0.0,
+            "denominator": 600.0,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "observed-operating-downside-v1",
+            "anchors": [
+              [
+                0,
+                100
+              ],
+              [
+                0.25,
+                0
+              ]
+            ],
+            "missing_reason": null,
+            "score": 100.0
+          }
+        },
+        "diagnostics": {
+          "negative_months": 0,
+          "material_negative_months": 0,
+          "open_negative_episode": false,
+          "episode_duration": 0,
+          "recovery_duration": null,
+          "worst_month": 10.12345,
+          "recovery_definition": "observed_months_since_last_negative_not_future_recovery"
+        }
+      },
+      "debt_obligations": {
+        "score": null,
+        "weight": 0.2,
+        "health_contribution": null,
+        "features": {
+          "observed_debt_service_burden": {
+            "raw": 0.027242154146096945,
+            "numerator": 18.0,
+            "denominator": 660.7407000000001,
+            "window6m": {
+              "months": [
+                "2026-03-01",
+                "2026-04-01",
+                "2026-05-01",
+                "2026-06-01",
+                "2026-07-01",
+                "2026-08-01"
+              ],
+              "start": "2026-03-01",
+              "end": "2026-08-31",
+              "count": 6,
+              "observed_months": 6
+            },
+            "formula_id": "observed-debt-service-pressure-v1",
+            "anchors": [
+              [
+                0,
+                100
+              ],
+              [
+                0.1,
+                50
+              ],
+              [
+                0.3,
+                0
+              ]
+            ],
+            "missing_reason": "potential_financial_uncertainty_exceeds_score_tolerance",
+            "breakdown": {
+              "debt_principal_paid": 18.0,
+              "debt_interest_paid": 0.0,
+              "verified_financing_fees": 0.0
+            },
+            "debt_assessment": {
+              "evidence_status": "partial",
+              "reason": "potential_financial_uncertainty_exceeds_score_tolerance",
+              "identified_service": {
+                "debt_principal_paid": 18.0,
+                "debt_interest_paid": 0.0,
+                "verified_financing_fees": 0.0,
+                "debt_service_paid": 18.0,
+                "observed_months": 6,
+                "required_months": 6,
+                "history_complete": true
+              },
+              "service_absence_verified": false,
+              "uncertainty": {
+                "debt_possible_uncertain_outflows": 0.0,
+                "debt_impossible_uncertain_outflows": 0.0,
+                "debt_unresolved_uncertain_outflows": 180.0,
+                "potentially_financial_uncertain_outflows": 180.0,
+                "version": "debt-uncertainty-v1"
+              },
+              "service_bounds": {
+                "min": 18.0,
+                "max": 198.0
+              },
+              "identified_score": 86.37892292695153,
+              "score_range": {
+                "min": 0.0840760982333945,
+                "max": 86.37892292695153
+              },
+              "score_range_width": 86.29484682871814,
+              "score_estimation": null,
+              "point_score": null,
+              "raw": 0.027242154146096945
+            },
+            "score": null
+          }
+        },
+        "evidence_status": "partial",
+        "evidence_reason": "potential_financial_uncertainty_exceeds_score_tolerance",
+        "semantics": "observed_debt_service_pressure",
+        "reason": "potential_financial_uncertainty_exceeds_score_tolerance",
+        "identified_service": {
+          "debt_principal_paid": 18.0,
+          "debt_interest_paid": 0.0,
+          "verified_financing_fees": 0.0,
+          "debt_service_paid": 18.0,
+          "observed_months": 6,
+          "required_months": 6,
+          "history_complete": true
+        },
+        "service_absence_verified": false,
+        "uncertainty": {
+          "debt_possible_uncertain_outflows": 0.0,
+          "debt_impossible_uncertain_outflows": 0.0,
+          "debt_unresolved_uncertain_outflows": 180.0,
+          "potentially_financial_uncertain_outflows": 180.0,
+          "version": "debt-uncertainty-v1"
+        },
+        "service_bounds": {
+          "min": 18.0,
+          "max": 198.0
+        },
+        "identified_score": 86.37892292695153,
+        "score_range": {
+          "min": 0.0840760982333945,
+          "max": 86.37892292695153
+        },
+        "score_range_width": 86.29484682871814,
+        "score_estimation": null
+      }
+    },
+    "known_weight": 0.8,
+    "health_min": 60.59876,
+    "health_max": 80.59876,
+    "missing_components": [
+      "debt_obligations"
+    ],
+    "confidence": {
+      "history_coverage": 1.0,
+      "classification_coverage": 0.8766058971275703,
+      "uncertain_amount_share": 0.12339410287242969,
+      "perimeter_consistency": "stable_observed",
+      "currency_consistency": {
+        "status": "unverified_source_coverage",
+        "currency": "EUR",
+        "method": "separate_currency_panel_no_conversion",
+        "unknown_currency_count": 0.0,
+        "ambiguous_currency_count": 0.0
+      },
+      "debt_evidence": {
+        "status": "partial",
+        "reason": "potential_financial_uncertainty_exceeds_score_tolerance",
+        "scope": "observed_cash_service_not_total_contractual_obligations",
+        "identified_service": {
+          "debt_principal_paid": 18.0,
+          "debt_interest_paid": 0.0,
+          "verified_financing_fees": 0.0,
+          "debt_service_paid": 18.0,
+          "observed_months": 6,
+          "required_months": 6,
+          "history_complete": true
+        },
+        "service_absence_verified": false,
+        "score_range": {
+          "min": 0.0840760982333945,
+          "max": 86.37892292695153
+        },
+        "uncertainty": {
+          "debt_possible_uncertain_outflows": 0.0,
+          "debt_impossible_uncertain_outflows": 0.0,
+          "debt_unresolved_uncertain_outflows": 180.0,
+          "potentially_financial_uncertain_outflows": 180.0,
+          "version": "debt-uncertainty-v1"
+        }
+      }
+    },
+    "lineage": {
+      "config_hash": "d6fabaaa4336b402dbd849d325479f3759dbaaf35ce4ce5bb5de658183a118c7"
+    },
+    "schema_version": "1.0",
+    "config_version": "pulse-config-v1.0.1",
+    "facts_version": "monthly-facts-v1.1",
+    "cleaning_version": "cleaning-v1",
+    "bounds_kind": "identification_bounds_not_confidence_interval",
+    "direction": "stable",
+    "raw_features": {
+      "generation_ratio": 0.1012345,
+      "operating_net_trend": 0.0,
+      "operating_downside_ratio": 0.0,
+      "observed_debt_service_burden": 0.027242154146096945
+    },
+    "normalized_features": {
+      "generation_ratio": 70.2469,
+      "operating_net_trend": 50.0,
+      "operating_downside_ratio": 100.0,
+      "observed_debt_service_burden": null
+    },
+    "contributions": {
+      "generation": 28.09876,
+      "momentum": 7.5,
+      "resilience": 25.0,
+      "debt_obligations": null
+    },
+    "economic_facts": {
+      "operating_inflows": 660.7407000000001,
+      "operating_outflows": 600.0,
+      "operating_net_cash": 60.740700000000004,
+      "debt_principal_paid": 18.0,
+      "debt_interest_paid": 0.0,
+      "verified_financing_fees": 0.0,
+      "debt_service_paid": 18.0
+    },
+    "evidence": {
+      "observed_product_ids": [
+        "P1"
+      ],
+      "perimeter_method": "active_account_sets_not_verified_observability",
+      "monthly_product_ids": [
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ],
+        [
+          "P1"
+        ]
+      ],
+      "facts_months": [
+        "2026-03-01",
+        "2026-04-01",
+        "2026-05-01",
+        "2026-06-01",
+        "2026-07-01",
+        "2026-08-01"
+      ],
+      "debt_evidence_status": "partial",
+      "source_refs": {
+        "ledger": "ledger.parquet",
+        "facts": "monthly_facts.parquet"
+      },
+      "feature_lineage": {
+        "generation_ratio": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_operating_inflows",
+            "included_in_operating_outflows"
+          ]
+        },
+        "operating_net_trend": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_operating_inflows",
+            "included_in_operating_outflows"
+          ]
+        },
+        "operating_downside_ratio": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_operating_inflows",
+            "included_in_operating_outflows"
+          ]
+        },
+        "observed_debt_service_burden": {
+          "company_id": "COMP_1084",
+          "currency": "EUR",
+          "months": [
+            "2026-03-01",
+            "2026-04-01",
+            "2026-05-01",
+            "2026-06-01",
+            "2026-07-01",
+            "2026-08-01"
+          ],
+          "ledger_inclusion_fields": [
+            "included_in_debt_service"
+          ]
+        }
+      },
+      "critical_analysis": {
+        "method_version": "critical-loo-v1",
+        "ledger_rows_in_window": 0,
+        "candidate_count": 0,
+        "evaluated_count": 0,
+        "candidate_limit": 36,
+        "result_limit": 10,
+        "candidate_search_truncated": false,
+        "preselection": "identified_operating_or_service_then_identification_signflip_and_normalized_impact"
+      }
+    },
+    "flags": [
+      "debt_evidence_partial"
+    ],
+    "critical_movements": [],
+    "change": {
+      "previous_health": null,
+      "delta": null,
+      "comparable_to_previous": false,
+      "interpretation": "no_previous_result",
+      "attribution": {
+        "economic": {},
+        "evidence": {},
+        "methodology": {}
+      }
+    },
+    "robustness": {
+      "level": "indeterminate",
+      "baseline_health": null,
+      "tested_range": {
+        "min": null,
+        "max": null
+      },
+      "diagnosis_stable": null,
+      "tested_assumptions": [
+        {
+          "name": "uncertain_as_operating_outflows",
+          "version": "deterministic-assumptions-v1",
+          "health": null,
+          "evaluable": false,
+          "direction": "stable",
+          "diagnosis_stable": false,
+          "missing_components": [
+            "debt_obligations"
+          ],
+          "assumptions": {
+            "hypothesis": "all_material_uncertain_side_is_operating",
+            "evidence_unchanged": true,
+            "ledger_unchanged": true
+          },
+          "pillar_scores": {
+            "generation": 19.420692307692317,
+            "momentum": 50.0,
+            "resilience": 38.841384615384634,
+            "debt_obligations": null
+          }
+        }
+      ],
+      "sensitive_to": [
+        "uncertain_as_operating_outflows"
+      ],
+      "version": "deterministic-assumptions-v1",
+      "range_kind": "deterministic_sensitivity_not_confidence_interval",
+      "includes_baseline": false
+    },
+    "health_evidence": "partial",
+    "identified_range": {
+      "min": 60.61557521964668,
+      "max": 77.87454458539031,
+      "kind": "identification_bounds_not_confidence_interval"
+    }
+  }
+}

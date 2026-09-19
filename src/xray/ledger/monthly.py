@@ -6,6 +6,11 @@ import numpy as np
 import pandas as pd
 
 from xray.ledger.contracts import CLASSIFICATION_VERSION, FACTS_VERSION, CashTruthResult
+from xray.ledger.debt_uncertainty import (
+    DEBT_UNCERTAINTY_COLUMNS,
+    DEBT_UNCERTAINTY_VERSION,
+    assess_debt_uncertainty,
+)
 
 KEYS = ["company_id", "currency", "month"]
 FLOW_COLUMNS = (
@@ -15,7 +20,7 @@ FLOW_COLUMNS = (
     "internal_or_group_flows", "investment_flows",
     "uncertain_inflows", "uncertain_outflows", "classified_amount", "uncertain_amount",
     "internal_or_group_inflows", "internal_or_group_outflows",
-)
+) + DEBT_UNCERTAINTY_COLUMNS
 
 
 def _last_month(as_of: Any) -> pd.Timestamp:
@@ -39,6 +44,7 @@ def build_monthly_facts(ledger: pd.DataFrame, *, as_of: Any,
     """
     last = _last_month(as_of)
     t = ledger.loc[ledger.date.lt(last + pd.offsets.MonthBegin(1))].copy()
+    assess_debt_uncertainty(t, copy=False)
     units = t.loc[t.currency.notna(), ["company_id", "currency"]].drop_duplicates()
     if company_currencies is not None:
         units = pd.concat([units, company_currencies[["company_id", "currency"]]], ignore_index=True).drop_duplicates()
@@ -76,6 +82,11 @@ def build_monthly_facts(ledger: pd.DataFrame, *, as_of: Any,
     t["investment_flows"] = t.amount.where(eligible & cls.eq("investment"), 0.)
     t["uncertain_inflows"] = pos.where(eligible & t.is_uncertain, 0.)
     t["uncertain_outflows"] = neg.where(eligible & t.is_uncertain, 0.)
+    for state in ("possible", "impossible", "unresolved"):
+        t[f"debt_{state}_uncertain_outflows"] = neg.where(
+            t.debt_uncertainty_status.eq(f"debt_{state}"), 0.)
+    t["potentially_financial_uncertain_outflows"] = neg.where(
+        t.debt_uncertainty_status.isin(("debt_possible", "debt_unresolved")), 0.)
     t["uncertain_amount"] = eligible_abs.where(t.is_uncertain, 0.)
     t["classified_amount"] = eligible_abs.where(~t.is_uncertain, 0.)
     # Pending rows are not cash. Booked quality exclusions remain diagnostics;
@@ -128,6 +139,7 @@ def build_monthly_facts(ledger: pd.DataFrame, *, as_of: Any,
         ["observed_service_identified_no_ambiguous_outflows", "observed_service_with_ambiguous_or_excluded_outflows"],
         default="no_identified_service_not_evidence_of_no_debt")
     out["facts_version"] = FACTS_VERSION
+    out["debt_uncertainty_version"] = DEBT_UNCERTAINTY_VERSION
     versions = sorted(set(t.classification_version.dropna()))
     if len(versions) > 1:
         raise ValueError("Ledger must use one classification methodology per run")

@@ -64,8 +64,13 @@ class PulseScoreResult:
     critical_movements: list[dict[str, Any]] = field(default_factory=list)
     change: dict[str, Any] = field(default_factory=dict)
     robustness: dict[str, Any] = field(default_factory=dict)
+    health_evidence: str | None = None
+    identified_range: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = json_safe(asdict(self))
+        if self.health_evidence is None:
+            result.pop("health_evidence")
+            result.pop("identified_range")
         json.dumps(result, allow_nan=False)
         return result

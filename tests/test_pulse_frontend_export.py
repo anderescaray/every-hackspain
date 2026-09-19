@@ -10,11 +10,18 @@ import pandas as pd
 import pytest
 
 from xray.artifacts import recursive_hashes, sha256
-from xray.product.frontend_export import WebEnvelope, company_detail, group_detail, portfolio_export, run
+from xray.product.frontend_export import (
+    WebEnvelope,
+    company_detail,
+    group_detail,
+    portfolio_export,
+    run,
+)
 from xray.pulse import score_company
+from xray.pulse.config import load_config
 
 
-def _source(debt=3.0, observed=True):
+def _source(debt=3.0, observed=True, *, patch=False, uncertainty=0.0):
     rows = []
     for month in pd.date_range("2026-03-01", periods=6, freq="MS"):
         rows.append({"company_id": "COMP_1084", "currency": "EUR", "month": month,
@@ -22,11 +29,18 @@ def _source(debt=3.0, observed=True):
                      "operating_net_cash": 10.12345, "debt_principal_paid": debt,
                      "debt_interest_paid": 0.0, "verified_financing_fees": 0.0,
                      "debt_service_paid": debt, "history_observed": observed,
-                     "uncertain_inflows": 0.0, "uncertain_outflows": 0.0, "excluded_inflows": 0.0,
+                     "debt_uncertainty_version": "debt-uncertainty-v1",
+                     "debt_possible_uncertain_outflows": 0., "debt_impossible_uncertain_outflows": 0.,
+                     "debt_unresolved_uncertain_outflows": uncertainty,
+                     "potentially_financial_uncertain_outflows": uncertainty,
+                     "ambiguous_currency_count": 0, "unknown_currency_count": 0,
+                     "uncertain_inflows": 0.0, "uncertain_outflows": uncertainty, "excluded_inflows": 0.0,
                      "excluded_outflows": 0.0, "classified_amount": 210.12345 + debt,
-                     "uncertain_amount": 0.0, "active_product_ids": ["P1"], "flags": []})
+                     "uncertain_amount": uncertainty, "active_product_ids": ["P1"], "flags": []})
     score = score_company(pd.DataFrame(rows), company_id="COMP_1084", currency="EUR",
-                          as_of="2026-08-31", run_id="pulse-contract-fixture").to_dict()
+                          as_of="2026-08-31", run_id="pulse-contract-fixture",
+                          config=load_config(Path(__file__).parents[1] / "src/xray/pulse/configs" /
+                                             ("pulse_four_pillars_v1_0_1.json" if patch else "pulse_four_pillars_v1.json"))).to_dict()
     cash = {"schema_version": "1.0", "company_id": "COMP_1084", "currency": "EUR", "as_of": score["as_of"],
             "classification_version": score["classification_version"], "facts_version": score["facts_version"],
             "summary": {"net_operating_cash": 60.7407, "eligible_net_cash": 60.7407 - 6 * debt},
@@ -147,3 +161,56 @@ def test_symlink_snapshot_destination_cannot_escape(tmp_path):
     with pytest.raises(ValueError, match="Symbolic"):
         run(source, output, verbose=False)
     assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize("uncertainty,status", [(0.0, "complete_verified"), (0.5, "complete_bounded"), (30.0, "partial")])
+def test_patch_exports_original_identification_without_recalculating(uncertainty, status):
+    score, cash, envelope = _source(patch=True, uncertainty=uncertainty)
+    before = copy.deepcopy(score)
+    detail = company_detail(score, cash, "GROUP_0001", envelope)
+    debt = score["pillars"]["debt_obligations"]
+    assert detail["status"] == status
+    assert detail["pulse"] == before == score
+    assert detail["health_score"] == score["health"]
+    assert detail["dimensions"]["debt"] == debt["score"]
+    for projection in (portfolio_export({"COMP_1084": detail}, envelope)["items"][0],
+                       group_detail("GROUP_0001", [detail], envelope)["members"][0]):
+        assert projection["identified_range"] == score["identified_range"]
+        assert projection["health_evidence"] == score["health_evidence"]
+        assert projection["score_status"] == status
+    if status == "complete_bounded":
+        assert debt["score"] != debt["identified_score"]
+        assert "acotada" in detail["assessment"]
+        assert detail["health_score_model"]["provisional"]
+    elif status == "partial":
+        assert debt["score"] is None and debt["score_range"]["min"] is not None
+        assert detail["health_score"] is None
+
+
+@pytest.mark.parametrize("change", ["missing_range", "wrong_method", "hide_bounded", "outside_range", "invent_absence"])
+def test_patch_rejects_missing_or_misrepresented_bounds(change):
+    score, cash, envelope = _source(patch=True, uncertainty=0.5)
+    debt = score["pillars"]["debt_obligations"]
+    if change == "missing_range":
+        del debt["score_range"]
+    elif change == "wrong_method":
+        score["config_version"] = "pulse-config-v1"
+    elif change == "hide_bounded":
+        score["status"] = "complete_verified"
+        score["health_evidence"] = "verified"
+    elif change == "outside_range":
+        score["identified_range"] = {"min": 0.0, "max": 1.0, "kind": "identification_bounds_not_confidence_interval"}
+    else:
+        debt["service_absence_verified"] = True
+    with pytest.raises(ValueError):
+        company_detail(score, cash, None, envelope)
+
+
+def test_patch_no_service_and_missing_history_remain_null():
+    for kwargs in ({"debt": 0.0}, {"observed": False}):
+        score, cash, envelope = _source(patch=True, **kwargs)
+        detail = company_detail(score, cash, None, envelope)
+        assert detail["health_score"] is None
+        assert detail["dimensions"]["debt"] is None
+        assert detail["pulse"]["identified_range"] is None
+        assert detail["pulse"]["pillars"]["debt_obligations"]["service_absence_verified"] is False

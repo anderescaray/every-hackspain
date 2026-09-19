@@ -18,6 +18,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
   const [evidence, setEvidence] = useState<{ refs: EvidenceRef[]; title: string; records?: TransactionEvidenceRef[] } | null>(null);
   const openEvidence = (refs: EvidenceRef[], title: string, records?: TransactionEvidenceRef[]) => setEvidence({ refs, title, records });
   const alerts = [...company.alerts].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+  const debt = company.pulse.pillars.debt_obligations;
   const isMock = company.source === "fixture";
   const trajectorySymbol = company.trajectory === "improving" ? "↑" : company.trajectory === "deteriorating" ? "↓" : "→";
 
@@ -55,9 +56,11 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
             </div>)}
           </dl>
           <details className={styles.methodology}>
-            <summary>Cómo se calcula · {company.health_score_model.provisional ? "evidencia parcial" : "PulseFourPillars"}</summary>
+            <summary>Cómo se calcula · {company.status === "complete_bounded" ? "identificación acotada" : company.health_score_model.provisional ? "evidencia parcial" : "PulseFourPillars"}</summary>
             <p>{HEALTH_DIMENSIONS.map(({ key, label }) => `${numberLabel(company.health_score_model.weights[key] * 100)} % ${label}`).join(" + ")}. Valores suministrados por el motor, sin recalcular ni completar componentes ausentes.</p>
             <p>Pesos iniciales no calibrados científicamente. Diagnóstico de tesorería y alerta temprana, no probabilidad de impago. Momentum describe la trayectoria observada, no un pronóstico; deuda mide presión del servicio observado, no solvencia ni deuda contractual total.</p>
+            {company.pulse.identified_range && <p>Rango identificado de Health: {numberLabel(company.pulse.identified_range.min, 2)}–{numberLabel(company.pulse.identified_range.max, 2)}. {company.status === "complete_bounded" ? "El valor mostrado es una estimación acotada, no una identificación exacta. " : ""}No es un intervalo de confianza.</p>}
+            {debt.evidence_status === "bounded" && debt.score_range?.min != null && debt.score_range?.max != null && <p>Deuda con incertidumbre acotada: {numberLabel(debt.score_range.min, 2)}–{numberLabel(debt.score_range.max, 2)}. Estimación suministrada por el motor.</p>}
             {company.health_score === null && <p>Límites de identificación: {numberLabel(company.pulse.health_min, 2)}–{numberLabel(company.pulse.health_max, 2)}. No son intervalos de confianza. Componentes ausentes: {company.pulse.missing_components.join(", ")}.</p>}
             <p>Método: {company.score_version} · Clasificación: {company.classification_version} · Run: {company.run_id}</p>
           </details>

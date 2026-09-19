@@ -1,5 +1,7 @@
 # PulseFourPillars V1 — implementación
 
+Las secciones originales documentan la entrega V1.0 y sus comprobaciones históricas. La integración web posterior está en `pulse-frontend-integration.md`; el endurecimiento acotado de Debt V1.0.1 se describe al final. No se sustituyen los artefactos ni la configuración histórica V1.0.
+
 ## 1. Arquitectura
 
 `CSV → cutoff previo a limpieza → clean_all → ledger canónico → monthly facts → Pulse features → cuatro pilares → JSON/Parquet inmutables`.
@@ -119,3 +121,19 @@ La implementación se entrega en un commit convencional local, sin push ni atrib
 ```bash
 git log --diff-filter=A --format='%h %s' -- docs/pulse-four-pillars-v1-implementation.md
 ```
+
+## 14. Debt V1.0.1: identificación acotada, no ausencia supuesta
+
+El patch mantiene **sin cambios** G/M/R, pesos, anclas, seis meses completos, denominadores, FX y clasificación económica `cash-truth-v1`. Se registra una configuración nueva; seleccionar la anterior conserva la política estricta V1.0. Los hechos añaden `monthly-facts-v1.1` y la evaluación separada `debt-uncertainty-v1`.
+
+- Cada salida incierta elegible conserva ID/linaje y añade `debt_uncertainty_status`, regla, referencias a evidencia y versión. Una fee bancaria genérica puede ser `debt_possible`; transferencias, retiradas de efectivo y demás evidencia insuficiente quedan `debt_unresolved`. **Ninguna regla actual acredita `debt_impossible`**: un canal no prueba el uso económico final.
+- Los hechos publican importes `debt_possible_uncertain_outflows`, `debt_impossible_uncertain_outflows`, `debt_unresolved_uncertain_outflows` y `potentially_financial_uncertain_outflows = possible + unresolved`. Son desgloses adicionales, no nueva caja ni doble cómputo en S. Los meses ausentes siguen siendo nulos; las exclusiones y problemas de moneda permanecen independientes.
+- Se conservan principal/intereses/fees verificadas/servicio identificado aun cuando falta historia, junto con meses observados/requeridos. Un subtotal observado no se presenta como seis meses completos.
+- Sólo con historia y denominadores válidos, servicio identificado positivo, moneda inequívoca y **sin salidas excluidas**, se forma `S_min = S_identificado`, `S_max = S_min + potencialmente_financiero`. La misma transformación Debt produce `[D_min,D_max]`. Anchura ≤5 puntos permite el punto medio explícitamente `bounded`; una anchura mayor mantiene Debt/Health puntuales nulos, conservando el intervalo.
+- Sin servicio identificado, `service_absence_verified=false`: no hay D100 ni certificación automática de ausencia. Tampoco se acotan artificialmente las salidas excluidas o de moneda incierta.
+- La salida distingue `complete_verified`, `complete_bounded`, `partial` e `insufficient_evidence`; incluye `identified_score`, `score_range`, anchura, estimador, desglose de servicio y límites. Health conserva contribuciones exactas y pesos fijos. Los rangos son de **identificación**, no intervalos de confianza estadísticos ni calibración científica.
+- `identified_range` de Health propaga exclusivamente el intervalo Debt **manteniendo G/M/R y los demás hechos fijos**. No representa toda la incertidumbre de clasificación. Cambios numéricos de servicio/rango no se confunden con cambios estructurales de evidencia en la atribución temporal.
+
+Se autorizaron únicamente pruebas focalizadas de este cambio y comprobaciones estáticas rápidas, no una nueva ejecución de las suites generales históricas de la sección 10. Ledger: `tests/test_debt_uncertainty.py` y `tests/test_ledger.py`, **24 pasan**; motor **55 pasan**, más **una integración determinista**; exporter **20 pasan** y contratos frontend **24 pasan**. Ruff, comprobación de tipos acotada y build rápido frontend pasan. La materialización y comparación final se registran en `pulse-frontend-integration.md`.
+
+Límite previo fuera del pipeline canónico: `score_company` acepta DataFrames internos, no entradas de una API pública. Antes de exponer esa interfaz a fuentes no confiables hay que endurecer la presencia de conteos de moneda y la no negatividad de exclusiones. El productor mensual actual sí emite esos campos y magnitudes no negativas; no se relajaron sus gates ni se amplió esta tarea a ingestión externa.

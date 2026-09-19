@@ -3,7 +3,7 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { companyDetailSchema } from "../types/companyDetail";
-import { TrajectoryChart } from "../components/insights/TrajectoryChart";
+import { createRequire } from "node:module";
 import partial from "./fixtures/pulse1084.json";
 import { fixtureCompanies } from "./fixtures/companyDetails";
 
@@ -49,7 +49,13 @@ test("rechaza Cash Truth ajeno y modelos heredados aunque haya Health numérico"
   assert.equal(companyDetailSchema.safeParse({ ...company, pulse: { ...company.pulse, score_version: "financial_smoothed_v2" } }).success, false);
 });
 
-test("el gráfico no convierte una observación nula en punto cero", () => {
+test("el gráfico no convierte una observación nula en punto cero", async () => {
+  // Node does not load CSS modules; this check asserts markup, not styles.
+  const require = createRequire(import.meta.url);
+  const previous = require.extensions[".css"];
+  require.extensions[".css"] = (module) => { module.exports = {}; };
+  const { TrajectoryChart } = await import("../components/insights/TrajectoryChart");
+  if (previous) require.extensions[".css"] = previous; else delete require.extensions[".css"];
   const markup = renderToStaticMarkup(createElement(TrajectoryChart, { history: [{ month: "2026-08-31", health_score: null }], trajectory: null }));
   assert.match(markup, /No hay Health Score identificado/);
   assert.doesNotMatch(markup, /<polyline|<circle/);

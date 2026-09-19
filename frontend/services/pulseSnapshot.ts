@@ -7,7 +7,7 @@ import { readGeneratedAnalysis } from "./generatedAnalysis";
 
 const sha = z.string().regex(/^[a-f0-9]{64}$/);
 const pointerSchema = z.object({ schema_version: z.literal("1.0"), ...pulseEnvelopeShape, manifest_sha256: sha }).strict();
-const manifestSchema = z.object({ schema_version: z.literal("1.0"), ...pulseEnvelopeShape, source_manifest_sha256: sha, exporter_version: z.literal("pulse-frontend-v1"), outputs_sha256: z.record(sha), counts: z.record(z.unknown()) }).passthrough();
+const manifestSchema = z.object({ schema_version: z.literal("1.0"), ...pulseEnvelopeShape, source_manifest_sha256: sha, exporter_version: z.enum(["pulse-frontend-v1", "pulse-frontend-v1.1"]), outputs_sha256: z.record(sha), counts: z.record(z.unknown()) }).passthrough();
 class SnapshotError extends Error {}
 const invalid = () => new SnapshotError("Snapshot Pulse ausente, mezclado o sin integridad.");
 

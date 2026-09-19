@@ -4,6 +4,14 @@ from typing import Any
 from xray.pulse.contracts import PulseScoreResult
 
 
+def _debt_evidence_structure(value: dict[str, Any]) -> dict[str, Any]:
+    """Amounts and score ranges are economic observations, not new source evidence."""
+    identified = value.get("identified_service", {})
+    return {**{key: value.get(key) for key in ("status", "reason", "scope", "service_absence_verified")},
+            "history": {key: identified.get(key) for key in ("observed_months", "required_months", "history_complete")},
+            "uncertainty_version": value.get("uncertainty", {}).get("version")}
+
+
 def attribute_change(current: PulseScoreResult, previous: PulseScoreResult | dict | None) -> dict[str, Any]:
     if previous is None:
         return {"previous_health": None, "delta": None, "comparable_to_previous": False,
@@ -43,7 +51,11 @@ def attribute_change(current: PulseScoreResult, previous: PulseScoreResult | dic
         evidence["classification_evidence_hash"] = {"before": old_evidence_hash, "after": new_evidence_hash}
     for key in ("history_coverage", "classification_coverage", "uncertain_amount_share", "perimeter_consistency", "currency_consistency", "debt_evidence"):
         old, new = before.get("confidence", {}).get(key), current.confidence.get(key)
-        if old != new:
+        old_comparison, new_comparison = old, new
+        if (key == "debt_evidence" and before.get("score_version") == current.score_version == "PulseFourPillars-v1.0.1"
+                and isinstance(old, dict) and isinstance(new, dict)):
+            old_comparison, new_comparison = _debt_evidence_structure(old), _debt_evidence_structure(new)
+        if old_comparison != new_comparison:
             evidence[key] = {"before": old, "after": new}
     old_products = before.get("evidence", {}).get("observed_product_ids")
     new_products = current.evidence.get("observed_product_ids")

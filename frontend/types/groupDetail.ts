@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pulseEnvelopeShape, pulseStatusSchema } from "./pulse";
+import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue } from "./pulse";
 
 const text = z.string().min(1).max(5000);
 const id = z.string().min(1).max(100);
@@ -32,6 +32,7 @@ const memberSchema = z.object({
   confidence: score.nullable(),
   attention: z.enum(["high", "medium", "low", "unknown"]),
   score_status: pulseStatusSchema,
+  ...identificationFields,
   missing_components: z.array(text),
   summary: text,
   outlook: outlookSchema,
@@ -121,6 +122,8 @@ export const groupDetailSchema = z.object({
     if (metric.value !== null && !metric.covered_company_ids.length) issue("Una magnitud disponible debe declarar las sociedades cubiertas", [key]);
   }
   group.members.forEach((member, index) => {
+    const invalid = identificationIssue(group.score_version, member);
+    if (invalid) issue(invalid, ["members", index]);
     checkEvidence(member.evidence_refs, ["members", index]);
     checkEvidence(member.outlook.evidence_refs, ["members", index, "outlook"]);
     if (member.outlook.status === "insufficient" && member.outlook.funding_need !== null) issue("Sin evidencia de perspectiva no se puede afirmar una necesidad de caja", ["members", index, "outlook"]);

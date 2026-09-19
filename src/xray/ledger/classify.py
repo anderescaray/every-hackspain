@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from xray.ledger.contracts import CLASSIFICATION_VERSION
+from xray.ledger.debt_uncertainty import assess_debt_uncertainty
 from xray.ledger.enrichment import apply_ai_categories, load_template_categories
 
 INFLOW = frozenset({"collection", "bulk_collection", "pos_settlement", "cash_settlement",
@@ -174,6 +175,7 @@ def classify_transactions(transactions: pd.DataFrame, *, as_of: Any = None,
             value["category_source"] = str(category_source)
         lineages.append(value)
     t["source_lineage"] = lineages
+    assess_debt_uncertainty(t, copy=False)
     result = t.sort_values(["company_id", "currency", "date", "transaction_id"], na_position="last").reset_index(drop=True)
     result.attrs["classification_metadata"] = metadata
     return result

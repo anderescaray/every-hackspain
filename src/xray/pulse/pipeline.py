@@ -193,7 +193,7 @@ def _features_flat(payload: dict) -> list[dict]:
 def _portfolio_row(payload: dict) -> dict:
     flags = payload.get("flags", [])
     movements = payload.get("critical_movements", [])
-    return {"company_id": payload["company_id"], "currency": payload["currency"], "as_of": payload["as_of"],
+    row = {"company_id": payload["company_id"], "currency": payload["currency"], "as_of": payload["as_of"],
             "score_version": payload["score_version"], "health": payload["health"], "status": payload["status"],
             **{key: value["score"] for key, value in payload["pillars"].items()},
             "direction": payload.get("direction", "unknown"),
@@ -201,6 +201,9 @@ def _portfolio_row(payload: dict) -> dict:
             "confidence": payload.get("confidence", {}).get("level", "unknown"),
             "main_signal": movements[0]["reason"] if movements else (flags[0] if flags else "no_material_signal"),
             "alert_count": 0}
+    if "health_evidence" in payload:
+        row.update(health_evidence=payload["health_evidence"], identified_range=payload["identified_range"])
+    return row
 
 
 def run(raw_dir: Path, out_dir: Path, *, as_of: str | pd.Timestamp, data_vintage: str | pd.Timestamp,

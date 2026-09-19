@@ -47,6 +47,20 @@ def without_transaction(frame: pd.DataFrame, row: dict[str, Any]) -> pd.DataFram
         if debt_column is None:
             raise ValueError(f"Unknown debt-service subclass for leave-one-out: {subclass}")
         out.loc[match, debt_column] -= -amount
+    if amount < 0 and row.get("eligible", False) and row.get("is_uncertain", False):
+        out.loc[match, "uncertain_outflows"] -= -amount
+        if "uncertain_amount" in out:
+            out.loc[match, "uncertain_amount"] -= -amount
+        if "potentially_financial_uncertain_outflows" in out:
+            status = str(row.get("debt_uncertainty_status"))
+            column = {"debt_possible": "debt_possible_uncertain_outflows",
+                      "debt_impossible": "debt_impossible_uncertain_outflows",
+                      "debt_unresolved": "debt_unresolved_uncertain_outflows"}.get(status)
+            if column is None:
+                raise ValueError("Uncertain leave-one-out requires the canonical debt assessment")
+            out.loc[match, column] -= -amount
+            if status != "debt_impossible":
+                out.loc[match, "potentially_financial_uncertain_outflows"] -= -amount
     out["operating_net_cash"] = out.operating_inflows - out.operating_outflows
     out["debt_service_paid"] = out.debt_principal_paid + out.debt_interest_paid + out.verified_financing_fees
     return out
