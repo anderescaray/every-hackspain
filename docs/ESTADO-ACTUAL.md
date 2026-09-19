@@ -13,11 +13,13 @@ Léelo entero antes de tocar nada: hoy han trabajado cuatro personas en paralelo
 
 ```
 data/raw/*.csv
-  │ 00 clean (xray.clean: flags D01–D30, F01–F07; nunca borra filas dudosas)
+  │ 00 clean (xray.clean: flags D03–D30, D38 centinelas, F01–F07; nunca borra filas dudosas;
+  │           sin cortes por tamaño: D01/D02 retiradas por D32)
   ▼
 data/cleaned/*.parquet
   │ 01 features (xray.features; clasificación de movimientos = ledger canónico xray.ledger.classify;
-  │              categorías AI D31 por defecto; coverage_state FE10; FX a EUR tipo fijo D32)
+  │              categorías AI D31 por defecto; coverage_state FE10; FX a EUR tipo fijo D32;
+  │              primer mes parcial D33; fechas de pago de relleno = retraso no medible D39)
   ▼
 data/processed/*_monthly_features.parquet
   │ 05 score V2 fit  (xray.score_v2 = financial_smoothed_v2: nivel 6m + momentum normalizado por
@@ -42,9 +44,9 @@ El backend FastAPI (`backend/`, solo lectura sobre `product/`) existe pero el fr
 ## 3. Cifras reales del último run (agosto 2026)
 
 - 1.286 empresas, 250 grupos, 24 meses (2024-09 → 2026-08).
-- V2: **1.011 puntuadas** (329 `scored`, 682 `provisional`), 275 `not_scored`. Prefijo 2026-02 invariante en features y scores.
+- V2: **1.011 puntuadas** (284 `scored`, 727 `provisional`, tras D39), 275 `not_scored`. Prefijo 2026-02 invariante en features y scores. D39 bajó a las 107 empresas con fechas de pago de relleno (mediana −2,5 en agosto) y apenas movió al resto.
 - Exportación: 1.161 fichas de empresa (125 sin ningún score no se exportan; la UI dice "no disponible"), 250 grupos, portfolio de 1.286, escenarios para las 1.011 puntuadas.
-- Tests: **566 Python pasan** + **67 frontend**; lint y typecheck limpios. Único rojo conocido: `tests/test_pulse_pipeline.py::test_currency_runs_do_not_overwrite_or_mix` — falla igual en `origin/main` desde el D32 de Ander; es de Pablo/Ander.
+- Tests: **566 Python pasan** + **67 frontend**; lint y typecheck limpios. Único rojo conocido: `tests/test_pulse_pipeline.py::test_currency_runs_do_not_overwrite_or_mix` — falla igual en `origin/main` desde el D32 de Ander; es de Pablo/Ander. En Windows (entorno uv, pandas 3.0.6) además: los tests de publicación de Pulse (`fcntl` no existe en Windows; symlinks sin privilegios) y `tests/test_frontend_export.py::test_evidence_refs_resolve_and_absent_blocks_are_explicit` (una descripción vacía se exporta como `"nan"` en vez de `"Sin concepto"`; falla igual en `origin/main`).
 
 ## 4. Comandos
 
@@ -91,7 +93,9 @@ Empresas útiles para la demo: `COMP_0764` (historia larga, simulador), `COMP_00
 **C · Si sobra tiempo**
 6. Time Borrowed AP (alerta de nicho), relaciones/recomendaciones de grupo (el advisor de Ander, `xray.group_advisor`, ya produce planes; falta mapearlos al contrato de grupo), `account_flows` en Cash Truth, Import UI.
 
-**Deuda técnica**: `stress_events` duplica `event_type`; fusionar los `Noul` de D31 en `event_type`; D26–D28 aún no excluyen `tx_cash_*`; D29 no excluye pasarela de `interest_charge`; Confidence y umbral 0,7 sin calibrar; `dimensions` del contrato 2.0 no admite `null` (exportamos neutro + `provisional`; Pablo lo resolvió en su 3.0, portarlo requiere tocar componentes de Álvaro).
+**Pendiente de la revisión de EDA (cambian puntuaciones; para el rediseño del score):** F · amortizaciones anticipadas (14,8% del servicio de deuda, 68 empresas) y depósitos a plazo fuera del servicio de deuda; B2 · cuentas sin movimientos y saldo 0 como caja fiable (+245 empresas con caja para el advisor); I3 · señal de facturas vencidas recientes (el retraso de las pagadas no ve lo que no se cobra); recuperar la fecha real de pago casando factura y banco (D39 opción B). Detalle en `decisiones.md` D32–D40.
+
+**Deuda técnica**: `stress_events` duplica `event_type`; fusionar los `Noul` de D31 en `event_type`; D26–D28 aún no excluyen `tx_cash_*`; la pasarela (D29) ya sale del servicio de deuda en el ledger (regla CT02: 5.012 movimientos Stripe/network pasan a operativos); Confidence y umbral 0,7 sin calibrar; `dimensions` del contrato 2.0 no admite `null` (exportamos neutro + `provisional`; Pablo lo resolvió en su 3.0, portarlo requiere tocar componentes de Álvaro).
 
 ## 7. Mapa de documentos
 

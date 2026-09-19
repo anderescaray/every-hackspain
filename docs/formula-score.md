@@ -2,7 +2,7 @@
 
 El score es un número de 0 a 100 por empresa y mes. Combina **dónde está** la empresa (nivel) con **hacia dónde va** (momentum). Implementación: `src/xray/score_v2/` (`financial_smoothed_v2`); detalle completo en [scoring-v2.md](./scoring-v2.md).
 
-**Es el score oficial de la web** desde el PR #3 (`frontend_export.py`, `MODEL_VERSION = financial_smoothed_v2+frontend-export-1`). PulseFourPillars (`src/xray/pulse/`) se conserva como experimento y no alimenta la web. Estado a 2026-09-19 (agosto de 2026, último mes completo): **1.011 empresas con score** (329 `scored`, 682 `provisional`) y 275 sin score.
+**Es el score oficial de la web** desde el PR #3 (`frontend_export.py`, `MODEL_VERSION = financial_smoothed_v2+frontend-export-1`). PulseFourPillars (`src/xray/pulse/`) se conserva como experimento y no alimenta la web. Estado a 2026-09-19 (agosto de 2026, último mes completo): **1.011 empresas con score** (284 `scored`, 727 `provisional`) y 275 sin score, tras D39.
 
 ```
 score = clip( nivel + 0,20 · (momentum − 50) , 0, 100 )
@@ -44,7 +44,7 @@ Si una dimensión no existe (p. ej. la empresa no tiene ERP conectado y no hay f
 | Entradas y salidas operativas | **Libro de caja canónico** (`xray.ledger.classify`): una sola interpretación económica por movimiento, compartida con el resto del proyecto. Cobros (`collection`, TPV, efectivo, devoluciones recibidas) y pagos (proveedores, suministros, nóminas, Seguridad Social, impuestos). Traspasos entre cuentas propias e intragrupo, financiación, inversión y movimientos inciertos **no** son operativos |
 | Categorías | Los movimientos sin categoría bancaria se completan con un **artefacto estático de categorías AI** (D31, confianza ≥ 0,7), activo por defecto. No es una llamada a un modelo en tiempo real |
 | Servicio de deuda | Principal (`debt_repayment`) e intereses financieros observados en el banco. Las **comisiones de pasarela** (Stripe, network cost) salen del servicio de deuda (van a operativas). No se usa `debt_products`: no tener productos registrados no significa no tener deuda (D36) |
-| Retrasos de cobro y pago | Solo facturas estándar (`invoice`) pagadas con vencimiento válido; exige al menos **5 pagos** en el mes para usar el retraso actual |
+| Retrasos de cobro y pago | Solo facturas estándar (`invoice`) pagadas con vencimiento válido; exige al menos **5 pagos** en el mes para usar el retraso actual. **Fechas de pago de relleno (D39):** si el historial de la empresa en esa dirección hasta el mes tiene ≥30 pagos y ≥95% exactamente al vencimiento (típico de Business Central, que pone el vencimiento como fecha de pago), el retraso es **no medible** (vacío, como sin ERP), nunca un 0 perfecto falso |
 | Moneda | **Todo en EUR** con un tipo fijo por moneda (`xray.fx`, D32). Cada empresa suma todas sus cuentas y facturas; ningún movimiento se descarta por su tamaño |
 | Primer mes | El primer mes con actividad real de quien entra a mitad de ventana está incompleto (empieza a mitad de mes, ~60 % de actividad) y **sus importes no cuentan** (D33) |
 | Mes con calidad | Al menos 5 movimientos utilizables, ≥ 80 % de filas utilizables, ≥ 10 % del importe operativo y todas las empresas del panel informadas |
@@ -79,7 +79,7 @@ z_i = ( valor del último trimestre − valor del trimestre anterior )_i  /  σ_
 
 Una dirección confirmada se mantiene mientras \|z̄\| no baje de la mitad del umbral (histéresis 0,5 · 1,5 = 0,75), para que la etiqueta no parpadee. Nunca se mira el mes siguiente.
 
-Reparto en agosto de 2026: `stable` 598, `insufficient_history` 509, `emerging_deterioration` 74, `emerging_improvement` 56, `improving` 18, `deteriorating` 17, `mixed_signals` 14.
+Reparto en agosto de 2026 (tras D39): `stable` 598, `insufficient_history` 509, `emerging_deterioration` 73, `emerging_improvement` 56, `improving` 19, `deteriorating` 17, `mixed_signals` 14.
 
 ## Cuándo se puntúa y cuándo queda `provisional`
 
