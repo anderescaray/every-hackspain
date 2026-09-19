@@ -52,10 +52,18 @@ const accountFlowsSchema = z.object({
   accounts: z.array(cashAccountSchema).max(50),
   transfers: z.array(accountTransferSchema).max(10),
 }).strict();
+const ownAccountCirculationSchema = z.object({
+  transferred_amount: amount.nonnegative(),
+  transfer_count: count,
+  explanation: text,
+  confidence: score.nullable(),
+  evidence_refs: refs,
+}).strict();
 const cashTruthSchema = z.object({
   period: text,
   total_gross_movement: amount.nonnegative(),
   account_flows: accountFlowsSchema.nullable().optional(),
+  own_account_circulation: ownAccountCirculationSchema.nullable().optional(),
   apparent_net: amount,
   components: z.array(cashComponentSchema).length(4),
   headline: text,
@@ -112,7 +120,7 @@ export const companyDetailSchema = z.object({
   unique(company.simulation.inputs.map((input) => input.key), ["simulation", "inputs"]);
   unique(company.simulation.scenarios.map((scenario) => scenario.id), ["simulation", "scenarios"]);
   const evidenceIds = new Set(company.evidence.map((group) => group.id));
-  const explanations = [...company.drivers, ...company.alerts, company.cash_truth, ...company.cash_truth.components, company.time_borrowed.ar, company.time_borrowed.ap];
+  const explanations = [...company.drivers, ...company.alerts, company.cash_truth, company.cash_truth.own_account_circulation, ...company.cash_truth.components, company.time_borrowed.ar, company.time_borrowed.ap];
   if (explanations.some((entry) => entry?.evidence_refs.some((ref) => !evidenceIds.has(ref)))) issue("Referencia de evidencia inexistente", ["evidence"]);
   company.history.forEach((point, index) => {
     if (point.month > company.as_of || (index > 0 && point.month <= company.history[index - 1].month)) issue("El histórico debe estar ordenado y no superar la fecha de corte", ["history", index]);

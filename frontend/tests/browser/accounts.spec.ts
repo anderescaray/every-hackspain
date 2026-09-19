@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 test("dos cuentas propias se distinguen de otra sociedad y el bruto no es caja nueva", async ({ page }, testInfo) => {
   await page.goto("/companies/COMP_0356");
+  await page.getByText("Ver cuentas y transferencias", { exact: true }).click();
   const section = page.getByRole("region", { name: "Cuentas y transferencias", exact: true });
   await section.getByRole("button", { name: "Entre cuentas propias", exact: true }).click();
   await expect(section.getByRole("article")).toHaveCount(1);
@@ -39,6 +40,7 @@ test("dos cuentas propias se distinguen de otra sociedad y el bruto no es caja n
 
 test("sin titularidad o muestras no se presume apoyo ni neto cero", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
+  await page.getByText("Ver cuentas y transferencias", { exact: true }).click();
   const section = page.getByRole("region", { name: "Cuentas y transferencias", exact: true });
   await section.getByRole("button", { name: "Origen o destino sin identificar", exact: true }).click();
   const transfer = section.getByRole("article");
@@ -48,11 +50,13 @@ test("sin titularidad o muestras no se presume apoyo ni neto cero", async ({ pag
   await expect(section.getByRole("article")).toHaveCount(0);
   await expect(section.getByText("No hay muestras suministradas para este filtro.", { exact: false })).toBeVisible();
   await page.goto("/companies/COMP_0655");
+  await page.getByText("Ver cuentas y transferencias", { exact: true }).click();
   await expect(page.getByRole("region", { name: "Cuentas y transferencias", exact: true }).getByText("Detalle por cuentas todavía no disponible.", { exact: false })).toBeVisible();
 });
 
 test("registro de cuentas explica el titular y conserva accesibilidad y responsive", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
+  await page.getByText("Ver cuentas y transferencias", { exact: true }).click();
   const section = page.getByRole("region", { name: "Cuentas y transferencias", exact: true });
   await section.getByText("Ver cuentas y titularidad", { exact: false }).click();
   const registry = section.getByRole("region", { name: "Registro de cuentas y titularidad" });

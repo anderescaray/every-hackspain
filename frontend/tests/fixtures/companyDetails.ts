@@ -135,6 +135,13 @@ const mainCash: CashTruth = {
   confidence: 86,
   evidence_refs: ["cash-movements"],
   evidence_summary: ["34 ciclos de tesorería emparejados", "12 transferencias intragrupo identificadas"],
+  own_account_circulation: {
+    transferred_amount: 86725600,
+    transfer_count: 34,
+    explanation: "Agregado ficticio de traslados emparejados entre cuentas cuyo titular es COMP_0356, contado una vez por traslado. Excluye otras sociedades, movimientos pendientes, comisiones y origen no identificado. La muestra de cuentas documenta algunos movimientos, no el agregado completo.",
+    confidence: 94,
+    evidence_refs: ["cash-movements"],
+  },
   account_flows: {
     period: cashPeriod,
     explanation: "Tres transferencias representativas ya incluidas en el desglose de caja. No son el inventario completo de cuentas ni todos los movimientos del periodo. Banco, titularidad y emparejamiento son datos ficticios suministrados para la demo.",

@@ -51,15 +51,24 @@ test("una puntuación protagonista, cuatro dimensiones y confianza separada", as
   expect(await header.textContent()).not.toMatch(/Pulse Score|Stability|Estabilidad/);
 });
 
-test("origen de caja: solo negocio y apoyo como resultados principales", async ({ page }) => {
+test("origen de liquidez separado de movimientos de tesorería", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
   const cash = page.getByRole("region", { name: "Origen de la caja", exact: true });
-  await expect(cash.getByRole("article", { name: "Lo que genera el negocio", exact: true }).getByText("+25,6 mil €", { exact: true })).toBeVisible();
-  await expect(cash.getByRole("article", { name: "Lo que aporta el grupo", exact: true }).getByText("+4,14 M€", { exact: true })).toBeVisible();
-  await expect(cash.locator(":scope > div > article")).toHaveCount(2);
+  const origins = cash.getByRole("group", { name: "Origen de la liquidez", exact: true });
+  await expect(origins.getByRole("article", { name: "Generación operativa", exact: true }).getByText("+25,6 mil €", { exact: true })).toBeVisible();
+  await expect(origins.getByRole("article", { name: "Apoyo intragrupo", exact: true }).getByText("+4,14 M€", { exact: true })).toBeVisible();
+  await expect(origins.getByRole("article", { name: "No identificado", exact: true }).getByText("210 mil €", { exact: true })).toBeVisible();
+  await expect(origins.getByRole("article")).toHaveCount(3);
+  const treasury = cash.getByRole("region", { name: "Movimientos de tesorería", exact: true });
+  await expect(treasury.getByRole("heading", { name: "Circulación entre cuentas propias", exact: true })).toBeVisible();
+  await expect(treasury.getByText("86,7 M€", { exact: true })).toBeVisible();
+  await expect(treasury.getByText("transferidos", { exact: true })).toBeVisible();
+  await expect(treasury.getByText("34 traslados identificados", { exact: true })).toBeVisible();
+  await expect(origins.getByText("86,7 M€", { exact: true })).toHaveCount(0);
+  await expect(treasury.getByRole("region", { name: "Cuentas y transferencias", exact: true })).not.toBeVisible();
   await expect(cash.getByRole("article", { name: "Lo que solo se mueve", exact: true })).toHaveCount(0);
   await expect(cash.getByRole("button", { name: "Ver evidencia: Lo que solo se mueve", exact: true })).toHaveCount(0);
-  expect(await cash.textContent()).not.toMatch(/86,7 M€|Antes de separar|Después de separar|Falsa debilidad|Cómo interpretar la corrección/);
+  expect(await cash.textContent()).not.toMatch(/Antes de separar|Después de separar|Falsa debilidad|Cómo interpretar la corrección/);
   await expect(cash.getByText("Poca caja del negocio. Mucho apoyo del grupo.")).toBeVisible();
   await expect(page.getByRole("heading", { name: /caja negra/i })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Biblioteca de evidencia" })).toHaveCount(0);
@@ -79,6 +88,10 @@ test("origen de caja: solo negocio y apoyo como resultados principales", async (
   await expect(trigger).toBeFocused();
   await cash.getByRole("link", { name: "Explorar COMP_0655" }).click();
   await expect(page.getByRole("heading", { name: "COMP_0655", exact: true })).toBeVisible();
+  const missingTreasury = page.getByRole("region", { name: "Movimientos de tesorería", exact: true });
+  await expect(missingTreasury.getByText("No disponible", { exact: true })).toBeVisible();
+  await expect(missingTreasury.getByText("No se deduce este importe", { exact: false })).toBeVisible();
+  await expect(missingTreasury.getByText("1,2 M€", { exact: true })).toHaveCount(0);
 });
 
 test("tiempo financiado: puntualidad independiente y selector AR/AP", async ({ page }) => {

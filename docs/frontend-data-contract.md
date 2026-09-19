@@ -100,7 +100,10 @@ Las cuatro dimensiones indican una mejor situación cuando suben, no más crecim
 - Categorías: `operating`, `circulation`, `support`, `uncertain`, exactamente una de cada una.
 - No sumar los importes principales mostrados: pueden usar bases brutas o netas, siempre etiquetadas.
 - `apparent_net` es una observación independiente suministrada, no un saldo reconstruido por el frontend.
-- La presentación principal muestra solo dos resultados: lo que genera el negocio y lo que aporta el grupo, ambos como netos identificados. La tarjeta «Lo que solo se mueve» se ha retirado. La circulación se conserva en el contrato y el detalle secundario, junto a los movimientos brutos. Volumen movido no significa saldo disponible.
+- La presentación se divide en dos bloques. «Origen de la caja» muestra Generación operativa y Apoyo intragrupo como netos identificados, junto a No identificado como volumen bruto sin atribuir. No sumar esas tres cifras como caja generada. «Movimientos de tesorería» muestra aparte los traslados identificados entre cuentas propias, contados una sola vez; no son saldo disponible ni una nueva fuente de liquidez.
+- `cash_truth.own_account_circulation` es un agregado opcional/nullable suministrado por Data: `transferred_amount` (EUR no negativos, cada traslado contado una vez), `transfer_count` (entero no negativo), `explanation`, `confidence` nullable y `evidence_refs`. Su periodo es `cash_truth.period`. Solo incluye traslados emparejados entre cuentas del mismo titular: excluir otras sociedades, comisiones, divisas no resueltas y movimientos pendientes o no identificados. Data prepara este agregado fuera del frontend.
+- El frontend no obtiene el importe transferido dividiendo `circulation.gross_movement` entre dos ni sumando unas pocas filas de muestra. Si falta `own_account_circulation`, muestra «No disponible», aunque haya circulación bruta o muestras de transferencias. Un importe explícito de cero sí es un dato válido. Para la demo aislada, COMP_0356 suministra 86.725.600 € en 34 traslados; se presenta redondeado como 86,7 M€, con el importe exacto en el detalle emergente.
+- El desglose bruto, las cuentas y las transferencias representativas permanecen en desplegables. Las referencias de evidencia del nuevo agregado deben existir igual que las demás; las muestras no tienen por qué reproducir el total.
 - `comparison` contiene observaciones preparadas por Data. `correction` se conserva como campo legado por compatibilidad, pero ya no se representa en la UI: exportar `null` si no existe una corrección real documentada. No fabricar un antes/después para explicar la circulación.
 - COMP_0356 ilustra +25,6 mil € de operación, +4,14 M€ de apoyo y cero neto en circulación identificada. Esto señala el peso del apoyo, no demuestra insolvencia ni autosuficiencia.
 - Se ha retirado la biblioteca independiente de evidencia; se mantienen los botones contextuales en factores, caja, transferencias, tiempos y alertas.
@@ -220,6 +223,13 @@ Si Data aún no suministra simulaciones, exportar `scenarios: []` y `example_id:
     "period": "sep 2025 – ago 2026",
     "total_gross_movement": 179046800,
     "apparent_net": 4165600,
+    "own_account_circulation": {
+      "transferred_amount": 86725600,
+      "transfer_count": 34,
+      "explanation": "Agregado de traslados emparejados entre cuentas de COMP_0356, contado una vez por traslado. Excluye otras sociedades, comisiones y movimientos sin resolver. Las filas de evidencia son muestras, no el conjunto completo.",
+      "confidence": 94,
+      "evidence_refs": ["cash-movements"]
+    },
     "account_flows": {
       "period": "sep 2025 – ago 2026",
       "explanation": "Muestras representativas ya incluidas en el desglose; no sumar de nuevo ni presumir un inventario completo.",

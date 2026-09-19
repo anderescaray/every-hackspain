@@ -27,11 +27,11 @@ export function numberLabel(value: number, decimals = 1): string {
   return new Intl.NumberFormat("es-ES", { maximumFractionDigits: decimals }).format(value);
 }
 
-export function money(value: number, signed = false): string {
+export function money(value: number, signed = false, decimals = 2): string {
   const absolute = Math.abs(value);
   const divisor = absolute >= 1000000 ? 1000000 : absolute >= 1000 ? 1000 : 1;
   const suffix = divisor === 1000000 ? " M€" : divisor === 1000 ? " mil €" : " €";
-  return `${value < 0 ? "−" : signed && value > 0 ? "+" : ""}${numberLabel(absolute / divisor, 2)}${suffix}`;
+  return `${value < 0 ? "−" : signed && value > 0 ? "+" : ""}${numberLabel(absolute / divisor, decimals)}${suffix}`;
 }
 
 export function exactMoney(value: number): string {
