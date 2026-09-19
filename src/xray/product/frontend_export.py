@@ -209,24 +209,33 @@ def _simulation(scenarios=None, health_score=None, has_invoices=True):
     if scenarios is None or not len(scenarios):
         return {"inputs": inputs, "scenarios": [], "example_id": None,
                 "methodology": "Los escenarios precalculados todavía no están disponibles para esta empresa: el simulador muestra ausencia en lugar de estimar. Escenario, no predicción."}
+    keys = ("customer_term", "collection_delay", "supplier_term", "internal_support")
+    single = {}   # efecto de cada palanca sola, para desglosar combinaciones
+    for r in scenarios.itertuples(index=False):
+        changed = [k for k in keys if int(getattr(r, k)) != 0]
+        if len(changed) == 1:
+            single[(changed[0], int(getattr(r, changed[0])))] = round(float(r.delta), 1)
     out, best = [], None
     for r in scenarios.itertuples(index=False):
-        lever = None if r.scenario_id == "base" else r.scenario_id.split(":")[0]
+        changed = [k for k in keys if int(getattr(r, k)) != 0]
         points = round(float(r.delta), 1)
-        label = "Situación actual" if lever is None else f"{LEVERS[lever]['label']}: {getattr(r, lever):+d} {'%' if LEVERS[lever]['unit'] == '%' else 'días'}"
-        if lever is None:
-            explanation = "Sin cambios: coincide con el Health Score publicado."
-        elif points == 0 and lever in ("collection_delay", "supplier_term") and not has_invoices:
-            explanation = "Sin efecto: la empresa no tiene facturas en la ventana, así que el retraso de cobro/pago no forma parte de su score."
-        elif points == 0:
-            explanation = "Sin efecto apreciable sobre el score con la referencia actual."
+        fmt = lambda k: f"{LEVERS[k]['label']}: {int(getattr(r, k)):+d} {'%' if LEVERS[k]['unit'] == '%' else 'días'}"
+        if not changed:
+            label, explanation, impacts = "Situación actual", "Sin cambios: coincide con el Health Score publicado.", []
         else:
-            explanation = f"Cambio sostenido seis meses; el Health Score pasa de {int(round(r.base_score))} a {int(round(r.score))} ({points:+.1f} puntos)."
-        out.append({"id": r.scenario_id, "label": label,
-                    "inputs": {k: int(getattr(r, k)) for k in ("customer_term", "collection_delay", "supplier_term", "internal_support")},
-                    "health_score": _score(r.score), "impacts": [] if lever is None else [{"key": lever, "label": LEVERS[lever]["label"], "points": points}],
-                    "explanation": explanation})
-        if lever is not None and (best is None or abs(points) > abs(best[1])):
+            label = " · ".join(fmt(k) for k in changed)
+            impacts = [{"key": k, "label": LEVERS[k]["label"], "points": single.get((k, int(getattr(r, k))), 0.0)} for k in changed]
+            if points == 0 and all(k in ("collection_delay", "supplier_term") for k in changed) and not has_invoices:
+                explanation = "Sin efecto: la empresa no tiene facturas en la ventana, así que el retraso de cobro/pago no forma parte de su score."
+            elif points == 0:
+                explanation = "Sin efecto apreciable sobre el score con la referencia actual."
+            else:
+                explanation = f"Cambio sostenido seis meses; el Health Score pasa de {int(round(r.base_score))} a {int(round(r.score))} ({points:+.1f} puntos)."
+                if len(changed) > 1:
+                    explanation += " Los puntos por palanca son los efectos de cada una por separado; el conjunto no es aditivo."
+        out.append({"id": r.scenario_id, "label": label, "inputs": {k: int(getattr(r, k)) for k in keys},
+                    "health_score": _score(r.score), "impacts": impacts, "explanation": explanation})
+        if len(changed) == 1 and (best is None or abs(points) > abs(best[1])):
             best = (r.scenario_id, points)
     if health_score is not None:
         out = [s for s in out if s["id"] != "base" or s["health_score"] == health_score]
