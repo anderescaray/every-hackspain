@@ -30,11 +30,12 @@ for (const [id, fixture] of Object.entries(fixtureCompanies)) {
   });
 }
 
-test("la corrección de caja mantiene falsa debilidad y dependencia", () => {
+test("el origen distingue negocio, apoyo y circulación sin inventar una corrección", () => {
   const company = fixtureCompanies.COMP_0356;
-  assert.equal(company.cash_truth.correction?.apparent_operating, -86700000);
-  assert.equal(company.cash_truth.correction?.identified_operating, 25600);
-  assert.equal(company.cash_truth.correction?.observed_support, 4140000);
+  assert.equal(company.cash_truth.correction, null);
+  assert.equal(company.cash_truth.components[0].net_amount, 25600);
+  assert.equal(company.cash_truth.components[1].net_amount, 0);
+  assert.equal(company.cash_truth.components[2].net_amount, 4140000);
   assert.equal(company.cash_truth.apparent_net, fixtureCompanies.COMP_0655.cash_truth.apparent_net);
   assert.notEqual(company.cash_truth.components[0].net_amount, fixtureCompanies.COMP_0655.cash_truth.components[0].net_amount);
   assert.equal(company.cash_truth.components[3].confidence, null);

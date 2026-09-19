@@ -51,13 +51,18 @@ test("una puntuación protagonista, cuatro dimensiones y confianza separada", as
   expect(await header.textContent()).not.toMatch(/Pulse Score|Stability|Estabilidad/);
 });
 
-test("origen de caja: corrección, comparación y modal trazable", async ({ page }) => {
+test("origen de caja: negocio, apoyo, circulación y evidencia contextual", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
   const cash = page.getByRole("region", { name: "Origen de la caja", exact: true });
-  await expect(cash.getByText("−86,7 M€", { exact: true })).toBeVisible();
-  await expect(cash.getByText("+25,6 mil €", { exact: true }).first()).toBeVisible();
-  await expect(cash.getByText("+4,14 M€", { exact: true }).first()).toBeVisible();
-  await expect(cash.getByText("Falsa debilidad. Dependencia real.")).toBeVisible();
+  await expect(cash.getByRole("article", { name: "Lo que genera el negocio", exact: true }).getByText("+25,6 mil €", { exact: true })).toBeVisible();
+  await expect(cash.getByRole("article", { name: "Lo que aporta el grupo", exact: true }).getByText("+4,14 M€", { exact: true })).toBeVisible();
+  await expect(cash.getByRole("article", { name: "Lo que solo se mueve", exact: true }).getByText("0 €", { exact: true })).toBeVisible();
+  expect(await cash.textContent()).not.toMatch(/86,7 M€|Antes de separar|Después de separar|Falsa debilidad|Cómo interpretar la corrección/);
+  await expect(cash.getByText("Poca caja del negocio. Mucho apoyo del grupo.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /caja negra/i })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Biblioteca de evidencia" })).toHaveCount(0);
+  await cash.getByText("Ver desglose y movimientos brutos", { exact: true }).click();
+  await expect(cash.getByText("179,05 M€", { exact: true })).toBeVisible();
   const trigger = cash.getByRole("button", { name: "Ver evidencia: Origen de la caja", exact: true });
   await trigger.click();
   const dialog = page.getByRole("dialog");

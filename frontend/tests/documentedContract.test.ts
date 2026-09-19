@@ -19,6 +19,9 @@ test("el JSON completo de la documentación cumple el contrato de Data y el vali
   assert.equal(company.health_score, 72);
   assert.ok(company.time_borrowed.ar && company.time_borrowed.ap);
   assert.equal(company.simulation.scenarios.length, 2);
+  assert.equal(company.cash_truth.account_flows?.accounts.length, 3);
+  assert.equal(company.cash_truth.account_flows?.transfers.length, 3);
+  assert.equal(company.cash_truth.correction, null);
   const directory = await mkdtemp(path.join(os.tmpdir(), "embat-doc-contract-"));
   try {
     await writeFile(path.join(directory, `${company.company_id}.json`), block[1]);

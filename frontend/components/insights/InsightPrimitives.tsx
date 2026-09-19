@@ -1,11 +1,11 @@
-import type { EvidenceRef } from "@/types/companyDetail";
+import type { EvidenceRef, TransactionEvidenceRef } from "@/types/companyDetail";
 import styles from "./insights.module.css";
 
-export type OpenEvidence = (refs: EvidenceRef[], title: string) => void;
+export type OpenEvidence = (refs: EvidenceRef[], title: string, records?: TransactionEvidenceRef[]) => void;
 
-export function EvidenceButton({ refs, title, onOpen }: { refs: EvidenceRef[]; title: string; onOpen: OpenEvidence }) {
+export function EvidenceButton({ refs, title, records, onOpen }: { refs: EvidenceRef[]; title: string; records?: TransactionEvidenceRef[]; onOpen: OpenEvidence }) {
   if (!refs.length) return <span className={styles.unavailable}>No identificable con suficiente confianza.</span>;
-  return <button type="button" className={styles.evidenceButton} onClick={() => onOpen(refs, title)} aria-label={`Ver evidencia: ${title}`}>Ver evidencia <span aria-hidden="true">↗</span></button>;
+  return <button type="button" className={styles.evidenceButton} onClick={() => onOpen(refs, title, records)} aria-label={`Ver evidencia: ${title}`}>Ver evidencia <span aria-hidden="true">↗</span></button>;
 }
 
 export function Confidence({ value }: { value: number | null }) {

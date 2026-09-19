@@ -18,9 +18,44 @@ const modelSchema = z.object({ version: text, provisional: z.boolean(), weights:
 const historySchema = z.object({ month: date, health_score: score.int() });
 const driverSchema = z.object({ id: text, driver: text, affected_dimensions: z.array(dimensionKeySchema).min(1).max(4), impact: amount, direction: z.enum(["positive", "negative", "neutral"]), explanation: text, evidence_count: count, evidence_refs: refs });
 const cashComponentSchema = z.object({ category: cashCategorySchema, label: text, gross_movement: amount.nonnegative(), net_amount: amount.nullable(), explanation: text, confidence: score.nullable(), evidence_refs: refs });
+const cashAccountSchema = z.object({
+  account_id: text,
+  label: text,
+  bank_name: text.nullable(),
+  currency: z.literal("EUR"),
+  ownership: z.enum(["company", "group_company", "external", "unknown"]),
+  owner_company_id: z.string().regex(/^COMP_\d{4,10}$/).nullable(),
+  owner_group_id: text.nullable(),
+  ownership_source: text.nullable(),
+  confidence: score.nullable(),
+}).strict();
+const transferLegSchema = z.object({ evidence_id: text, transaction_id: text }).strict();
+const accountTransferSchema = z.object({
+  id: text,
+  kind: z.enum(["own_transfer", "intragroup_transfer", "external_transfer", "unresolved"]),
+  from_account_id: text.nullable(),
+  to_account_id: text.nullable(),
+  date,
+  amount: amount.positive(),
+  gross_movement: amount.nonnegative(),
+  company_net_amount: amount.nullable(),
+  category: cashCategorySchema,
+  match_status: z.enum(["matched", "partial", "unmatched"]),
+  debit: transferLegSchema.nullable(),
+  credit: transferLegSchema.nullable(),
+  explanation: text,
+  confidence: score.nullable(),
+}).strict();
+const accountFlowsSchema = z.object({
+  period: text,
+  explanation: text,
+  accounts: z.array(cashAccountSchema).max(50),
+  transfers: z.array(accountTransferSchema).max(10),
+}).strict();
 const cashTruthSchema = z.object({
   period: text,
   total_gross_movement: amount.nonnegative(),
+  account_flows: accountFlowsSchema.nullable().optional(),
   apparent_net: amount,
   components: z.array(cashComponentSchema).length(4),
   headline: text,
@@ -35,7 +70,7 @@ const timingSnapshotSchema = z.object({ period: text, payment_term: amount.nonne
 const timingSideSchema = z.object({ counterparty_id: text, before: timingSnapshotSchema, after: timingSnapshotSchema, headline: text, explanation: text, methodology: text, confidence: score.nullable(), evidence_count: count, evidence_refs: refs });
 const timeBorrowedSchema = z.object({ ar: timingSideSchema.nullable(), ap: timingSideSchema.nullable() });
 const alertSchema = z.object({ id: text, severity: z.enum(["high", "medium", "low"]), title: text, explanation: text, period: text, evidence_refs: refs });
-const transactionSchema = z.object({ kind: z.literal("transaction"), id: text, transaction_date: date, amount, category: cashCategorySchema, description: text });
+const transactionSchema = z.object({ kind: z.literal("transaction"), id: text, account_id: text.nullable().optional(), transaction_date: date, amount, category: cashCategorySchema, description: text });
 const invoiceSchema = z.object({ kind: z.literal("invoice"), id: text, invoice: text, counterparty_id: text, side: z.enum(["ar", "ap"]), issue_date: date, due_date: date, payment_date: date.nullable(), amount: amount.nonnegative() });
 const observationSchema = z.object({ kind: z.literal("observation"), id: text, metric: text, before: amount, after: amount, unit: z.enum(["EUR", "%", "days"]) });
 const evidenceSchema = z.object({ id: text, title: text, period: text, explanation: text, confidence: score.nullable(), total_count: count, rows: z.array(z.discriminatedUnion("kind", [transactionSchema, invoiceSchema, observationSchema])).max(10) });
@@ -88,6 +123,69 @@ export const companyDetailSchema = z.object({
     if (group.rows.length > group.total_count) issue("La muestra supera el conjunto declarado", ["evidence", index]);
     if (group.rows.some((row) => row.kind === "invoice" && (row.due_date < row.issue_date || (row.payment_date !== null && row.payment_date < row.issue_date)))) issue("Fechas de factura incoherentes", ["evidence", index]);
   });
+  const flows = company.cash_truth.account_flows;
+  if (flows) {
+    const root = ["cash_truth", "account_flows"];
+    unique(flows.accounts.map((account) => account.account_id), [...root, "accounts"]);
+    unique(flows.transfers.map((transfer) => transfer.id), [...root, "transfers"]);
+    const accounts = new Map(flows.accounts.map((account) => [account.account_id, account]));
+    flows.accounts.forEach((account, index) => {
+      const location = [...root, "accounts", index];
+      if (account.ownership === "unknown") {
+        if (account.owner_company_id !== null || account.owner_group_id !== null) issue("Titularidad no confirmada: no atribuir empresa ni grupo", location);
+      } else {
+        if (!account.owner_company_id || !account.owner_group_id || !account.ownership_source) issue("La titularidad identificada necesita empresa, grupo y fuente", location);
+        if (account.ownership === "company" && (account.owner_company_id !== company.company_id || account.owner_group_id !== company.group_id)) issue("La cuenta propia debe pertenecer a la empresa analizada", location);
+        if (account.ownership === "group_company" && (account.owner_company_id === company.company_id || account.owner_group_id !== company.group_id)) issue("Otra sociedad del grupo debe ser una empresa distinta del mismo grupo", location);
+        if (account.ownership === "external" && (account.owner_company_id === company.company_id || account.owner_group_id === company.group_id)) issue("Un tercero no puede ser la empresa ni otra sociedad del grupo", location);
+      }
+    });
+    company.evidence.forEach((group, index) => {
+      if (group.rows.some((row) => row.kind === "transaction" && row.account_id != null && !accounts.has(row.account_id))) issue("Cuenta de evidencia no incluida en el registro", ["evidence", index]);
+    });
+    const usedLegs = new Set<string>();
+    flows.transfers.forEach((transfer, index) => {
+      const location = [...root, "transfers", index];
+      const from = transfer.from_account_id ? accounts.get(transfer.from_account_id) : undefined;
+      const to = transfer.to_account_id ? accounts.get(transfer.to_account_id) : undefined;
+      if ((transfer.from_account_id && !from) || (transfer.to_account_id && !to)) issue("Referencia a una cuenta inexistente", location);
+      if (transfer.from_account_id !== null && transfer.from_account_id === transfer.to_account_id) issue("Origen y destino deben ser cuentas distintas", location);
+      if (transfer.date > company.as_of) issue("La transferencia supera la fecha de corte", location);
+      const ownPair = from?.ownership === "company" && to?.ownership === "company";
+      const crosses = (ownership: "group_company" | "external") => (from?.ownership === "company" && to?.ownership === ownership) || (to?.ownership === "company" && from?.ownership === ownership);
+      if (from?.ownership !== "company" && to?.ownership !== "company") issue("La transferencia debe incluir una cuenta de la empresa analizada", location);
+      if (transfer.kind === "own_transfer" && !ownPair) issue("Un traslado propio necesita dos cuentas de la misma empresa", location);
+      if (transfer.kind === "intragroup_transfer" && !crosses("group_company")) issue("La transferencia intragrupo necesita otra sociedad identificada del grupo", location);
+      if (transfer.kind === "external_transfer" && !crosses("external")) issue("La transferencia externa necesita un tercero identificado", location);
+      if (transfer.kind === "unresolved" && (transfer.category !== "uncertain" || transfer.company_net_amount !== null)) issue("Un origen no resuelto no permite atribuir finalidad ni neto", location);
+      if (transfer.kind === "own_transfer") {
+        const complete = transfer.match_status === "matched";
+        if (transfer.category !== (complete ? "circulation" : "uncertain") || transfer.company_net_amount !== (complete ? 0 : null)) issue("Solo un traslado propio emparejado permite circulación con neto cero", location);
+      }
+      const resolveLeg = (leg: z.infer<typeof transferLegSchema> | null, accountId: string | null, sign: number) => {
+        if (!leg) return undefined;
+        const row = company.evidence.find((group) => group.id === leg.evidence_id)?.rows.find((item) => item.id === leg.transaction_id);
+        const key = `${accountId ?? ""}/${leg.transaction_id}`;
+        if (usedLegs.has(key)) issue("No reutilizar un movimiento en varias transferencias", location);
+        usedLegs.add(key);
+        if (!row || row.kind !== "transaction" || !accountId || row.account_id !== accountId || row.transaction_date > company.as_of || Math.sign(row.amount) !== sign || Math.abs(Math.abs(row.amount) - transfer.amount) > 0.01) {
+          issue("La evidencia del tramo debe corresponder a cuenta, signo e importe", location);
+          return undefined;
+        }
+        return row;
+      };
+      const debit = resolveLeg(transfer.debit, transfer.from_account_id, -1);
+      const credit = resolveLeg(transfer.credit, transfer.to_account_id, 1);
+      if (transfer.match_status === "matched" && (!debit || !credit)) issue("Emparejado requiere evidencia de salida y entrada", location);
+      if (transfer.match_status === "partial" && Number(Boolean(debit)) + Number(Boolean(credit)) !== 1) issue("Parcial requiere exactamente un tramo observado", location);
+      if (transfer.match_status === "unmatched" && debit && credit) issue("Dos tramos declarados requieren un estado de emparejamiento coherente", location);
+      const companyLegs = [from?.ownership === "company" ? debit : undefined, to?.ownership === "company" ? credit : undefined].filter((row) => row !== undefined);
+      if (!companyLegs.length) issue("Se necesita al menos un movimiento observado de la empresa", location);
+      if (companyLegs.some((row) => row.category !== transfer.category)) issue("La categoría debe coincidir con la evidencia de la empresa", location);
+      if (Math.abs(companyLegs.reduce((sum, row) => sum + Math.abs(row.amount), 0) - transfer.gross_movement) > 0.01) issue("El bruto debe corresponder a los tramos observados de la empresa, sin duplicar otras sociedades", location);
+      if (transfer.company_net_amount !== null && Math.abs(companyLegs.reduce((sum, row) => sum + row.amount, 0) - transfer.company_net_amount) > 0.01) issue("El neto suministrado no coincide con los tramos observados de la empresa", location);
+    });
+  }
   company.simulation.inputs.forEach((input, index) => {
     if (input.min > 0 || input.max < 0 || input.min > input.max || input.baseline + input.min < 0) issue("Rango de ajustes no válido", ["simulation", "inputs", index]);
   });
@@ -113,6 +211,10 @@ export type HealthScoreModel = z.infer<typeof modelSchema>;
 export type HistoryPoint = z.infer<typeof historySchema>;
 export type CashCategory = z.infer<typeof cashCategorySchema>;
 export type CashTruth = z.infer<typeof cashTruthSchema>;
+export type CashAccount = z.infer<typeof cashAccountSchema>;
+export type AccountTransfer = z.infer<typeof accountTransferSchema>;
+export type AccountFlows = z.infer<typeof accountFlowsSchema>;
+export type TransactionEvidenceRef = z.infer<typeof transferLegSchema>;
 export type TimingSnapshot = z.infer<typeof timingSnapshotSchema>;
 export type TimingSide = z.infer<typeof timingSideSchema>;
 export type TimeBorrowed = z.infer<typeof timeBorrowedSchema>;

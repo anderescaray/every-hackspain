@@ -100,8 +100,38 @@ Las cuatro dimensiones indican una mejor situación cuando suben, no más crecim
 - Categorías: `operating`, `circulation`, `support`, `uncertain`, exactamente una de cada una.
 - No sumar los importes principales mostrados: pueden usar bases brutas o netas, siempre etiquetadas.
 - `apparent_net` es una observación independiente suministrada, no un saldo reconstruido por el frontend.
-- `correction` y `comparison` son explicaciones/observaciones preparadas por Data, no cálculos del navegador.
-- Para COMP_0356 se conserva la historia: −86,7 M€ aparentes → +25,6 mil € operativos identificados, con +4,14 M€ de apoyo. No implica declarar saludable a la empresa.
+- La presentación principal distingue lo que genera el negocio, lo que aporta el grupo y lo que solo circula. Muestra netos identificados; los movimientos brutos y su volumen total quedan en un desglose secundario. Volumen movido no significa saldo disponible.
+- `comparison` contiene observaciones preparadas por Data. `correction` se conserva como campo legado por compatibilidad, pero ya no se representa en la UI: exportar `null` si no existe una corrección real documentada. No fabricar un antes/después para explicar la circulación.
+- COMP_0356 ilustra +25,6 mil € de operación, +4,14 M€ de apoyo y cero neto en circulación identificada. Esto señala el peso del apoyo, no demuestra insolvencia ni autosuficiencia.
+- Se ha retirado la biblioteca independiente de evidencia; se mantienen los botones contextuales en factores, caja, transferencias, tiempos y alertas.
+
+### Cuentas y transferencias: extensión compatible de la versión 2.0
+
+`cash_truth.account_flows` es opcional y admite `null`. Los JSON anteriores siguen siendo válidos: si no hay detalle, la UI muestra «Detalle por cuentas todavía no disponible», sin inventar titularidad ni asumir que toda circulación es entre cuentas propias.
+
+El bloque contiene `period`, `explanation`, `accounts` (hasta 50 cuentas incluidas en las muestras) y `transfers` (hasta 10 transferencias representativas). No es una nueva suma ni un inventario necesariamente completo; sus importes ya están incluidos en los agregados de caja. No se muestran saldos por cuenta porque no se suministran en este contrato.
+
+**Cuentas**:
+
+- `account_id`: identificador estable. Puede ser el `product_id` de la fuente original; `transactions.product_id` identifica la cuenta y el registro de productos aporta `company_id`. Ese cruce corresponde al pipeline, no al frontend.
+- `label`, `bank_name` (nullable), `currency`: alias en español, banco y EUR. Usar IDs anonimizados, nunca IBAN completos o credenciales en archivos públicos.
+- `ownership`: `company` (empresa analizada), `group_company` (otra sociedad del mismo grupo), `external` (empresa de otro grupo identificada) o `unknown`.
+- `owner_company_id`, `owner_group_id`, `ownership_source`: empresa titular, grupo y fuente textual que respalda esa asignación. Para titularidad identificada son obligatorios y deben ser coherentes con la relación declarada. Para `unknown`, empresa y grupo son `null`; no atribuir el titular por similitud del nombre del banco o del importe.
+- `confidence`: cobertura/calidad del dato suministrado, nullable; no probabilidad de acierto.
+
+**Transferencias**:
+
+- `id`, `kind`, `from_account_id`, `to_account_id`, `date`, `amount`, `gross_movement`, `company_net_amount`, `category`, `match_status`, `debit`, `credit`, `explanation`, `confidence`.
+- `kind`: `own_transfer`, `intragroup_transfer`, `external_transfer` o `unresolved`. Al menos un extremo debe ser una cuenta identificada de la empresa analizada. Una cuenta de origen/destino desconocida se representa con `null` o mediante una cuenta de titularidad `unknown`.
+- `amount` es el importe de la transferencia, contado una vez; `gross_movement` cuenta los tramos observados **de la empresa analizada**, no los de todas las sociedades; `company_net_amount` es el neto suministrado atribuible a ese movimiento en la empresa, o `null` si no identificado. No es saldo disponible ni neto consolidado del grupo.
+- Ejemplo propio: salida 2,5 M€ y entrada 2,5 M€ en dos cuentas de COMP_0356 → importe trasladado 2,5 M€, bruto 5 M€, neto suministrado 0 €. Ejemplo intragrupo: entrada observada de 600 mil € desde otra sociedad → bruto de COMP_0356 600 mil €, neto +600 mil €, sin duplicar el cargo de la otra sociedad.
+- `category` es independiente de `kind`: una transferencia intragrupo puede ser un cobro operativo, apoyo u otra clasificación respaldada. No se convierte automáticamente en apoyo por pertenecer al mismo grupo.
+- `match_status`: `matched` exige salida y entrada documentadas; `partial` documenta exactamente un tramo; `unmatched` no declara una pareja completa.
+- `debit` y `credit`: `{ "evidence_id": "id-del-grupo", "transaction_id": "id-de-la-fila" }`, o `null` si falta ese tramo. Las filas deben ser de tipo `transaction` e incluir `account_id`, coherente con origen/destino, signo, importe y categoría. El botón de evidencia filtra exclusivamente esos registros.
+- Un traslado propio solo puede declararse `circulation` con neto 0 si está emparejado y ambos titulares son la misma empresa. Si está parcial/sin emparejar: `category: "uncertain"`, `company_net_amount: null`. No reconstruir el tramo ausente.
+- `unresolved` exige `category: "uncertain"` y neto `null`, incluso si se observa una entrada. No equivale a cero.
+- El validador comprueba consistencia de IDs, titularidad, referencias y los importes ya suministrados de esas pocas filas. No busca parejas, no reclasifica y no calcula scores. No se reutiliza un movimiento en varias transferencias.
+- Esta versión solo representa transferencias simples en EUR con tramos de igual importe. Comisiones, cambio de divisa, agrupaciones de pagos y diferencias de fecha de corte necesitan tratamiento previo de Data; no atribuirles automáticamente neto cero. Si la pareja no puede acreditarse dentro del corte, usar estado parcial/no identificado u omitir la muestra.
 
 ### Tiempo financiado
 
@@ -115,7 +145,7 @@ Cada `evidence_refs` apunta a un `evidence[].id` existente. Los IDs de grupos, f
 
 Tipos de fila:
 
-- `transaction`: `id`, `transaction_date`, `amount`, `category`, `description`.
+- `transaction`: `id`, `transaction_date`, `amount`, `category`, `description`; `account_id` es opcional/nullable en archivos anteriores y obligatorio para las filas enlazadas desde `account_flows`.
 - `invoice`: `id`, `invoice`, `counterparty_id`, `side` (`ar`/`ap`), `issue_date`, `due_date`, `payment_date` (nullable), `amount`.
 - `observation`: `id`, `metric`, `before`, `after`, `unit` (`EUR`, `%`, `days`). Para indicadores agregados de crecimiento bajo presión. No sustituye la evidencia transaccional por una causa inferida.
 
@@ -153,7 +183,7 @@ Si Data aún no suministra simulaciones, exportar `scenarios: []` y `example_id:
   "assessment": "Señales de presión y dependencia de apoyo",
   "confidence": 88,
   "trajectory": "deteriorating",
-  "summary": "La debilidad operativa aparente está sobreestimada, pero el apoyo intragrupo merece atención.",
+  "summary": "La operación genera poca caja neta frente al apoyo intragrupo recibido. El saldo por sí solo no explica el origen de la liquidez.",
   "history": [
     { "month": "2024-09-01", "health_score": 86 },
     { "month": "2024-10-01", "health_score": 87 },
@@ -190,18 +220,32 @@ Si Data aún no suministra simulaciones, exportar `scenarios: []` y `example_id:
     "period": "sep 2025 – ago 2026",
     "total_gross_movement": 179046800,
     "apparent_net": 4165600,
+    "account_flows": {
+      "period": "sep 2025 – ago 2026",
+      "explanation": "Muestras representativas ya incluidas en el desglose; no sumar de nuevo ni presumir un inventario completo.",
+      "accounts": [
+        { "account_id": "ACCOUNT_0356_A", "label": "Cuenta operativa", "bank_name": "Banco A", "currency": "EUR", "ownership": "company", "owner_company_id": "COMP_0356", "owner_group_id": "GROUP_0042", "ownership_source": "Registro de cuentas suministrado: cuenta asignada a COMP_0356.", "confidence": 94 },
+        { "account_id": "ACCOUNT_0356_B", "label": "Cuenta de tesorería", "bank_name": "Banco B", "currency": "EUR", "ownership": "company", "owner_company_id": "COMP_0356", "owner_group_id": "GROUP_0042", "ownership_source": "Registro de cuentas suministrado: cuenta asignada a COMP_0356.", "confidence": 94 },
+        { "account_id": "ACCOUNT_GROUP_A", "label": "Cuenta de otra sociedad del grupo", "bank_name": "Banco A", "currency": "EUR", "ownership": "group_company", "owner_company_id": "COMP_0007", "owner_group_id": "GROUP_0042", "ownership_source": "Registro de cuentas y sociedades suministrado: COMP_0007 pertenece a GROUP_0042.", "confidence": 91 }
+      ],
+      "transfers": [
+        { "id": "own-cycle", "kind": "own_transfer", "from_account_id": "ACCOUNT_0356_A", "to_account_id": "ACCOUNT_0356_B", "date": "2026-08-03", "amount": 2500000, "gross_movement": 5000000, "company_net_amount": 0, "category": "circulation", "match_status": "matched", "debit": { "evidence_id": "cash-movements", "transaction_id": "TX-001" }, "credit": { "evidence_id": "cash-movements", "transaction_id": "TX-002" }, "explanation": "Dos cuentas del mismo titular: se traslada dinero, no se genera caja nueva.", "confidence": 94 },
+        { "id": "group-support", "kind": "intragroup_transfer", "from_account_id": "ACCOUNT_GROUP_A", "to_account_id": "ACCOUNT_0356_A", "date": "2026-08-14", "amount": 600000, "gross_movement": 600000, "company_net_amount": 600000, "category": "support", "match_status": "partial", "debit": null, "credit": { "evidence_id": "cash-movements", "transaction_id": "TX-005" }, "explanation": "Entrada identificada de otra sociedad, clasificada como apoyo. Solo se documenta la entrada en la empresa analizada.", "confidence": 91 },
+        { "id": "unidentified-source", "kind": "unresolved", "from_account_id": null, "to_account_id": "ACCOUNT_0356_A", "date": "2026-08-19", "amount": 210000, "gross_movement": 210000, "company_net_amount": null, "category": "uncertain", "match_status": "partial", "debit": null, "credit": { "evidence_id": "cash-movements", "transaction_id": "TX-006" }, "explanation": "Entrada observada sin suficiente identificación del origen. No se atribuye a generación operativa ni a apoyo.", "confidence": null }
+      ]
+    },
     "components": [
       { "category": "operating", "label": "Generado por la operación", "gross_movement": 1245600, "net_amount": 25600, "explanation": "Neto operativo identificado tras separar la circulación.", "confidence": 86, "evidence_refs": ["cash-movements"] },
       { "category": "circulation", "label": "Circulación de tesorería", "gross_movement": 173451200, "net_amount": 0, "explanation": "Movimiento bruto contando entrada y salida, no generación operativa.", "confidence": 94, "evidence_refs": ["cash-movements"] },
       { "category": "support", "label": "Apoyo interno / intragrupo", "gross_movement": 4140000, "net_amount": 4140000, "explanation": "Apoyo identificado, no ingreso de actividad.", "confidence": 91, "evidence_refs": ["cash-movements"] },
       { "category": "uncertain", "label": "Origen no identificado", "gross_movement": 210000, "net_amount": null, "explanation": "No identificable con suficiente confianza.", "confidence": null, "evidence_refs": [] }
     ],
-    "headline": "Falsa debilidad. Dependencia real.",
-    "explanation": "Separar la circulación elimina un falso deterioro operativo y revela dependencia del apoyo. No equivale a considerar saludable a la empresa.",
+    "headline": "Poca caja del negocio. Mucho apoyo del grupo.",
+    "explanation": "La operación identificada aporta 25,6 mil € netos y el apoyo intragrupo 4,14 M€. La circulación identificada tiene neto cero. El peso del apoyo merece atención, sin concluir insolvencia ni autosuficiencia.",
     "confidence": 86,
     "evidence_refs": ["cash-movements"],
     "evidence_summary": ["34 ciclos de tesorería emparejados", "12 transferencias intragrupo identificadas"],
-    "correction": { "apparent_operating": -86700000, "identified_operating": 25600, "observed_support": 4140000, "explanation": "Se separan 86,7256 M€ de salidas de circulación antes consideradas operativas. Es una corrección de clasificación, no caja nueva." },
+    "correction": null,
     "comparison": { "company_id": "COMP_0655", "apparent_net": 4165600, "operating_net": 3850000, "support_net": 315600, "circulation_gross": 2400000, "explanation": "Misma posición aparente de caja. Distinta realidad financiera." }
   },
   "time_borrowed": {
@@ -236,12 +280,12 @@ Si Data aún no suministra simulaciones, exportar `scenarios: []` y `example_id:
     {
       "id": "cash-movements", "title": "Clasificación de caja y apoyo identificado", "period": "sep 2025 – ago 2026", "explanation": "Movimientos representativos de ejemplo, no una conciliación completa.", "confidence": 86, "total_count": 156,
       "rows": [
-        { "kind": "transaction", "id": "TX-001", "transaction_date": "2026-08-03", "amount": -2500000, "category": "circulation", "description": "Salida de tesorería" },
-        { "kind": "transaction", "id": "TX-002", "transaction_date": "2026-08-04", "amount": 2500000, "category": "circulation", "description": "Entrada de tesorería emparejada" },
-        { "kind": "transaction", "id": "TX-003", "transaction_date": "2026-08-05", "amount": 180000, "category": "operating", "description": "Cobros identificados" },
-        { "kind": "transaction", "id": "TX-004", "transaction_date": "2026-08-07", "amount": -154400, "category": "operating", "description": "Pagos operativos identificados" },
-        { "kind": "transaction", "id": "TX-005", "transaction_date": "2026-08-14", "amount": 600000, "category": "support", "description": "Apoyo intragrupo identificado" },
-        { "kind": "transaction", "id": "TX-006", "transaction_date": "2026-08-19", "amount": 210000, "category": "uncertain", "description": "Finalidad no identificada" }
+        { "kind": "transaction", "id": "TX-001", "account_id": "ACCOUNT_0356_A", "transaction_date": "2026-08-03", "amount": -2500000, "category": "circulation", "description": "Salida de tesorería" },
+        { "kind": "transaction", "id": "TX-002", "account_id": "ACCOUNT_0356_B", "transaction_date": "2026-08-04", "amount": 2500000, "category": "circulation", "description": "Entrada de tesorería emparejada" },
+        { "kind": "transaction", "id": "TX-003", "account_id": "ACCOUNT_0356_A", "transaction_date": "2026-08-05", "amount": 180000, "category": "operating", "description": "Cobros identificados" },
+        { "kind": "transaction", "id": "TX-004", "account_id": "ACCOUNT_0356_A", "transaction_date": "2026-08-07", "amount": -154400, "category": "operating", "description": "Pagos operativos identificados" },
+        { "kind": "transaction", "id": "TX-005", "account_id": "ACCOUNT_0356_A", "transaction_date": "2026-08-14", "amount": 600000, "category": "support", "description": "Apoyo intragrupo identificado" },
+        { "kind": "transaction", "id": "TX-006", "account_id": "ACCOUNT_0356_A", "transaction_date": "2026-08-19", "amount": 210000, "category": "uncertain", "description": "Finalidad no identificada" }
       ]
     },
     {

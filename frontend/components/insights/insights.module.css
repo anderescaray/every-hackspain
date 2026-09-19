@@ -122,6 +122,37 @@
 .correctionAfter strong { color: #1b7863; }
 .correctionSupport { background: #fcf7ed; }
 .correctionSupport strong { color: #926025; }
+.cashOrigins { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
+.cashOrigins > article { padding: 24px; display: flex; flex-direction: column; align-items: flex-start; border-right: 1px solid var(--line); }
+.cashOrigins > article:last-child { border-right: 0; }
+.cashOrigins h3 { font-size: 15px; margin: 8px 0 12px; }
+.cashOrigins strong { font-size: 31px; line-height: 1.3; letter-spacing: -.7px; font-weight: 550; }
+.cashOrigins p { font-size: 12px; line-height: 1.8; color: var(--muted); margin: 12px 0 15px; }
+.cashOrigins button { margin-top: auto; }
+.operatingOrigin { background: #f1f8f5; }
+.operatingOrigin > strong { color: #1b7863; }
+.supportOrigin { background: #fcf7ed; }
+.supportOrigin > strong { color: #926025; }
+.circulationOrigin { background: #f1f5fd; }
+.circulationOrigin > strong { color: #365a99; }
+.uncertainNotice { border-left: 3px solid #bac5d3; padding: 18px 20px; background: #f6f8fb; border-radius: 0 6px 6px 0; }
+.uncertainNotice h3 { font-size: 14px; }
+.uncertainNotice p { font-size: 12px; color: var(--muted); margin: 8px 0; }
+.cashBreakdown { margin-top: 18px; }
+.cashBreakdown > summary { font-size: 12px; color: var(--accent); cursor: pointer; padding: 10px 0; }
+.cashBreakdown .cashTotal { margin-top: 14px; }
+.cashBreakdown .cashTotal strong { font-size: 22px; }
+.cashBreakdown .cashTotal + p { margin-top: 12px; }
+@media (max-width: 850px) {
+  .cashOrigins > article { padding: 20px 16px; }
+  .cashOrigins strong { font-size: 26px; }
+}
+@media (max-width: 640px) {
+  .cashOrigins { grid-template-columns: 1fr; }
+  .cashOrigins > article { padding: 22px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .cashOrigins > article:last-child { border-bottom: 0; }
+  .cashOrigins strong { font-size: 32px; }
+}
 .cashLayout { display: grid; grid-template-columns: 1.6fr 1fr; gap: 30px; }
 .cashTotal { justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); align-items: flex-end; }
 .cashTotal strong { display: block; font-size: 28px; font-weight: 550; letter-spacing: -.7px; }
@@ -148,6 +179,45 @@
 .interpretationEvidence { margin-top: 22px; padding-top: 18px; border-top: 1px solid #dce5e6; }
 .interpretationEvidence ul { list-style: none; padding: 0; color: #4c646f; font-size: 11px; line-height: 2; margin: 8px 0; }
 .interpretationEvidence li::before { content: "—"; margin-right: 8px; color: #5c9390; }
+.accountSection { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 26px; }
+.accountSection > .inlineHeading { flex-wrap: wrap; align-items: flex-start; }
+.accountSection h3 { font-size: 19px; margin-top: 4px; }
+.accountSection > .accountIntro { font-size: 13px; color: var(--muted); margin: 13px 0; max-width: 860px; }
+.accountSection > .emptyState { margin-top: 18px; }
+.accountDirectory { margin: 18px 0; font-size: 12px; color: var(--muted); }
+.accountDirectory summary { cursor: pointer; padding: 9px 0; color: var(--accent); }
+.accountDirectory .tableScroll { margin-top: 12px; }
+.accountIdentity { display: flex; flex-direction: column; gap: 3px; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.accountIdentity strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+.accountIdentity > span, .accountIdentity > small { color: var(--muted); }
+.accountIdentity .accountOwnership { font-size: 10px; color: #465a81; }
+.accountIdentity > small { font-size: 10px; }
+.accountFilters { display: flex; flex-wrap: wrap; gap: 7px; margin: 20px 0 12px; }
+.accountFilters button { border: 1px solid #dbe3f0; background: white; color: var(--muted); padding: 8px 12px; border-radius: 5px; font-size: 11px; }
+.accountFilters button[aria-pressed="true"] { border-color: #a5bce9; background: #eaf1ff; color: #204eaa; }
+.accountTransferList { display: grid; gap: 14px; margin: 14px 0 18px; }
+.accountTransfer { border: 1px solid var(--line); border-radius: 8px; padding: 21px; }
+.accountTransfer > .inlineHeading { flex-wrap: wrap; }
+.accountTransfer h4 { margin: 0; font-size: 13px; font-weight: 600; }
+.accountRoute { display: grid; grid-template-columns: 1fr 30px 1fr; gap: 18px; align-items: start; padding: 20px 0; }
+.accountRoute > div { background: #f6f8fc; padding: 15px 18px; border-radius: 6px; min-width: 0; }
+.accountRoute .eyebrow { margin-bottom: 8px; }
+.transferArrow { color: #456bac; align-self: center; text-align: center; font-size: 25px; }
+.transferAmounts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 0 0 16px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.transferAmounts dt { color: var(--muted); font-size: 10px; }
+.transferAmounts dd { margin: 4px 0 0; font-size: 20px; font-weight: 550; }
+.accountTransfer .transferExplanation { font-size: 12px; color: var(--muted); line-height: 1.8; }
+.transferEvidence { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 14px; }
+.matchStatus { font-size: 10px; color: var(--muted); }
+.accountTransfer > .disclaimer { margin-top: 12px; }
+@media (max-width: 640px) {
+  .accountTransfer { padding: 16px; }
+  .accountRoute { grid-template-columns: 1fr; gap: 8px; }
+  .transferArrow { transform: rotate(90deg); justify-self: center; }
+  .transferAmounts { grid-template-columns: 1fr; gap: 13px; }
+  .transferAmounts > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; justify-content: space-between; }
+  .transferAmounts dd { font-size: 18px; margin: 0; }
+}
 .comparison { margin-top: 26px; padding-top: 24px; border-top: 1px solid var(--line); }
 .comparison h3 { margin-top: 5px; font-size: 15px; }
 .comparison .inlineHeading { margin-bottom: 14px; align-items: flex-start; }

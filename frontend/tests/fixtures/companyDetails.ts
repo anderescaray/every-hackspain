@@ -116,37 +116,46 @@ const comparisonAr = timing("ar", "COUNTERPARTY_03116", [75, 84, 9], [65, 69, 4]
 const comparisonAp = timing("ap", "COUNTERPARTY_03921", [50, 52, 2], [57, 59, 2], "Más plazo recibido. La caja se necesita después.", "El plazo de proveedores aumentó 7 días y el retraso de pago no cambió. Esto no identifica por qué cambiaron las condiciones.");
 
 const mainTransactions: TransactionEvidence[] = [
-  { kind: "transaction", id: "DEMO-TX-001", transaction_date: "2026-08-03", amount: -2500000, category: "circulation", description: "Ciclo de tesorería representativo: salida" },
-  { kind: "transaction", id: "DEMO-TX-002", transaction_date: "2026-08-04", amount: 2500000, category: "circulation", description: "Ciclo de tesorería representativo: entrada asociada" },
-  { kind: "transaction", id: "DEMO-TX-003", transaction_date: "2026-08-05", amount: 180000, category: "operating", description: "Cobros de clientes identificados" },
-  { kind: "transaction", id: "DEMO-TX-004", transaction_date: "2026-08-07", amount: -154400, category: "operating", description: "Pagos operativos identificados" },
-  { kind: "transaction", id: "DEMO-TX-005", transaction_date: "2026-06-12", amount: 250000, category: "support", description: "Transferencia intragrupo identificada" },
-  { kind: "transaction", id: "DEMO-TX-006", transaction_date: "2026-07-10", amount: 400000, category: "support", description: "Transferencia intragrupo identificada" },
-  { kind: "transaction", id: "DEMO-TX-007", transaction_date: "2026-08-14", amount: 600000, category: "support", description: "Transferencia intragrupo identificada" },
-  { kind: "transaction", id: "DEMO-TX-008", transaction_date: "2026-08-19", amount: 210000, category: "uncertain", description: "Finalidad no identificada con suficiente confianza" },
+  { kind: "transaction", id: "DEMO-TX-001", account_id: "ACCOUNT_0356_A", transaction_date: "2026-08-03", amount: -2500000, category: "circulation", description: "Ciclo de tesorería representativo: salida" },
+  { kind: "transaction", id: "DEMO-TX-002", account_id: "ACCOUNT_0356_B", transaction_date: "2026-08-04", amount: 2500000, category: "circulation", description: "Ciclo de tesorería representativo: entrada asociada" },
+  { kind: "transaction", id: "DEMO-TX-003", account_id: "ACCOUNT_0356_A", transaction_date: "2026-08-05", amount: 180000, category: "operating", description: "Cobros de clientes identificados" },
+  { kind: "transaction", id: "DEMO-TX-004", account_id: "ACCOUNT_0356_A", transaction_date: "2026-08-07", amount: -154400, category: "operating", description: "Pagos operativos identificados" },
+  { kind: "transaction", id: "DEMO-TX-005", account_id: "ACCOUNT_0356_A", transaction_date: "2026-06-12", amount: 250000, category: "support", description: "Transferencia intragrupo identificada" },
+  { kind: "transaction", id: "DEMO-TX-006", account_id: "ACCOUNT_0356_A", transaction_date: "2026-07-10", amount: 400000, category: "support", description: "Transferencia intragrupo identificada" },
+  { kind: "transaction", id: "DEMO-TX-007", account_id: "ACCOUNT_0356_A", transaction_date: "2026-08-14", amount: 600000, category: "support", description: "Transferencia intragrupo identificada" },
+  { kind: "transaction", id: "DEMO-TX-008", account_id: "ACCOUNT_0356_A", transaction_date: "2026-08-19", amount: 210000, category: "uncertain", description: "Finalidad no identificada con suficiente confianza" },
 ];
 
 const mainCash: CashTruth = {
   period: cashPeriod,
   total_gross_movement: 179046800,
   apparent_net: 4165600,
-  headline: "Falsa debilidad. Dependencia real.",
-  explanation: "Separar la circulación de tesorería elimina un falso deterioro operativo y revela dependencia de liquidez. La operación identificada es ligeramente positiva, pero la liquidez observada sigue dependiendo del apoyo identificado. Esto no equivale a considerar saludable a la empresa.",
+  headline: "Poca caja del negocio. Mucho apoyo del grupo.",
+  explanation: "La operación identificada aporta 25,6 mil € netos, frente a 4,14 M€ de apoyo intragrupo identificado. La circulación emparejada no aporta caja neta nueva. Tener liquidez no significa que la haya generado el negocio: conviene revisar el peso del apoyo, sin concluir por ello insolvencia ni autosuficiencia.",
   confidence: 86,
   evidence_refs: ["cash-movements"],
   evidence_summary: ["34 ciclos de tesorería emparejados", "12 transferencias intragrupo identificadas"],
+  account_flows: {
+    period: cashPeriod,
+    explanation: "Tres transferencias representativas ya incluidas en el desglose de caja. No son el inventario completo de cuentas ni todos los movimientos del periodo. Banco, titularidad y emparejamiento son datos ficticios suministrados para la demo.",
+    accounts: [
+      { account_id: "ACCOUNT_0356_A", label: "Cuenta operativa", bank_name: "Banco A", currency: "EUR", ownership: "company", owner_company_id: "COMP_0356", owner_group_id: "GROUP_0042", ownership_source: "Registro de cuentas de ejemplo: cuenta asignada a COMP_0356.", confidence: 94 },
+      { account_id: "ACCOUNT_0356_B", label: "Cuenta de tesorería", bank_name: "Banco B", currency: "EUR", ownership: "company", owner_company_id: "COMP_0356", owner_group_id: "GROUP_0042", ownership_source: "Registro de cuentas de ejemplo: cuenta asignada a COMP_0356.", confidence: 94 },
+      { account_id: "ACCOUNT_GROUP_A", label: "Cuenta de otra sociedad del grupo", bank_name: "Banco A", currency: "EUR", ownership: "group_company", owner_company_id: "COMP_0007", owner_group_id: "GROUP_0042", ownership_source: "Registro de cuentas y sociedades de ejemplo: COMP_0007 pertenece a GROUP_0042.", confidence: 91 },
+    ],
+    transfers: [
+      { id: "own-cycle", kind: "own_transfer", from_account_id: "ACCOUNT_0356_A", to_account_id: "ACCOUNT_0356_B", date: "2026-08-03", amount: 2500000, gross_movement: 5000000, company_net_amount: 0, category: "circulation", match_status: "matched", debit: { evidence_id: "cash-movements", transaction_id: "DEMO-TX-001" }, credit: { evidence_id: "cash-movements", transaction_id: "DEMO-TX-002" }, explanation: "El dinero sale de una cuenta y entra en otra del mismo titular. Se observan 5 M€ de movimiento bruto, pero solo se trasladan 2,5 M€ y el neto de este par en la empresa es cero. No es caja nueva.", confidence: 94 },
+      { id: "group-support", kind: "intragroup_transfer", from_account_id: "ACCOUNT_GROUP_A", to_account_id: "ACCOUNT_0356_A", date: "2026-08-14", amount: 600000, gross_movement: 600000, company_net_amount: 600000, category: "support", match_status: "partial", debit: null, credit: { evidence_id: "cash-movements", transaction_id: "DEMO-TX-007" }, explanation: "Aquí cambia la empresa titular: el dinero procede de COMP_0007 y entra en COMP_0356. El pipeline de ejemplo lo clasifica como apoyo. Solo se aporta evidencia de la entrada en COMP_0356, no del cargo en la otra sociedad.", confidence: 91 },
+      { id: "unidentified-source", kind: "unresolved", from_account_id: null, to_account_id: "ACCOUNT_0356_A", date: "2026-08-19", amount: 210000, gross_movement: 210000, company_net_amount: null, category: "uncertain", match_status: "partial", debit: null, credit: { evidence_id: "cash-movements", transaction_id: "DEMO-TX-008" }, explanation: "La entrada está observada, pero no se conoce suficientemente la cuenta de origen ni su titular. No se atribuye a cuentas propias, a apoyo del grupo ni a operación; el neto atribuible sigue sin identificar.", confidence: null },
+    ],
+  },
   components: [
     { category: "operating", label: "Generado por la operación", gross_movement: 1245600, net_amount: 25600, explanation: "Neto operativo identificado tras separar la circulación de tesorería emparejada.", confidence: 86, evidence_refs: ["cash-movements"] },
     { category: "circulation", label: "Circulación de tesorería", gross_movement: 173451200, net_amount: 0, explanation: "Movimientos brutos emparejados, contando entrada y salida. No son generación operativa de caja.", confidence: 94, evidence_refs: ["cash-movements"] },
     { category: "support", label: "Apoyo interno / intragrupo", gross_movement: 4140000, net_amount: 4140000, explanation: "Entradas de apoyo identificadas; no son ingresos de actividad ni caja generada por la operación.", confidence: 91, evidence_refs: ["cash-movements"] },
     { category: "uncertain", label: "Origen no identificado", gross_movement: 210000, net_amount: null, explanation: "No identificable con suficiente confianza.", confidence: null, evidence_refs: [] },
   ],
-  correction: {
-    apparent_operating: -86700000,
-    identified_operating: 25600,
-    observed_support: 4140000,
-    explanation: "La corrección ilustrativa separa 86,7256 M€ de salidas de circulación antes incluidas en la cifra operativa aparente. La entrada asociada también es circulación. El apoyo sigue separado: cambia la clasificación, no se crea caja nueva.",
-  },
+  correction: null,
   comparison: {
     company_id: "COMP_0655",
     apparent_net: 4165600,
@@ -261,17 +270,17 @@ export const fixtureCompanies: Record<string, CompanyDetail> = {
     assessment: "Señales de presión y dependencia de apoyo",
     confidence: 88,
     trajectory: "deteriorating",
-    summary: "La posición de caja no cuenta toda la historia. La debilidad operativa aparente está sobreestimada, pero la dependencia del apoyo intragrupo merece atención.",
+    summary: "La operación genera poca caja neta frente al apoyo intragrupo recibido. El saldo por sí solo no permite saber cuánto dinero aporta el negocio y cuánto llega de otras sociedades.",
     drivers_period: "sep 2024 – ago 2026 · contribuciones ilustrativas seleccionadas, no un desglose completo de la variación",
     drivers: [
-      { id: "support", driver: "Dependencia de liquidez", affected_dimensions: ["resilience", "cash_generation"], impact: -8, direction: "negative", explanation: "El apoyo identificado gana importancia en la liquidez observada. Esta dependencia es distinta de la corrección de la clasificación operativa.", evidence_count: 12, evidence_refs: ["cash-movements"] },
+      { id: "support", driver: "Dependencia de liquidez", affected_dimensions: ["resilience", "cash_generation"], impact: -8, direction: "negative", explanation: "El apoyo identificado gana importancia en la liquidez observada. Se muestra separado de lo que genera la actividad de la empresa.", evidence_count: 12, evidence_refs: ["cash-movements"] },
       { id: "terms", driver: "Plazos concedidos a clientes", affected_dimensions: ["momentum", "cash_generation"], impact: -5, direction: "negative", explanation: "Los plazos más largos mantienen la caja en manos del cliente durante más tiempo.", evidence_count: 48, evidence_refs: ["ar-timing"] },
       { id: "collections", driver: "Cobros", affected_dimensions: ["cash_generation"], impact: 2, direction: "positive", explanation: "El menor retraso compensa parcialmente la ampliación de los plazos a clientes.", evidence_count: 48, evidence_refs: ["ar-timing"] },
     ],
     cash_truth: mainCash,
     time_borrowed: { ar: mainAr, ap: mainAp },
     alerts: [
-      { id: "support", severity: "high", title: "Aumenta la dependencia de liquidez", explanation: "El apoyo identificado de 4,14 M€ acompaña a solo 25,6 mil € de neto operativo identificado. Corregir la clasificación no elimina esta dependencia.", period: cashPeriod, evidence_refs: ["cash-movements"] },
+      { id: "support", severity: "high", title: "Aumenta la dependencia de liquidez", explanation: "El apoyo identificado de 4,14 M€ acompaña a solo 25,6 mil € de neto operativo identificado. Conviene revisar cuánto necesita la empresa ese apoyo; no equivale a ventas ni demuestra por sí solo insolvencia.", period: cashPeriod, evidence_refs: ["cash-movements"] },
       { id: "customer-terms", severity: "medium", title: "Se amplían los plazos a clientes", explanation: "Los plazos concedidos pasaron de 75 a 90 días. Los cobros mejoraron, pero la conversión a caja se alargó.", period: afterPeriod, evidence_refs: ["ar-timing"] },
       { id: "supplier-terms", severity: "medium", title: "Se acorta la financiación de proveedores", explanation: "Los plazos recibidos pasaron de 60 a 45 días y la caja se necesita antes. No se identifica la causa.", period: afterPeriod, evidence_refs: ["ap-timing"] },
     ],

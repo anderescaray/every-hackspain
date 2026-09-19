@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CompanyDetail, EvidenceRef } from "@/types/companyDetail";
+import type { CompanyDetail, EvidenceRef, TransactionEvidenceRef } from "@/types/companyDetail";
 import { confidenceLabel, dateLabel, numberLabel, severityLabels, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { HEALTH_DIMENSIONS } from "@/lib/healthScore";
 import { TrajectoryChart } from "./TrajectoryChart";
@@ -15,8 +15,8 @@ import styles from "./insights.module.css";
 const severityOrder = { high: 0, medium: 1, low: 2 };
 
 export function CompanyInsights({ company }: { company: CompanyDetail }) {
-  const [evidence, setEvidence] = useState<{ refs: EvidenceRef[]; title: string } | null>(null);
-  const openEvidence = (refs: EvidenceRef[], title: string) => setEvidence({ refs, title });
+  const [evidence, setEvidence] = useState<{ refs: EvidenceRef[]; title: string; records?: TransactionEvidenceRef[] } | null>(null);
+  const openEvidence = (refs: EvidenceRef[], title: string, records?: TransactionEvidenceRef[]) => setEvidence({ refs, title, records });
   const alerts = [...company.alerts].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
   const isMock = company.source === "fixture";
   const trajectorySymbol = company.trajectory === "improving" ? "↑" : company.trajectory === "deteriorating" ? "↓" : "→";
@@ -79,25 +79,16 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     </div>
     <div id="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} onOpen={openEvidence} /></div>
     <TimeBorrowedSection timing={company.time_borrowed} onOpen={openEvidence} />
-    <div className={styles.bottomGrid}>
-      <section className={styles.panel} aria-label="Alertas priorizadas">
-        <SectionHeading number="05" title="Alertas" description="Qué merece atención. Evidencia antes de conclusiones."><span className={styles.periodBadge}>{alerts.length} alertas</span></SectionHeading>
-        <div className={styles.alerts}>{alerts.map((alert, index) => <details className={styles.alert} key={alert.id}>
-          <summary><span className={styles.alertRank}>{String(index + 1).padStart(2, "0")}</span><span className={styles.alertTitle}><span className={`${styles.severity} ${styles[alert.severity]}`}>Prioridad {severityLabels[alert.severity].toLowerCase()}</span><strong>{alert.title}</strong><small>{alert.period}</small></span><span className={styles.expandIcon} aria-hidden="true">+</span></summary>
-          <div className={styles.alertDetail}><p>{alert.explanation}</p><EvidenceButton refs={alert.evidence_refs} title={alert.title} onOpen={openEvidence} /></div>
-        </details>)}</div>
-        {!alerts.length && <p className={styles.emptyState}>No hay alertas priorizadas en este análisis. Esto no garantiza la salud financiera.</p>}
-      </section>
-      <section className={styles.panel} aria-label="Biblioteca de evidencia">
-        <SectionHeading number="06" title="Evidencia, no una caja negra" description="Cada explicación importante tiene un origen." />
-        <p className={styles.evidenceIntro}>{isMock ? "Los registros de ejemplo permiten revisar el razonamiento. Los datos podrán cambiar sin cambiar la experiencia." : "Consulta los registros representativos incluidos en este análisis."}</p>
-        <div className={styles.evidenceLibrary}>{company.evidence.map((group) => <div key={group.id}><div><h3>{group.title}</h3><span className={styles.smallText}>{group.rows.length} registros de muestra · <Confidence value={group.confidence} /></span></div><EvidenceButton refs={[group.id]} title={group.title} onOpen={openEvidence} /></div>)}</div>
-        {!company.evidence.length && <p className={styles.emptyState}>No identificable con suficiente confianza.</p>}
-        <p className={styles.disclaimer}>Cobertura no significa certeza. La información ausente o no identificada sigue visible.</p>
-      </section>
-    </div>
+    <section className={styles.panel} aria-label="Alertas priorizadas">
+      <SectionHeading number="05" title="Alertas" description="Qué merece atención."><span className={styles.periodBadge}>{alerts.length} alertas</span></SectionHeading>
+      <div className={styles.alerts}>{alerts.map((alert, index) => <details className={styles.alert} key={alert.id}>
+        <summary><span className={styles.alertRank}>{String(index + 1).padStart(2, "0")}</span><span className={styles.alertTitle}><span className={`${styles.severity} ${styles[alert.severity]}`}>Prioridad {severityLabels[alert.severity].toLowerCase()}</span><strong>{alert.title}</strong><small>{alert.period}</small></span><span className={styles.expandIcon} aria-hidden="true">+</span></summary>
+        <div className={styles.alertDetail}><p>{alert.explanation}</p><EvidenceButton refs={alert.evidence_refs} title={alert.title} onOpen={openEvidence} /></div>
+      </details>)}</div>
+      {!alerts.length && <p className={styles.emptyState}>No hay alertas priorizadas en este análisis. Esto no garantiza la salud financiera.</p>}
+    </section>
     <WhatIfSection currentHealthScore={company.health_score} simulation={company.simulation} />
     <footer className={styles.pageFooter}><span>Embat Pulse · HackSpain 2026 / Embat X-Ray</span><span>{isMock ? "Datos de ejemplo. Sin procesamiento financiero en tiempo real." : "Datos precalculados. Sin procesamiento financiero en tiempo real."}</span></footer>
-    {evidence && <EvidenceDialog title={evidence.title} groups={company.evidence.filter((group) => evidence.refs.includes(group.id))} isMock={isMock} onClose={() => setEvidence(null)} />}
+    {evidence && <EvidenceDialog title={evidence.title} groups={company.evidence.filter((group) => evidence.refs.includes(group.id)).map((group) => evidence.records ? { ...group, rows: group.rows.filter((row) => evidence.records?.some((record) => record.evidence_id === group.id && record.transaction_id === row.id)) } : group)} accounts={company.cash_truth.account_flows?.accounts ?? []} isMock={isMock} onClose={() => setEvidence(null)} />}
   </main>;
 }
