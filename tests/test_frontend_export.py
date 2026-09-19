@@ -4,8 +4,7 @@ import json
 import pandas as pd
 import pytest
 
-from xray.product.legacy_frontend_export import WEIGHTS, company_detail, group_detail
-from xray.product.cash_truth import classify, monthly_buckets
+from xray.product.frontend_export import WEIGHTS, company_detail, group_detail
 
 
 def timeline(scores, **last):
@@ -96,47 +95,8 @@ def test_group_members_keep_nulls_and_roles_from_cash_truth():
     json.dumps(g, allow_nan=False)
 
 
-@pytest.mark.parametrize("category, expected_own", [("transfer", 100.0), ("debt_repayment", None)])
-def test_canonical_own_pair_or_debt_settlement_keeps_evidence(category, expected_own):
-    transactions = pd.DataFrame([
-        {"transaction_id": "debit", "company_id": "COMP_0001", "product_id": "P1",
-         "date": pd.Timestamp("2026-01-05"), "amount": -100.0, "category": category},
-        {"transaction_id": "credit", "company_id": "COMP_0001", "product_id": "P2",
-         "date": pd.Timestamp("2026-01-05"), "amount": 100.0, "category": "transfer"},
-    ]).assign(product_currency="EUR", exchange_rate=1.0, status="booked",
-              description="", is_internal_transfer=True)
-    classified = classify(transactions, stop=pd.Timestamp("2026-02-01"))
-    cash = {"window_months": ["2026-01-01"], "buckets": monthly_buckets(classified).to_dict("records")}
-    detail = company_detail(company([50.0], cash=cash), None, classified)
-    out = detail["cash_truth"]
-    circulation = next(c for c in out["components"] if c["category"] == "circulation")
-    assert out["total_gross_movement"] == 200.0 and out["apparent_net"] == 0.0
-    assert circulation["evidence_refs"] == ["cash-movements"]
-    if expected_own is None:
-        assert out["own_account_circulation"] is None
-        assert circulation["net_amount"] is None and circulation["gross_movement"] == 100.0
-        assert circulation["confidence"] is None
-        assert "neto no evaluable" in out["explanation"]
-        debt = classified[classified.economic_class.eq("debt_service")]
-        assert len(debt) == 1 and debt.amount.sum() == -100.0
-        assert sum(c["gross_movement"] for c in out["components"]) == 200.0
-    else:
-        assert out["own_account_circulation"]["transferred_amount"] == expected_own
-        assert out["own_account_circulation"]["transfer_count"] == 1
-        assert circulation["net_amount"] == 0.0
-    json.dumps(detail, allow_nan=False)
-
-
-@pytest.mark.parametrize("missing", [None, float("nan"), pd.NA])
-def test_missing_evidence_description_is_not_stringified(missing):
-    rows = EVIDENCE.copy()
-    rows["description"] = pd.Series([missing, missing], dtype="object")
-    detail = company_detail(company([50.0]), None, rows)
-    assert all(row["description"] == "Sin concepto" for row in detail["evidence"][0]["rows"])
-
-
 def test_portfolio_items_map_status_trajectory_and_attention():
-    from xray.product.legacy_frontend_export import portfolio_export
+    from xray.product.frontend_export import portfolio_export
     rows = [
         {"company_id": "COMP_0001", "group_id": "GROUP_0001", "score": 61.4, "delta_vs_prev": -3.26, "trajectory": "deteriorating",
          "score_status": "scored", "score_reason": "ok", "confidence": 88.2, "main_signal": "Margen", "main_signal_delta": -4.26},

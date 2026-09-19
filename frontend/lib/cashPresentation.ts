@@ -3,12 +3,12 @@ import { cashCategoryLabel } from "./companyFormat";
 
 export function getSupportPresentation(cash: CashTruth, groupId: string | null) {
   const component = cash.components.find((item) => item.category === "support");
-  const label = component?.net_amount === null ? component.label : cashCategoryLabel("support", groupId);
+  const label = cashCategoryLabel("support", groupId);
   const net = component?.net_amount;
   const origin = groupId === null ? "financiación o apoyo externo" : "apoyo intragrupo";
   const direction = groupId === null ? "a financiadores o aportantes externos" : "al grupo";
   const source = groupId === null ? "de financiación o aportes externos" : "del grupo";
-  const description = net == null ? component?.explanation ?? `Importe neto de ${origin} no identificado.` : net < 0 ? `Salida neta de liquidez ${direction}.` : net === 0 ? "Hay movimientos identificados, pero sus entradas y salidas se compensan en neto." : `Liquidez neta recibida ${source}.`;
+  const description = net == null ? `Importe neto de ${origin} no identificado.` : net < 0 ? `Salida neta de liquidez ${direction}.` : net === 0 ? "Hay movimientos identificados, pero sus entradas y salidas se compensan en neto." : `Liquidez neta recibida ${source}.`;
   return {
     component,
     label,

@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from xray.artifacts import recursive_hashes, sha256
-from xray.product.frontend_export import WebEnvelope, company_detail, group_detail, portfolio_export, run
+from xray.product.pulse_frontend_export import WebEnvelope, company_detail, group_detail, portfolio_export, run
 from xray.pulse import score_company
 
 

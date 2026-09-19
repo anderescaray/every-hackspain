@@ -16,10 +16,10 @@ export type PortfolioQuery = {
 
 export const DEFAULT_QUERY: PortfolioQuery = { trajectory: "all", attention: "all", status: "all", group: "", q: "", sort: "attention", order: "desc" };
 
-const ATTENTION_RANK: Record<PortfolioAttention, number> = { high: 3, medium: 2, low: 1, unknown: 0 };
+const ATTENTION_RANK: Record<PortfolioAttention, number> = { high: 3, medium: 2, low: 1 };
 
-export const attentionLabels: Record<PortfolioAttention, string> = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin evaluar" };
-export const statusLabels: Record<PortfolioStatus, string> = { complete: "Identificada", partial: "No plenamente identificada", insufficient_evidence: "Evidencia insuficiente" };
+export const attentionLabels: Record<PortfolioAttention, string> = { high: "Alta", medium: "Media", low: "Baja" };
+export const statusLabels: Record<PortfolioStatus, string> = { scored: "Puntuada", provisional: "Provisional", not_scored: "Sin puntuar" };
 export const sortLabels: Record<SortKey, string> = {
   attention: "Atención", health_score: "Health Score", delta_vs_prev: "Cambio mensual", confidence: "Cobertura",
   support_dependency_ratio: "Dependencia de apoyo", company_id: "Identificador",
@@ -33,8 +33,8 @@ export function parseQuery(params: Record<string, string | string[] | undefined>
   const single = (key: string) => { const value = params[key]; return Array.isArray(value) ? value[0] : value; };
   return {
     trajectory: pick(single("trajectory"), ["all", "improving", "deteriorating", "stable"] as const, "all"),
-    attention: pick(single("attention"), ["all", "high", "medium", "low", "unknown"] as const, "all"),
-    status: pick(single("status"), ["all", "complete", "partial", "insufficient_evidence"] as const, "all"),
+    attention: pick(single("attention"), ["all", "high", "medium", "low"] as const, "all"),
+    status: pick(single("status"), ["all", "scored", "provisional", "not_scored"] as const, "all"),
     group: (single("group") ?? "").trim().slice(0, 40),
     q: (single("q") ?? "").trim().slice(0, 40),
     sort: pick(single("sort"), SORT_KEYS, "attention"),

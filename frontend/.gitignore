@@ -7,7 +7,4 @@ playwright-report/
 test-results/
 .env*
 public/generated/**/*.json
-public/generated/.publish.lock
-public/generated/.current-*.tmp
-public/generated/.pulse-web-*/
 .tmp-fixtures/

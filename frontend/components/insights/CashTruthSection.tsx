@@ -56,10 +56,10 @@ export function CashTruthSection({ cash, companyId, groupId, onOpen }: { cash: C
           <small>Separada de la generación operativa.</small>
           <EvidenceButton refs={support?.evidence_refs ?? []} title={supportView.label} onOpen={onOpen} />
         </article>}
-        <article className={styles.unidentifiedOrigin} aria-label={uncertain?.label ?? "No identificado"}>
-          <h3>{uncertain?.label ?? "No identificado"}</h3>
+        <article className={styles.unidentifiedOrigin} aria-label="No identificado">
+          <h3>No identificado</h3>
           <strong title={uncertain ? exactMoney(uncertain.gross_movement) : undefined}>{uncertain ? money(uncertain.gross_movement) : "No disponible"}</strong>
-          <p>{uncertain?.explanation ?? "Origen no identificable con suficiente evidencia."}</p>
+          <p>Movimientos cuyo origen no puede determinarse con suficiente confianza.</p>
           <small>Volumen bruto, no generación neta de caja.</small>
           {uncertain?.evidence_refs.length ? <EvidenceButton refs={uncertain.evidence_refs} title="Movimientos no identificados" onOpen={onOpen} /> : <Confidence value={uncertain?.confidence ?? null} />}
         </article>
@@ -107,7 +107,7 @@ export function CashTruthSection({ cash, companyId, groupId, onOpen }: { cash: C
       {comparison && <div className={styles.comparison}>
         <div className={styles.inlineHeading}><div><span className={styles.eyebrow}>Una comparación útil</span><h3>Misma posición aparente de caja. Distinta realidad financiera.</h3></div><Link className={styles.evidenceButton} href={`/companies/${comparison.company_id}`}>Explorar {comparison.company_id} <span aria-hidden="true">↗</span></Link></div>
         <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Comparación del origen de la caja"><table><caption>{cash.period} · observaciones suministradas, no una conciliación completa</caption><thead><tr><th scope="col">Empresa</th><th scope="col" className={styles.numeric}>Neto aparente</th><th scope="col" className={styles.numeric}>Neto operativo</th><th scope="col" className={styles.numeric}>Apoyo neto</th><th scope="col" className={styles.numeric}>Circulación bruta</th></tr></thead><tbody>
-          <tr><th scope="row">{companyId} <small>Empresa actual</small></th><td className={styles.numeric}>{cash.apparent_net === null ? "No identificado" : money(cash.apparent_net, true)}</td><td className={styles.numeric}>{operating?.net_amount != null ? money(operating.net_amount, true) : "No identificado"}</td><td className={styles.numeric}>{support?.net_amount != null ? money(support.net_amount, true) : "No identificado"}</td><td className={styles.numeric}>{circulation ? money(circulation.gross_movement) : "No identificado"}</td></tr>
+          <tr><th scope="row">{companyId} <small>Empresa actual</small></th><td className={styles.numeric}>{money(cash.apparent_net, true)}</td><td className={styles.numeric}>{operating?.net_amount != null ? money(operating.net_amount, true) : "No identificado"}</td><td className={styles.numeric}>{support?.net_amount != null ? money(support.net_amount, true) : "No identificado"}</td><td className={styles.numeric}>{circulation ? money(circulation.gross_movement) : "No identificado"}</td></tr>
           <tr><th scope="row">{comparison.company_id}</th><td className={styles.numeric}>{money(comparison.apparent_net, true)}</td><td className={styles.numeric}>{money(comparison.operating_net, true)}</td><td className={styles.numeric}>{money(comparison.support_net, true)}</td><td className={styles.numeric}>{money(comparison.circulation_gross)}</td></tr>
         </tbody></table></div><p className={styles.smallText}>{comparison.explanation} El movimiento no clasificado queda fuera de la atribución del neto identificado.</p>
       </div>}

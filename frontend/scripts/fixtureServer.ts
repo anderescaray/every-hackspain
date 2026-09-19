@@ -29,7 +29,7 @@ async function main() {
     const require = createRequire(import.meta.url);
     const child = spawn(process.execPath, [require.resolve("next/dist/bin/next"), mode === "dev" ? "dev" : "start", ...args], {
       stdio: "inherit",
-      env: { ...process.env, PULSE_GENERATED_DIR: directory, COMPANY_ANALYSIS_DIR: companyDirectory, GROUP_ANALYSIS_DIR: groupDirectory, COMPANY_DATA_MODE: mode === "empty" ? "generated" : "fixtures" },
+      env: { ...process.env, COMPANY_ANALYSIS_DIR: companyDirectory, GROUP_ANALYSIS_DIR: groupDirectory, COMPANY_DATA_MODE: mode === "empty" ? "generated" : "fixtures" },
     });
     const stop = () => child.kill("SIGTERM");
     process.on("SIGINT", stop);

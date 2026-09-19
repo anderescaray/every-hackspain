@@ -1129,3 +1129,43 @@ Códigos con etiqueta tras GA-07 — `REASON_ES`: `donor_cash_unreliable`, `dono
 
 Motivos observados en los datos reales de agosto 2026 (250 planes, pares + alternativas): `donor_cash_unreliable` 3.065, `recipient_no_debt_service` 2.741, `recipient_ap_component_unavailable` 2.551, `donor_buffer` 2.464, `recipient_no_ap_delay` 1.372, `recipient_cash_unreliable` 301, `recipient_not_liquidity_constrained` 191, `donor_no_inflow` 182, `below_min_gain` 175, `donor_level_floor` 135, `recipient_no_ap_need` 89, `fraction_cap` 23, `donor_outflow_unavailable` 16, `lower_efficiency` 9; `stopped_because`: `no_feasible_candidates` 128, `single_subsidiary` 71, `no_candidate_above_min_gain` 51 (`max_steps_reached` no aparece con `max_steps = 10`); ni `fx_rate_unavailable`, `donor_would_hit_zero_inflow_indicator`, `recipient_level_unavailable` ni `donor_debt_service_unavailable` aparecen en agosto con la configuración por defecto (sin tabla FX todo es intra-moneda). Sensibilidad: `ar_component_unavailable` 521, `no_debt_service_observed` 483, `ap_component_unavailable` 428, `ap_delay_already_zero` 250, `ar_delay_already_zero` 190, `no_operating_inflow` 13, `no_operating_outflow` 12, `debt_without_inflow_indicator` 4.
 
+## 21. Motor canónico del frontend: V2 para el score, ledger de Pablo para Cash Truth — 19-09-2026 (noche)
+
+### Contexto
+
+Los commits `37d78fe` → `18582e3` añadieron un segundo motor (`xray.pulse`, «PulseFourPillars-v1.0», con ledger canónico `xray.ledger`) y conectaron el frontend **exclusivamente** a él, moviendo el exportador V2 a `legacy_frontend_export.py`. Se ejecutó el batch completo y la suite (que el commit de integración no había corrido: dos fallos, corregidos en `520e6b0`). Resultado real del snapshot Pulse frente a lo que el frontend enseñaba con V2 el mismo día:
+
+| | V2 (`8ffe39d`) | Pulse (`18582e3`) |
+|---|---:|---:|
+| Empresas con Health Score en agosto 2026 | 977 | **16** (939 `partial` con Health `null`, 253 sin evidencia) |
+| Meses en la trayectoria | hasta 24 | 1 |
+| Escenarios del simulador | 21 por empresa | 0 |
+| Empresas excluidas por moneda | 0 | 78 sin panel EUR |
+| Referencia congelada / `predict` para el test oculto | sí | no |
+| Cobertura FE10, estacionalidad, ruptura 2025-01 | sí | no |
+
+La causa del 16 es una política del motor: Health solo si los cuatro pilares son válidos, y el pilar de deuda queda `unknown` sin servicio de deuda verificado (no identificar pagos ≠ no tener deuda). Defendible como principio; incompatible con «quién está sano» sobre una cartera. Ejemplo de divergencia: COMP_0764 → Pulse 65 (deuda 0) frente a V2 34.
+
+### Decisión (SC24)
+
+Repartir por capas en lugar de elegir un motor:
+
+| Capa | Motor | Motivo |
+|---|---|---|
+| Health Score, trayectoria, momentum, explicación, leaderboard | **`financial_smoothed_v2`** | Cumple el enunciado hoy; probado (tests, prefijo, referencia congelada) |
+| Clasificación de movimientos y Cash Truth | **Ledger de Pablo** (`xray.ledger.classify`) | Ya alimenta `features/transactions.py` y `product/cash_truth.py`; clasificación única y auditable con linaje |
+| Frontend | Contrato 2.0 (empresa) / 1.0 (grupo, cartera) | Es el que Álvaro construyó y probó; recupera trayectoria, Portfolio con score y simulador |
+| Pulse Four Pillars | Experimento conservado (`xray.pulse`, `product/pulse_frontend_export.py`, `scripts/09b_export_frontend_pulse.py`) | Reevaluar cuando tenga Health parcial renormalizado, histórico de 24 cierres y tests ejecutados |
+
+Cambios en `camilo/v2-canonical`: `frontend_export.py` vuelve a ser el exportador V2 (con what-if FE-04); el de Pulse pasa a `pulse_frontend_export.py`; el frontend se restaura a `8ffe39d` (+ stub de CSS modules para los tests) y se retiran `services/pulseSnapshot.ts`, `types/pulse.ts` y fixtures Pulse; `docs/frontend-data-contract.md` vuelve a la versión 2.0. No se toca `xray.pulse`, `xray.ledger` ni sus tests: siguen en la suite.
+
+**Efecto secundario ya asumido:** la referencia V2 se reajusta sobre las features del ledger (Pablo advertía que las referencias previas no validaban la nueva semántica). Cifras tras la regeneración en SC25.
+
+### Pendiente con Pablo
+
+- Su mejora de `dimensions` nullable en el contrato 3.0 es correcta y conviene portarla al 2.0 (hoy exportamos un neutro con `provisional`), pero requiere tocar componentes de Álvaro.
+- Si Pulse llega a Health parcial (≥ 3 pilares) + 24 cierres, comparar ambos con `evaluation/compare.py` contra los eventos discretos `event_type` antes de volver a cambiar el canónico.
+
+### SC25 · Regeneración V2 sobre las features del ledger + D32/D33/D36 (19-09, noche, tras rebase sobre `main`)
+
+`00 → 01 (D31 default) → 05 fit (empresa y grupo-moneda) → 08 → 10 → 09` con `xray.ledger.classify` y los cambios de Ander (FX a EUR a tipo fijo D32, inicio de datos D33, deuda desde balances D36). Agosto 2026: **1.011 puntuadas** (329 `scored`, 682 `provisional`), 275 sin puntuar — antes 977/309; la conversión FX incorpora empresas que quedaban fuera por moneda parcial. Prefijo 2026-02 OK en features y scores. Exportación: 1.161 empresas con ficha (125 sin ningún score), 250 grupos, portfolio de 1.286, 1.011 con 21 escenarios; contratos válidos con `npm run validate:generated` (+ `--groups`, `--portfolio`). Suite: 566 Python pasan + 67 frontend, lint y typecheck limpios. Único fallo, `test_pulse_pipeline::test_currency_runs_do_not_overwrite_or_mix`, **falla igual en `origin/main`**: el D32 de Ander cambia el comportamiento de Pulse y el test de Pablo espera `None`; lo resuelven ellos.
