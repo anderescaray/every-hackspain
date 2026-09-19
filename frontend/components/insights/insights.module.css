@@ -27,6 +27,8 @@
 .contextBar { justify-content: space-between; margin-bottom: 30px; gap: 16px; }
 .wordmark { gap: 6px; font-size: 13px; color: var(--muted); }
 .wordmark > strong { font-size: 20px; color: var(--accent); font-weight: 650; letter-spacing: -.8px; }
+.breadcrumb { display: flex; gap: 10px; color: var(--muted); font-size: 11px; flex-wrap: wrap; }
+.breadcrumb > span { color: #8091ab; }
 .contextDivider { height: 18px; width: 1px; background: #cad6dc; margin: 0 10px; }
 .demoBadge, .periodBadge, .featureBadge, .scenarioBadge { font-size: 11px; font-weight: 600; border-radius: 5px; padding: 5px 9px; white-space: nowrap; }
 .demoBadge { border: 1px solid #d8e4fc; background: #e7efff; color: #345993; }
@@ -69,11 +71,6 @@
 .dimensionTrack i { display: block; height: 100%; background: #7597d9; }
 .composition .methodology { margin-top: 15px; border-top: 1px solid var(--line); padding-top: 12px; }
 .driver .dimensionContext { font-size: 10px; color: #536582; margin-bottom: 10px; }
-.groupEntry { display: flex; align-items: center; justify-content: space-between; gap: 20px; background: #edf3ff; border: 1px solid #d4e1f8; border-radius: 8px; padding: 18px 23px; margin-bottom: 24px; }
-.groupEntry strong { display: block; font-size: 15px; font-weight: 600; margin: 4px 0; }
-.groupEntry p { color: var(--muted); font-size: 11px; }
-.groupEntry a { flex-shrink: 0; }
-@media (max-width: 640px) { .groupEntry { flex-direction: column; align-items: flex-start; padding: 18px; } }
 .overviewGrid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; align-items: start; }
 .bottomGrid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; }
 .panel { background: white; border: 1px solid var(--line); border-radius: 12px; padding: 27px 28px; min-width: 0; }
@@ -461,6 +458,25 @@
   .dialogHeader h2 { font-size: 20px; }
   .dialogHeader .eyebrow { font-size: 9px; }
   .evidenceGroup .inlineHeading { flex-wrap: wrap; gap: 4px; }
+}
+@container analysis-content (max-width: 1000px) {
+  .identifiedCashTotal { grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr); }
+  .identifiedCashMain, .cashSumOperator:nth-child(2) { grid-column: 1 / -1; }
+  .cashSumOperator:nth-child(2) { text-align: left; }
+  .overviewGrid, .cashLayout { grid-template-columns: 1fr; }
+  .simulationLayout { grid-template-columns: 1fr; }
+  .cashReading { flex-direction: column; align-items: flex-start; gap: 15px; }
+}
+@container analysis-content (max-width: 760px) {
+  .healthOverview { grid-template-columns: 1fr; }
+  .headerIdentity { flex-direction: column; }
+  .companyMeta { flex-wrap: wrap; }
+  .identifiedCashTotal { grid-template-columns: 1fr; }
+  .identifiedCashMain > strong { font-size: 32px; }
+  .cashSumOperator { text-align: left; }
+  .clocks { grid-template-columns: 1fr; }
+  .timingClock { border-right: 0; border-bottom: 1px solid var(--line); padding: 22px 0; }
+  .timingInsight { flex-direction: column; align-items: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) {
   .expandIcon { transition: none; }

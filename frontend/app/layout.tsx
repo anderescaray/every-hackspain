@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AnalysisNavigationProvider } from "@/components/navigation/AnalysisNavigationProvider";
 
 export const metadata: Metadata = {
-  title: "Análisis de empresa | Embat Pulse",
-  description: "Health Score, trayectoria financiera, origen de la caja y tiempo financiado. Demostración con datos de ejemplo para HackSpain 2026.",
+  title: "Empresa y grupo | Embat Pulse",
+  description: "Health Score, tendencia, origen de la caja, tiempo financiado e inteligencia de grupo a partir de análisis preparados.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="es"><body>{children}</body></html>;
+  return <html lang="es"><body><AnalysisNavigationProvider>{children}</AnalysisNavigationProvider></body></html>;
 }

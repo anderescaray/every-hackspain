@@ -366,9 +366,13 @@ Si Data aún no suministra simulaciones, exportar `scenarios: []` y `example_id:
 
 ## Inteligencia de grupo: contrato adicional `GroupDetail` 1.0
 
-El acceso aparece automáticamente en una ficha con `company.group_id` no nulo. No se infiere pertenencia por nombres, bancos o importes. El módulo tiene tres rutas: `/groups/<group_id>`, `/groups/<group_id>/network` y `/groups/<group_id>/recommendations`. Un acceso habilitado no implica que ya exista el análisis del grupo.
+Empresa y grupo comparten un menú lateral desplegable. La parte de empresa enlaza Health Score, Tendencia, Origen de la caja y Tiempo financiado; una línea divisoria separa las tres vistas de grupo. El grupo aparece automáticamente en una ficha con `company.group_id` no nulo. No se infiere pertenencia por nombres, bancos o importes.
 
-`getGroupDetail(groupId)` es la única entrada de datos de las tres vistas. Lee y valida **`frontend/public/generated/groups/<group_id>.json`**. `GROUP_ANALYSIS_DIR` permite un directorio absoluto alternativo. El contrato runtime es `frontend/types/groupDetail.ts`; no requiere modificar el JSON de empresa. El nombre del archivo y `group_id` deben coincidir. Archivos ausentes, incompatibles, demasiado grandes o IDs inválidos producen estados explícitos, nunca redes ni conclusiones inventadas. Las lecturas no tienen caché propia y comparten el límite de 2 MiB con las empresas.
+El parámetro de navegación `entity=COMP_…` conserva la empresa de referencia al recorrer las vistas de grupo y regresar a una sección individual. No modifica el contrato financiero ni sustituye el parámetro `company` utilizado para filtrar la red. El contexto se valida frente a miembros observados o, cuando falta ese dato, frente al JSON individual y su pertenencia al grupo. Sin contexto válido, se utiliza la primera sociedad observada; si no hay ninguna, no se inventa una selección. El estado plegado del menú se conserva durante la navegación y, en móvil, se abre en un cajón modal con cierre por Escape y devolución del foco.
+
+El módulo tiene tres rutas: `/groups/<group_id>`, `/groups/<group_id>/network` y `/groups/<group_id>/recommendations`. Un acceso habilitado no implica que ya exista el análisis del grupo.
+
+`getGroupDetail(groupId)` es la única entrada de datos del análisis financiero de las tres vistas. La navegación puede consultar `getCompanyDetail` para validar una empresa de referencia no incluida en el perímetro observado; no incorpora esos datos a los agregados del grupo. Lee y valida **`frontend/public/generated/groups/<group_id>.json`**. `GROUP_ANALYSIS_DIR` permite un directorio absoluto alternativo. El contrato runtime es `frontend/types/groupDetail.ts`; no requiere modificar el JSON de empresa. El nombre del archivo y `group_id` deben coincidir. Archivos ausentes, incompatibles, demasiado grandes o IDs inválidos producen estados explícitos, nunca redes ni conclusiones inventadas. Las lecturas no tienen caché propia y comparten el límite de 2 MiB con las empresas.
 
 ### Responsabilidades de Data y semántica
 

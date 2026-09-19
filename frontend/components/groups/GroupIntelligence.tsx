@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import type { GroupDetail, GroupView } from "@/types/groupDetail";
 import { dateLabel } from "@/lib/companyFormat";
@@ -30,14 +29,13 @@ export function GroupIntelligence({ group, view, initialRelation, initialCompany
 
   return <main className={`${base.page} ${styles.groupPage}`}>
     <a href="#group-content" className={base.skipLink}>Ir al análisis de grupo</a>
-    <div className={base.contextBar}><span className={base.wordmark}>embat <strong>Pulse</strong><span className={base.contextDivider} />Inteligencia de grupo</span><span className={base.demoBadge}>{group.source === "fixture" ? "Demo · Datos de ejemplo" : "Análisis preparado"}</span></div>
+    <div className={base.contextBar}><span className={base.breadcrumb}>Grupo <span aria-hidden="true">/</span> {tab.label}</span><span className={base.demoBadge}>{group.source === "fixture" ? "Demo · Datos de ejemplo" : "Análisis preparado"}</span></div>
     <header className={styles.groupHeader}>
       <div className={styles.headerTop}><span className={styles.headerEyebrow}>Grupo observado · {group.group_id}</span><span>Datos a {dateLabel(group.as_of)}</span></div>
       <h1>{tab.label}</h1><p className={styles.headerQuestion}>{questions[view]}</p><p className={styles.headerSummary}>{group.summary}</p>
       <div className={styles.groupHeaderMeta}><span><strong>{group.members.length}</strong> sociedades observadas{group.coverage.known_company_count === null ? " · total del grupo no disponible" : ` de ${group.coverage.known_company_count} conocidas`}</span><Confidence value={group.coverage.confidence} /><span>{group.period}</span></div>
       <div className={styles.trajectoryStrip}><span><i className={styles.deterioratingDot} />{deteriorating} deteriorándose</span><span><i className={styles.stableDot} />{stable} estables</span><span><i className={styles.improvingDot} />{improving} mejorando</span>{unknown > 0 && <span>{unknown} sin evaluar</span>}<small>Sociedades, no una puntuación única del grupo</small></div>
     </header>
-    <nav className={styles.groupNav} aria-label="Vistas de inteligencia de grupo">{groupTabs.map((item, index) => <Link key={item.key} href={`/groups/${group.group_id}${item.suffix}`} aria-current={view === item.key ? "page" : undefined}><span className={styles.tabNumber}>{String(index + 1).padStart(2, "0")}</span><span><strong>{item.label}</strong><small>{item.description}</small></span><span aria-hidden="true">→</span></Link>)}</nav>
     <div className={styles.scopeNote}><strong>Perímetro observado, no consolidación completa.</strong> {group.coverage.explanation}</div>
     <div id="group-content" className={styles.groupContent}>
       {view === "overview" && <GroupOverview group={group} onOpen={openEvidence} />}

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { AnalysisLink as Link } from "@/components/navigation/AnalysisLink";
 import { relationHref } from "@/lib/groupPresentation";
 import type { GroupDetail } from "@/types/groupDetail";
 import styles from "./groups.module.css";

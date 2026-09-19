@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { AnalysisLink as Link } from "@/components/navigation/AnalysisLink";
 import { useId, useRef, useState } from "react";
 import type { GroupDetail, GroupMember, GroupRelation } from "@/types/groupDetail";
 import { dateLabel, numberLabel, severityLabels, trajectoryLabels } from "@/lib/companyFormat";

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import type { CompanyDetail, EvidenceRef, TransactionEvidenceRef } from "@/types/companyDetail";
 import { confidenceLabel, dateLabel, numberLabel, severityLabels, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { HEALTH_DIMENSIONS } from "@/lib/healthScore";
@@ -25,10 +24,10 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
   return <main className={styles.page} id="company-insights">
     <a href="#cash-truth" className={styles.skipLink}>Ir al origen de la caja</a>
     <div className={styles.contextBar}>
-      <span className={styles.wordmark}>embat <strong>Pulse</strong><span className={styles.contextDivider} />Análisis de empresa</span>
+      <span className={styles.breadcrumb}>Empresa <span aria-hidden="true">/</span> Análisis individual</span>
       <span className={styles.demoBadge}>{isMock ? "Demo · Datos de ejemplo" : "Datos preparados"}</span>
     </div>
-    <header className={styles.companyHeader}>
+    <header id="health-score" data-company-section="health-score" className={styles.companyHeader}>
       <div className={styles.headerIdentity}>
         <div><div className={styles.companyMeta}><span className={styles.eyebrow}>Empresa · {company.group_id === null ? "Sin grupo" : `Grupo ${company.group_id}`}</span><span>Datos a {dateLabel(company.as_of)}</span></div><h1>{company.company_id}</h1><p>{company.summary}</p></div>
         <span className={styles.periodBadge}>Análisis financiero</span>
@@ -63,11 +62,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
         </section>
       </div>
     </header>
-    {company.group_id && <div className={styles.groupEntry}>
-      <div><span className={styles.eyebrow}>Esta empresa pertenece a {company.group_id}</span><strong>Inteligencia de grupo</strong><p>Visión general, relaciones financieras y revisiones de tesorería del grupo observado.</p></div>
-      <Link href={`/groups/${company.group_id}`} className={styles.primaryButton} aria-label={`Ver inteligencia de grupo ${company.group_id}`}>Explorar grupo <span aria-hidden="true">↗</span></Link>
-    </div>}
-    <div className={styles.overviewGrid}>
+    <div id="trajectory" data-company-section="trajectory" className={styles.overviewGrid}>
       <TrajectoryChart history={company.history} trajectory={company.trajectory} />
       <section className={styles.panel} aria-label="Factores del Health Score">
         <SectionHeading number="02" title="¿Por qué está cambiando el Health Score?" description="Las señales detrás de la evolución financiera." />
@@ -82,8 +77,8 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
         <p className={styles.disclaimer}>{isMock ? "Contribuciones ilustrativas. " : "Contribuciones seleccionadas. "}No tienen por qué sumar la variación completa del Health Score.</p>
       </section>
     </div>
-    <div id="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>
-    <TimeBorrowedSection timing={company.time_borrowed} onOpen={openEvidence} />
+    <div id="cash-truth" data-company-section="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>
+    <div id="time-borrowed" data-company-section="time-borrowed"><TimeBorrowedSection timing={company.time_borrowed} onOpen={openEvidence} /></div>
     <section className={styles.panel} aria-label="Alertas priorizadas">
       <SectionHeading number="05" title="Alertas" description="Qué merece atención."><span className={styles.periodBadge}>{alerts.length} alertas</span></SectionHeading>
       <div className={styles.alerts}>{alerts.map((alert, index) => <details className={styles.alert} key={alert.id}>
