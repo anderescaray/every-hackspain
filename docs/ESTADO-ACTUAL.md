@@ -91,7 +91,7 @@ Rama `integracion` de Álvaro mergeada en `main` (red financiera interactiva con
 3. Formato del leaderboard con Embat; `scores_v2/company_latest_scores.csv` es candidato. `predict --reference` ya existe para el test oculto; **falta el fallback por signo** para bancos cuyas plantillas no vio D31 (`hallazgos-datos.md` §11.5).
 
 **B · Bonus del enunciado**
-4. Alertas + `lead_time.json` medido contra eventos discretos (`event_type` D30: cuota impagada, embargo…). Rellenan `alerts[]` de la ficha y una columna en Portfolio sin tocar componentes.
+4. Alertas en la ficha y en Portfolio (`alerts[]`, sin tocar componentes). **`lead_time.json` ya existe** (D41, `scripts/11_lead_time.py`): frente a estrés propio (sin embargos a terceros), V2 detecta el 32% de 142 eventos con antelación mediana de 3 meses (p25–p75 2–5), 78% de falsas alarmas y ×1,2 sobre la tasa base. Contarlo en el pitch con sus límites.
 5. `coverage_state` dentro del momentum de V2 (deltas solo entre meses `ok`), más allá del `provisional` actual.
 
 **C · Si sobra tiempo**

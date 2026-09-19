@@ -24,6 +24,10 @@ GATEWAY_COSTS = {"stripe_fee", "network_cost"}
 REFUND_CATEGORIES = {"collection_refund", "payment_refund"}
 EVENT_PATTERNS = (
     ("cuota_impagada", r"CUOTA\s+IMPAGAD"),
+    # Embargo a un tercero (no es estrés de la empresa): ingresa en Hacienda lo retenido a un empleado o proveedor
+    # embargado, o transfiere al juzgado la parte embargada de una nómina.
+    ("embargo_tercero", r"INGRESOS\s+ASOCIADOS\s+EMBARG|EMBARG\w*\s+(?:\S+\s+)?(?:Y\s+)?(?:SALARIO|NOMINA)"
+                        r"|(?:SALARIO|NOMINA)\w*\W.*EMBARG|JUZGADO.*EMBARG|EMBARG.*JUZGADO|EMBARG\w*\s+\[PERSON\]"),
     ("embargo", r"\bEMBARG"),
     ("recargo_apremio", r"\bRECARGO\b|\bAPREMIO\b"),   # sin SANCION: 'SANCIONES Y MULTAS' son multas de tráfico en tarjeta
     ("aplazamiento", r"\bAPLAZA"),
