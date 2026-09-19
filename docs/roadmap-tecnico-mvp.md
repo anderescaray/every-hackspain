@@ -6,7 +6,7 @@
 
 ---
 
-## Estado consolidado y plan (19-09-2026, cierre del día)
+## Estado consolidado y plan (19-09-2026, noche) — ver también `ESTADO-ACTUAL.md`
 
 **Producto:** Embat Pulse — early warning y explicación de tesorería. Responde: cómo está la empresa (Health), hacia dónde va (Momentum/trayectoria, bache vs tendencia), por qué cambia (contribuciones exactas), de dónde viene la caja (Cash Truth) y quién financia a quién (Time Borrowed). Comprador: Embat como tier premium sobre su cartera; usuario: CFO/tesorero.
 
@@ -19,7 +19,7 @@
 | Explicación + Confidence | Hecho (F1) | decisiones §16 PR-03/04 |
 | Cash Truth + dependencia de apoyo | Hecho (F2) | decisiones §16 PR-05/06 |
 | API FastAPI (solo lectura, `/import` con referencia congelada) | Hecho | `brief-backend-api.md`, `backend/` |
-| Frontend | Company Detail y Grupo (overview/network/recommendations) hechos por Álvaro; **integrado con datos reales** vía `scripts/09_export_frontend.py` (decisiones §19). Falta Portfolio y despliegue | `frontend/`, `frontend-data-contract.md` |
+| Frontend | Portfolio `/` + Company Detail + Grupo, con datos reales vía `scripts/09_export_frontend.py` y simulador con 81 escenarios (decisiones §19 FE-01…FE-05). Falta despliegue | `frontend/`, `frontend-data-contract.md` |
 | Alertas + lead time (bonus del enunciado) | Solo diseño | `alerts-and-monitoring.md` |
 | Time Borrowed | Medido, no implementado (nicho: 4 empresas AR, 130 AP) | `patron-tiempo-prestado.md` |
 | What-if, despliegue público | No existen | — |
@@ -31,7 +31,7 @@
 | Predicción sobre test oculto | Mecánica lista (`predict --reference`, `/import`). Falta formato del leaderboard y fallback por signo para plantillas no vistas |
 | Dos direcciones · trayectoria · explicación | Cumplidos (V2 + change_narrative) |
 | Producto encima + comprador | Cash Truth, Confidence, API; Embat |
-| Demo navegable | **No**: frontend parcial, sin URL pública |
+| Demo navegable | En local sí (`npm run dev`); **sin URL pública** |
 | Anticipación medida (bonus) | No: hay anclas discretas (`event_type`) pero falta `lead_time.json` |
 | Monitor que avisa (bonus) | No |
 

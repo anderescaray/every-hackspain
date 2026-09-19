@@ -6,6 +6,10 @@ Reto de Embat: construir un **score de salud financiera** (empresa × mes, con t
 
 **Si retomas el proyecto con otro agente/modelo**, empieza por [`docs/decisiones.md`](docs/decisiones.md) §13 (score V2 suavizado: qué se hizo, resultados y qué no mejora), luego [`docs/scoring-v2.md`](docs/scoring-v2.md). El registro central sigue siendo `decisiones.md` (§10 V1, §11 producto, §12 auditoría, §13 V2). [`docs/continuar-score-v2.md`](docs/continuar-score-v2.md) es el relevo previo a V2, ya ejecutado en su mayor parte.
 
+## Estado y documentación
+
+Punto de entrada para cualquier persona o agente: [`docs/ESTADO-ACTUAL.md`](docs/ESTADO-ACTUAL.md) (arquitectura vigente, cifras reales, comandos, pendientes). Registro de decisiones: [`docs/decisiones.md`](docs/decisiones.md).
+
 ## Estado real
 
 | Capa | Estado | Referencia |

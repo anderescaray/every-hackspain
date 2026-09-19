@@ -18,11 +18,11 @@ def fitted():
     return panel, reference
 
 
-def test_grid_is_one_lever_at_a_time_with_a_zero_base():
+def test_grid_is_the_full_factorial_with_a_zero_base():
     grid = scenario_grid()
-    assert grid[0] == ("base", ZERO)
-    assert all(sum(1 for k, v in inputs.items() if v != 0) == 1 for _, inputs in grid[1:])
+    assert len(grid) == 81 and ("base", ZERO) in grid
     assert len({sid for sid, _ in grid}) == len(grid)
+    assert {tuple(i.values()) for _, i in grid} == {(a, b, c, d) for a in (-20, 0, 20) for b in (0, 30, 60) for c in (0, 30, 60) for d in (-20, 0, 20)}
 
 
 def test_apply_scenario_touches_only_the_window_and_recomputes_margin_and_growth():
@@ -46,24 +46,29 @@ def test_base_scenario_reproduces_published_score_and_levers_move_in_the_right_d
     base = result.loc[result.scenario_id.eq("base"), "score"].item()
     assert base == pytest.approx(published.loc[published.company_id.eq("T") & published.month.eq(month), "score"].item(), abs=1e-9)
     by = result.set_index("scenario_id").delta
-    assert by["customer_term:-30"] < by["customer_term:-10"] < 0 < by["customer_term:+10"] < by["customer_term:+30"]
-    assert by["internal_support:+30"] < 0 < by["internal_support:-30"]
-    assert by["collection_delay:+60"] <= by["collection_delay:+15"] <= 0
+    assert by["customer_term:-20"] < 0 < by["customer_term:+20"]
+    assert by["internal_support:+20"] < 0 < by["internal_support:-20"]
+    assert by["collection_delay:+60"] <= by["collection_delay:+30"] <= 0
     assert by["supplier_term:+60"] <= 0
+    assert by["customer_term:-20|internal_support:+20"] < by["customer_term:-20"]   # la combinación empeora más que una sola palanca
 
 
 def test_simulation_export_matches_contract_and_marks_zero_effects():
     scenarios = pd.DataFrame([
         {"scenario_id": "base", "customer_term": 0, "collection_delay": 0, "supplier_term": 0, "internal_support": 0, "score": 61.4, "base_score": 61.4, "delta": 0.0},
-        {"scenario_id": "customer_term:-10", "customer_term": -10, "collection_delay": 0, "supplier_term": 0, "internal_support": 0, "score": 55.2, "base_score": 61.4, "delta": -6.2},
+        {"scenario_id": "customer_term:-20", "customer_term": -20, "collection_delay": 0, "supplier_term": 0, "internal_support": 0, "score": 55.2, "base_score": 61.4, "delta": -6.2},
         {"scenario_id": "collection_delay:+30", "customer_term": 0, "collection_delay": 30, "supplier_term": 0, "internal_support": 0, "score": 61.4, "base_score": 61.4, "delta": 0.0},
+        {"scenario_id": "customer_term:-20|collection_delay:+30", "customer_term": -20, "collection_delay": 30, "supplier_term": 0, "internal_support": 0, "score": 54.0, "base_score": 61.4, "delta": -7.4},
     ])
     sim = _simulation(scenarios, 61, has_invoices=False)
-    assert [s["id"] for s in sim["scenarios"]] == ["base", "customer_term:-10", "collection_delay:+30"]
+    assert [s["id"] for s in sim["scenarios"]] == ["base", "customer_term:-20", "collection_delay:+30", "customer_term:-20|collection_delay:+30"]
     assert sim["scenarios"][0]["health_score"] == 61 and sim["scenarios"][0]["impacts"] == []
     assert sim["scenarios"][1]["impacts"] == [{"key": "customer_term", "label": "Entradas operativas", "points": -6.2}]
     assert "no tiene facturas" in sim["scenarios"][2]["explanation"]
-    assert sim["example_id"] == "customer_term:-10"
+    combo = sim["scenarios"][3]
+    assert combo["label"] == "Entradas operativas: -20 % · Retraso de cobro a clientes: +30 días" and combo["health_score"] == 54
+    assert [i["points"] for i in combo["impacts"]] == [-6.2, 0.0] and "no es aditivo" in combo["explanation"]
+    assert sim["example_id"] == "customer_term:-20"
     assert {i["key"] for i in sim["inputs"]} == set(ZERO)
     empty = _simulation(None, 61)
     assert empty["scenarios"] == [] and empty["example_id"] is None

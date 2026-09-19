@@ -23,7 +23,7 @@ export function WhatIfSection({ currentHealthScore, simulation }: { currentHealt
         return <div className={styles.scenarioControl} key={input.key}>
           <div className={styles.inputHeading}><label htmlFor={`scenario-${input.key}`}>{input.label}</label><output htmlFor={`scenario-${input.key}`}>{signedNumber(scenario.inputs[input.key])} {unit}</output></div>
           <input id={`scenario-${input.key}`} type="range" min={input.min} max={input.max} step={input.step} value={scenario.inputs[input.key]} onChange={(event) => setRequested({ ...requested, [input.key]: Number(event.target.value) })} aria-valuetext={`Ajuste de ${signedNumber(scenario.inputs[input.key])} ${unit}`} />
-          <div className={styles.rangeLabels}><span>{signedNumber(input.min)} {unit}</span><span>{input.unit === "days" ? `${input.baseline} → ${input.baseline + scenario.inputs[input.key]} días` : `${input.baseline + scenario.inputs[input.key]} % del apoyo actual`}</span><span>{signedNumber(input.max)} {unit}</span></div>
+          <div className={styles.rangeLabels}><span>{signedNumber(input.min)} {unit}</span><span>{input.unit === "days" ? `${input.baseline} → ${input.baseline + scenario.inputs[input.key]} días` : `${input.baseline + scenario.inputs[input.key]} % del nivel actual`}</span><span>{signedNumber(input.max)} {unit}</span></div>
           <p>{input.explanation}</p>
         </div>;
       })}

@@ -3,7 +3,7 @@
 Cada escenario modifica las features de los últimos `window` meses de una empresa (un cambio
 sostenido, no un mes aislado) y vuelve a puntuar con `score_v2.score_panel` y el JSON de
 referencia ya ajustado: misma función, misma referencia, sin recalibrar. El resultado es
-una rejilla "una palanca cada vez" por empresa que el frontend selecciona por coincidencia
+una rejilla factorial (3 posiciones por palanca, 81 escenarios) por empresa que el frontend selecciona por coincidencia
 exacta (no interpola). Escenario, no predicción.
 
 Palancas (claves fijadas por el contrato del frontend; la semántica la define esta capa):
@@ -24,30 +24,35 @@ from xray.score_v2.config import ScoreV2Config
 from xray.score_v2.core import score_panel
 
 LEVERS = {
-    "customer_term": {"label": "Entradas operativas", "unit": "%", "baseline": 100, "min": -30, "max": 30, "step": 10,
-                      "steps": [-30, -20, -10, 10, 20, 30],
+    "customer_term": {"label": "Entradas operativas", "unit": "%", "baseline": 100, "min": -20, "max": 20, "step": 20,
+                      "steps": [-20, 0, 20],
                       "explanation": "Variación sostenida (seis meses) de las entradas operativas identificadas; 100 = nivel actual. El margen y el crecimiento se recalculan."},
-    "collection_delay": {"label": "Retraso de cobro a clientes", "unit": "days", "baseline": 0, "min": 0, "max": 60, "step": 15,
-                         "steps": [15, 30, 45, 60],
+    "collection_delay": {"label": "Retraso de cobro a clientes", "unit": "days", "baseline": 0, "min": 0, "max": 60, "step": 30,
+                         "steps": [0, 30, 60],
                          "explanation": "Días añadidos al retraso realizado de cobro (pago − vencimiento) en los últimos seis meses."},
-    "supplier_term": {"label": "Retraso de pago a proveedores", "unit": "days", "baseline": 0, "min": 0, "max": 60, "step": 15,
-                      "steps": [15, 30, 45, 60],
+    "supplier_term": {"label": "Retraso de pago a proveedores", "unit": "days", "baseline": 0, "min": 0, "max": 60, "step": 30,
+                      "steps": [0, 30, 60],
                       "explanation": "Días añadidos al retraso realizado de pago a proveedores; el score no premia pagar más tarde."},
-    "internal_support": {"label": "Salidas operativas", "unit": "%", "baseline": 100, "min": -30, "max": 30, "step": 10,
-                         "steps": [-30, -20, -10, 10, 20, 30],
+    "internal_support": {"label": "Salidas operativas", "unit": "%", "baseline": 100, "min": -20, "max": 20, "step": 20,
+                         "steps": [-20, 0, 20],
                          "explanation": "Variación sostenida (seis meses) de las salidas operativas identificadas; 100 = nivel actual."},
 }
-METHODOLOGY = ("Cada escenario aplica un cambio sostenido durante los últimos seis meses a una sola palanca y vuelve a calcular "
+METHODOLOGY = ("Cada escenario aplica un cambio sostenido durante los últimos seis meses a una o varias palancas y vuelve a calcular "
                "el Health Score con la misma fórmula y la misma referencia congelada de financial_smoothed_v2. No es una predicción: "
-               "muestra la sensibilidad del score a ese cambio, sin combinar palancas ni interpolar.")
+               "muestra la sensibilidad del score a ese cambio, sin interpolar entre posiciones.")
 ZERO = {"customer_term": 0, "collection_delay": 0, "supplier_term": 0, "internal_support": 0}
 
 
 def scenario_grid():
-    scenarios = [("base", dict(ZERO))]
-    for key, spec in LEVERS.items():
-        for value in spec["steps"]:
-            scenarios.append((f"{key}:{value:+d}", {**ZERO, key: value}))
+    """Rejilla factorial completa: toda combinación de posiciones de los sliders tiene resultado precalculado."""
+    import itertools
+    keys = list(LEVERS)
+    scenarios = []
+    for values in itertools.product(*(LEVERS[k]["steps"] for k in keys)):
+        inputs = dict(zip(keys, values))
+        changed = [k for k in keys if inputs[k] != 0]
+        sid = "base" if not changed else "|".join(f"{k}:{inputs[k]:+d}" for k in changed)
+        scenarios.append((sid, inputs))
     return scenarios
 
 
