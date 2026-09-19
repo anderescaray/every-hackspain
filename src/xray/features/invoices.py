@@ -4,6 +4,14 @@ from xray.features.temporal import divide
 from xray.fx import REPORTING_CURRENCY, to_eur
 
 
+# D39: fechas de pago de relleno. Algunos ERP (sobre todo Business Central) ponen el vencimiento como fecha de
+# pago al marcar una factura como pagada. Si el historial de una entidad y dirección hasta el mes tiene al menos
+# FILLER_MIN_PAID pagos con vencimiento válido y >= FILLER_EXACT_SHARE de ellos exactamente al vencimiento, su
+# retraso no es medible ese mes: queda NaN (como sin ERP), nunca 0 días.
+FILLER_MIN_PAID = 30
+FILLER_EXACT_SHARE = 0.95
+DELAY_COLUMNS = ("delay_median", "delay_p90", "late_paid_ratio")
+
 INVOICE_AMOUNTS = ["inv_issued_amount", "inv_received_amount"]
 for _direction in ("ar", "ap"):
     INVOICE_AMOUNTS += [f"inv_{_direction}_{metric}_amount" for metric in ("open", "overdue", "overdue_90", "due_30", "due_60", "due_90")]
@@ -38,6 +46,8 @@ def invoice_features(f, skeleton, unit):
         issued = history.loc[history.issuance_date.ge(month)]
         paid = history.loc[history.valid_payment & history.payment_date.ge(month) & history.payment_date.lt(end)]
         opened = history.loc[~history.unknown_settlement & (history.payment_date.isna() | history.payment_date.ge(end))]
+        settled = history.loc[history.valid_payment & history.valid_due & history.payment_date.lt(end)].copy()
+        settled["exact"] = settled.payment_date.dt.normalize().eq(settled.due_date.dt.normalize())
         p["inv_source_seen"] = known.groupby(keys).size().reindex(p.index).fillna(0).gt(0)
         p["inv_standard_history_seen"] = history.groupby(keys).size().reindex(p.index).fillna(0).gt(0)
         p["inv_unknown_settlement_count"] = history.loc[history.unknown_settlement].groupby(keys).size().reindex(p.index).fillna(0)
@@ -74,10 +84,17 @@ def invoice_features(f, skeleton, unit):
             p[f"inv_{label}_delay_median"] = delays.groupby(keys).delay.median().reindex(p.index)
             p[f"inv_{label}_delay_p90"] = delays.groupby(keys).delay.quantile(0.9).reindex(p.index)
             p[f"inv_{label}_late_paid_ratio"] = delays.groupby(keys).late.mean().reindex(p.index)
+            track = settled.loc[settled.direction == direction].groupby(keys).exact.agg(["size", "mean"]).reindex(p.index)
+            filler = (track["size"].ge(FILLER_MIN_PAID) & track["mean"].ge(FILLER_EXACT_SHARE)).fillna(False).astype(bool)
+            p[f"inv_{label}_payment_date_filler"] = filler
+            for column in DELAY_COLUMNS:
+                p[f"inv_{label}_{column}"] = p[f"inv_{label}_{column}"].where(~filler)
             cp = issued_side.loc[issued_side.counterparty.notna()].groupby(keys + ["counterparty"]).absolute.sum()
             shares = cp / cp.groupby(level=[0, 1]).transform("sum")
             p[f"inv_{label}_counterparty_hhi"] = shares.pow(2).groupby(level=[0, 1]).sum().reindex(p.index)
-        numeric = [col for col in p if col not in ("month", "inv_source_seen", "inv_standard_history_seen", "inv_document_coverage")]
+        flags = ("inv_ar_payment_date_filler", "inv_ap_payment_date_filler")
+        numeric = [col for col in p if col not in ("month", "inv_source_seen", "inv_standard_history_seen",
+                                                   "inv_document_coverage", *flags)]
         p[numeric] = p[numeric].where(p.inv_standard_history_seen, axis=0)
         results.append(p.reset_index())
     return pd.concat(results, ignore_index=True)
