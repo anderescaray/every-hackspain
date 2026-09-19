@@ -32,7 +32,9 @@ python -X utf8 scripts/07_compare_scores.py                     # -> data/proces
 python -X utf8 scripts/08_treasury_advisor.py                   # planes de grupo + sensibilidad -> data/processed/advisor/
 python -X utf8 scripts/08_treasury_advisor.py --group GROUP_0067    # o --company COMP_0007: imprime la narrativa sin publicar
 python -X utf8 scripts/08_build_product.py                      # -> data/processed/product/
-python -X utf8 scripts/09_export_frontend.py                    # -> frontend/public/generated/ (contrato del frontend)
+python -X utf8 scripts/10_build_whatif.py                       # -> product/whatif_scenarios.parquet (~8 min, opcional)
+python -X utf8 scripts/09_export_frontend.py                    # -> frontend/public/generated/ (contrato del frontend, V2)
+# Experimento Pulse (no canónico): PYTHONPATH=src python -m xray.pulse ... y scripts/09b_export_frontend_pulse.py --run-dir ...
 python -W error -m pytest -q                                    # suite completa
 ```
 

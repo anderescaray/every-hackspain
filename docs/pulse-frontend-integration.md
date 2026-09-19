@@ -1,3 +1,5 @@
+> **Estado 19-09-2026 (noche): integración revertida en el frontend; ver `decisiones.md` §21.** El score canónico del frontend es V2; el exportador Pulse se conserva en `src/xray/product/pulse_frontend_export.py` y `scripts/09b_export_frontend_pulse.py` como experimento.
+
 # Pulse → frontend: integración de contrato V1
 
 ## Fuente única y flujo
