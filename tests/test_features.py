@@ -226,3 +226,18 @@ def test_debt_repayment_is_not_erased_by_own_account_settlement():
     panel = company(build(tables))
     assert panel.loc['2025-01-01', 'tx_outflow'] == 0
     assert panel.loc['2025-01-01', 'debt_principal_paid'] == 100
+
+
+def test_debt_snapshot_prefers_balances_and_utilization_only_for_revolving():
+    from xray.features.context import debt_snapshot
+    debt = pd.DataFrame({'product_id': ['L1', 'P1', 'P2'], 'company_id': 'C1', 'currency': 'EUR',
+                         'type': ['loan', 'lineofcredit', 'lineofcredit'], 'created_at': pd.Timestamp('2025-01-01'),
+                         'granted': [-1000., -500., -200.], 'outstanding': [-900., -100., -50.], 'liquidity': [None, 400., 150.]})
+    balances = pd.DataFrame({'product_id': ['L1', 'P1'], 'balance': [-880., -475.], 'granted': [-1000., -500.],
+                             'liquidity': [None, 25.]})
+    snap = debt_snapshot({'debt_products': debt, 'balances': balances}, FeatureConfig()).set_index('product_id')
+    assert snap.loc['L1', 'debt_outstanding'] == 880 and snap.loc['L1', 'outstanding_source'] == 'balances'
+    assert pd.isna(snap.loc['L1', 'debt_utilization'])                       # préstamo: no es tensión
+    assert snap.loc['P1', 'debt_utilization'] == pytest.approx(0.95)         # póliza casi al límite
+    assert snap.loc['P2', 'outstanding_source'] == 'debt_products'            # sin foto en balances
+    assert snap.loc['P2', 'debt_utilization'] == pytest.approx(0.25)
