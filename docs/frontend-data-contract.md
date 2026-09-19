@@ -1,0 +1,308 @@
+# Contrato de datos del frontend — Embat Pulse
+
+## Responsabilidad y flujo de integración
+
+`CSV originales → pipeline de Data (Pandas / Polars / Parquet, fuera del frontend) → JSON de presentación → Next.js`
+
+El pipeline calcula **todos** los resultados: Health Score, dimensiones, histórico, factores, clasificaciones de caja, tiempos, alertas, cobertura y escenarios. Next.js no lee CSV ni Parquet, no procesa transacciones completas y no calcula ni corrige scores. Solo valida el contrato, presenta valores suministrados y selecciona escenarios precalculados.
+
+La fuente única de la página es `getCompanyDetail(companyId)`, en `frontend/services/companyData.ts`. Los componentes reciben un `CompanyDetail` y no importan fixtures ni conocen rutas de archivos.
+
+## Archivos que debe generar el pipeline
+
+Desde la raíz del repositorio:
+
+```text
+frontend/public/generated/companies/COMP_0356.json
+frontend/public/generated/companies/COMP_0655.json
+frontend/public/generated/companies/COMP_1171.json
+frontend/public/generated/companies/<company_id>.json
+```
+
+- Un objeto JSON UTF-8 completo por empresa, no JSONL ni una lista de empresas. Exportar números JSON nativos; usar `null` solo donde el contrato lo permite, nunca `NaN` ni `Infinity` (en Python, `allow_nan=False`).
+- `company_id` debe coincidir exactamente con el nombre del archivo: `COMP_` seguido de 4–10 dígitos.
+- En resultados reales, `source` debe ser `"generated"` y `schema_version` debe ser `"2.0"`.
+- El adaptador lee estos archivos desde el servidor Next.js con runtime Node, no mediante un endpoint de backend adicional. Equivale a consumir `/generated/companies/<company_id>.json`, sin descargar los archivos directamente en el navegador.
+- La página es dinámica y el adaptador no mantiene caché de archivos. Un archivo nuevo o actualizado aparece al recargar la página, sin modificar los componentes ni reconstruir el frontend, siempre que el proceso Next.js tenga acceso al mismo sistema de archivos.
+- En despliegues con sistema de archivos inmutable, incorporar los JSON al artefacto antes de desplegar o montar un directorio compartido. `COMPANY_ANALYSIS_DIR` permite indicar una ruta alternativa absoluta de archivos por empresa. No requiere cambiar componentes.
+- Escribir primero un archivo temporal y sustituir el JSON mediante renombrado atómico para no exponer archivos a medio escribir.
+- No es necesario un manifiesto para Company Detail. `frontend/public/generated/manifest.json` queda reservado para otra integración; esta página no lo consume.
+- Máximo **2 MiB por empresa**. Exportar agregados y muestras pequeñas, nunca millones de movimientos.
+- Los JSON generados están excluidos de git. Se conserva solo el directorio mediante `.gitkeep`.
+- **`public/` es público**: sus archivos pueden servirse sin autenticación. Exportar solo los agregados anonimizados y muestras autorizadas para la demo. Esta rama no implementa control de acceso.
+
+Una vez exportados, desde `frontend/`:
+
+```bash
+npm run validate:generated
+npm run dev
+```
+
+El primer comando comprueba todos los JSON del directorio utilizando el mismo contrato y adaptador que la aplicación. Devuelve error si no hay archivos o si alguno es inválido. Abrir `/companies/COMP_0356` o el identificador correspondiente.
+
+Para servir una compilación de producción: `npm run build` y `npm start`. No se exige que los JSON existan durante el build.
+
+## Ausencia, errores y desarrollo aislado
+
+- Archivo ausente: **«Datos de análisis todavía no disponibles.»** No se crean resultados y no existe fallback a fixtures, ni siquiera para los tres casos conocidos.
+- JSON ilegible, demasiado grande o incompatible: **«Los datos de análisis necesitan revisión.»** No se muestran puntuaciones parciales.
+- Fallo de lectura del sistema: estado de error en español con posibilidad de reintentar.
+- Identificador con formato incorrecto: página de empresa no disponible. No se permiten rutas arbitrarias.
+- Los fixtures están exclusivamente en `frontend/tests/fixtures/companyDetails.ts`. Sus puntuaciones y escenarios son valores ficticios ya fijados, no un motor financiero.
+- `npm run dev:fixtures` es la única entrada de desarrollo de ejemplo. El lanzador exporta los fixtures a un directorio temporal fuera de `public/generated`, configura un proceso Next.js aislado y borra solo ese directorio temporal al finalizar. Puede recibir `-- --port 3107`.
+- Este modo muestra **«Demo · Datos de ejemplo»**. No modifica, sustituye ni borra los JSON del pipeline. Next.js permite un solo servidor `dev` por directorio: cerrar el servidor de desarrollo anterior antes de cambiar de modo, aunque se use otro puerto.
+- La aplicación normal rechaza `source: "fixture"`. Solo el modo explícito habilita `COMPANY_DATA_MODE=fixtures`. No configurar esa variable en producción.
+- Los tests de navegador usan JSON temporales a través del adaptador real, y un segundo servidor vacío para comprobar que no aparecen datos falsos.
+
+## Tipo único y validación
+
+`frontend/types/companyDetail.ts` exporta `companyDetailSchema` (Zod) y deriva `CompanyDetail` de ese mismo esquema. No hay un segundo contrato paralelo. El objeto raíz es estricto: no acepta campos antiguos como `pulse`, `health` o `stability`.
+
+| Campo | Contrato |
+|---|---|
+| `schema_version`, `source` | `"2.0"`, `"generated"` en el pipeline |
+| `company_id`, `group_id` | Identificadores, sin nombres reales necesarios |
+| `as_of`, `currency` | Fecha de corte `YYYY-MM-DD`, moneda `"EUR"` |
+| `health_score` | Entero 0–100 ya calculado por Data |
+| `dimensions` | Cuatro números 0–100: `momentum`, `cash_generation`, `resilience`, `debt` |
+| `health_score_model` | `version`, `provisional`, `weights` utilizados por Data |
+| `assessment`, `summary` | Valoración breve y explicación en español; no derivadas automáticamente del score por la UI |
+| `confidence` | Número 0–100 de calidad/cobertura, o `null` si no evaluable. Nunca probabilidad de acierto ni parte del score |
+| `trajectory` | `improving`, `deteriorating` o `stable`; la UI los traduce |
+| `history` | Hasta 24 puntos `{month, health_score}`, orden cronológico estricto, fechas no posteriores a `as_of`; el último score coincide con el actual. Usar `[]` si no hay histórico, sin rellenarlo artificialmente |
+| `drivers_period`, `drivers` | Periodo y hasta 20 factores; cada uno con `id`, `driver`, `affected_dimensions`, `impact` en puntos, `direction`, `explanation`, `evidence_count`, `evidence_refs` |
+| `cash_truth` | Periodo, importes brutos/netos, cuatro categorías únicas, explicación, cobertura, referencias, corrección/comparación opcionales mediante `null` |
+| `time_borrowed` | Objetos `ar` y `ap`; cada lado puede ser `null` por falta de evidencia |
+| `alerts` | Hasta 5 alertas; `severity`: `high`, `medium`, `low`; título, explicación, periodo y referencias |
+| `evidence` | Hasta 50 grupos, máximo 10 filas representativas por grupo; los recuentos totales se suministran aparte |
+| `simulation` | Cuatro controles, resultados precalculados, `example_id` nullable y metodología |
+
+Todos los textos de producto suministrados por Data (`label`, `explanation`, `period`, `title`, etc.) deben llegar **en español**. Los enums internos, identificadores, `Health Score`, `Momentum`, AR/AP y EUR no requieren traducción en el JSON. La UI traduce los enums, no narrativas arbitrarias.
+
+### Health Score y pesos
+
+Configuración provisional centralizada en `frontend/lib/healthScore.ts`, constante `HEALTH_SCORE_WEIGHTS`:
+
+- Momentum: 25 %.
+- Generación de caja: 30 %.
+- Resiliencia: 25 %.
+- Deuda: 20 %.
+
+El cálculo ponderado y su redondeo corresponden **al pipeline**, no al frontend. Data debe exportar tanto el resultado como los pesos efectivos en `health_score_model.weights`. Los pesos deben estar entre 0 y 1 y sumar 1. La interfaz muestra los pesos del archivo, por lo que Data puede cambiarlos y versionar su modelo sin modificar componentes. La constante solo centraliza la referencia provisional usada por los fixtures; nunca sustituye valores ausentes del JSON.
+
+Las cuatro dimensiones indican una mejor situación cuando suben, no más crecimiento ni más deuda. «Crecimiento bajo presión» debe exportarse como factor/alerta asociado a `momentum`, `cash_generation` y/o `resilience`, no como una quinta puntuación. La cobertura se presenta de forma secundaria (alta ≥80, media ≥60, limitada por debajo; `null`: no evaluable), sin alterar la puntuación recibida.
+
+### Origen de la caja
+
+- Importes en **euros**, no céntimos ni cadenas formateadas. El frontend aplica formato español.
+- `total_gross_movement` y `gross_movement` son movimientos en valor absoluto. En circulación se cuentan entrada y salida.
+- `net_amount` es entradas menos salidas; `null` significa que el neto no está identificado, nunca cero implícito.
+- Categorías: `operating`, `circulation`, `support`, `uncertain`, exactamente una de cada una.
+- No sumar los importes principales mostrados: pueden usar bases brutas o netas, siempre etiquetadas.
+- `apparent_net` es una observación independiente suministrada, no un saldo reconstruido por el frontend.
+- `correction` y `comparison` son explicaciones/observaciones preparadas por Data, no cálculos del navegador.
+- Para COMP_0356 se conserva la historia: −86,7 M€ aparentes → +25,6 mil € operativos identificados, con +4,14 M€ de apoyo. No implica declarar saludable a la empresa.
+
+### Tiempo financiado
+
+`before` y `after` incluyen `period`, `payment_term`, `time_to_cash`, `delay`, todos en días naturales no negativos. Para AP, `time_to_cash` representa el tiempo hasta **pago**, que la UI etiqueta correctamente.
+
+Son medianas independientes. No exigir `payment_term + delay === time_to_cash`. Para COMP_1171 se mantiene 62/81/20 → 102/102/0. AR describe tiempo concedido a clientes; AP describe tiempo recibido de proveedores. No inferir motivos ni considerar más retraso a proveedores una mejora.
+
+### Evidencia
+
+Cada `evidence_refs` apunta a un `evidence[].id` existente. Los IDs de grupos, factores, alertas y filas dentro de un grupo son únicos. `total_count` es mayor o igual al número de filas. Una muestra de 5–10 filas es suficiente; se admiten muestras vacías si no hay registros representativos. Las muestras no son conciliaciones completas.
+
+Tipos de fila:
+
+- `transaction`: `id`, `transaction_date`, `amount`, `category`, `description`.
+- `invoice`: `id`, `invoice`, `counterparty_id`, `side` (`ar`/`ap`), `issue_date`, `due_date`, `payment_date` (nullable), `amount`.
+- `observation`: `id`, `metric`, `before`, `after`, `unit` (`EUR`, `%`, `days`). Para indicadores agregados de crecimiento bajo presión. No sustituye la evidencia transaccional por una causa inferida.
+
+### Escenarios, no predicciones
+
+`simulation.inputs` contiene exactamente una entrada por clave: `customer_term`, `collection_delay`, `supplier_term`, `internal_support`. `min`, `max`, `step` son límites de **ajustes relativos**. El rango debe contener cero y respetar que `baseline + min` no sea negativo. En apoyo interno, `baseline: 100` significa 100 % del apoyo actual; −10 equivale al 90 %.
+
+`simulation.scenarios` contiene hasta 1000 resultados ya calculados por Data. Cada uno incluye `id`, `label`, los cuatro ajustes en `inputs`, `health_score`, `impacts` y `explanation`. `impacts` son contribuciones precalculadas en puntos, no coeficientes para calcular en el navegador. Un resultado de cero es válido.
+
+Los IDs y combinaciones de ajustes deben ser únicos; cada ajuste debe respetar rango y paso. `example_id` debe referenciar un escenario existente o ser `null`.
+
+La UI conserva controles, selector de escenarios preparados, ejemplo y restablecimiento. Busca una coincidencia **exacta**. Si no existe, muestra «No hay un escenario precalculado para esta combinación», sin interpolar ni inventar un Health Score. Todos los ajustes a cero muestran el score actual. Si se exporta ese escenario base, su score debe coincidir con el actual.
+
+Si Data aún no suministra simulaciones, exportar `scenarios: []` y `example_id: null`, manteniendo los cuatro controles y una metodología que explique la ausencia. El resto del análisis sigue funcionando.
+
+## JSON completo de ejemplo
+
+**Este ejemplo es ficticio y solo documenta el formato. No se instala ni se usa por defecto en la aplicación.** `source: "generated"` muestra lo que debe indicar el pipeline cuando exporte sus resultados reales. Todos los campos necesarios están incluidos; el test del contrato valida este bloque para evitar divergencias.
+
+```json
+{
+  "schema_version": "2.0",
+  "source": "generated",
+  "company_id": "COMP_0356",
+  "group_id": "GROUP_0042",
+  "as_of": "2026-08-31",
+  "currency": "EUR",
+  "health_score": 72,
+  "dimensions": { "momentum": 68, "cash_generation": 81, "resilience": 74, "debt": 59 },
+  "health_score_model": {
+    "version": "provisional-v1",
+    "provisional": true,
+    "weights": { "momentum": 0.25, "cash_generation": 0.30, "resilience": 0.25, "debt": 0.20 }
+  },
+  "assessment": "Señales de presión y dependencia de apoyo",
+  "confidence": 88,
+  "trajectory": "deteriorating",
+  "summary": "La debilidad operativa aparente está sobreestimada, pero el apoyo intragrupo merece atención.",
+  "history": [
+    { "month": "2024-09-01", "health_score": 86 },
+    { "month": "2024-10-01", "health_score": 87 },
+    { "month": "2024-11-01", "health_score": 85 },
+    { "month": "2024-12-01", "health_score": 88 },
+    { "month": "2025-01-01", "health_score": 87 },
+    { "month": "2025-02-01", "health_score": 86 },
+    { "month": "2025-03-01", "health_score": 88 },
+    { "month": "2025-04-01", "health_score": 86 },
+    { "month": "2025-05-01", "health_score": 85 },
+    { "month": "2025-06-01", "health_score": 86 },
+    { "month": "2025-07-01", "health_score": 84 },
+    { "month": "2025-08-01", "health_score": 83 },
+    { "month": "2025-09-01", "health_score": 85 },
+    { "month": "2025-10-01", "health_score": 84 },
+    { "month": "2025-11-01", "health_score": 82 },
+    { "month": "2025-12-01", "health_score": 83 },
+    { "month": "2026-01-01", "health_score": 81 },
+    { "month": "2026-02-01", "health_score": 80 },
+    { "month": "2026-03-01", "health_score": 78 },
+    { "month": "2026-04-01", "health_score": 77 },
+    { "month": "2026-05-01", "health_score": 76 },
+    { "month": "2026-06-01", "health_score": 74 },
+    { "month": "2026-07-01", "health_score": 73 },
+    { "month": "2026-08-01", "health_score": 72 }
+  ],
+  "drivers_period": "sep 2024 – ago 2026 · contribuciones seleccionadas",
+  "drivers": [
+    { "id": "support", "driver": "Dependencia de liquidez", "affected_dimensions": ["resilience", "cash_generation"], "impact": -8, "direction": "negative", "explanation": "El apoyo identificado gana importancia en la liquidez observada.", "evidence_count": 12, "evidence_refs": ["cash-movements"] },
+    { "id": "terms", "driver": "Plazos concedidos a clientes", "affected_dimensions": ["momentum", "cash_generation"], "impact": -5, "direction": "negative", "explanation": "Los plazos más largos mantienen la caja en manos del cliente durante más tiempo.", "evidence_count": 48, "evidence_refs": ["ar-timing"] },
+    { "id": "collections", "driver": "Cobros", "affected_dimensions": ["cash_generation"], "impact": 2, "direction": "positive", "explanation": "El menor retraso compensa parcialmente la ampliación de los plazos.", "evidence_count": 48, "evidence_refs": ["ar-timing"] }
+  ],
+  "cash_truth": {
+    "period": "sep 2025 – ago 2026",
+    "total_gross_movement": 179046800,
+    "apparent_net": 4165600,
+    "components": [
+      { "category": "operating", "label": "Generado por la operación", "gross_movement": 1245600, "net_amount": 25600, "explanation": "Neto operativo identificado tras separar la circulación.", "confidence": 86, "evidence_refs": ["cash-movements"] },
+      { "category": "circulation", "label": "Circulación de tesorería", "gross_movement": 173451200, "net_amount": 0, "explanation": "Movimiento bruto contando entrada y salida, no generación operativa.", "confidence": 94, "evidence_refs": ["cash-movements"] },
+      { "category": "support", "label": "Apoyo interno / intragrupo", "gross_movement": 4140000, "net_amount": 4140000, "explanation": "Apoyo identificado, no ingreso de actividad.", "confidence": 91, "evidence_refs": ["cash-movements"] },
+      { "category": "uncertain", "label": "Origen no identificado", "gross_movement": 210000, "net_amount": null, "explanation": "No identificable con suficiente confianza.", "confidence": null, "evidence_refs": [] }
+    ],
+    "headline": "Falsa debilidad. Dependencia real.",
+    "explanation": "Separar la circulación elimina un falso deterioro operativo y revela dependencia del apoyo. No equivale a considerar saludable a la empresa.",
+    "confidence": 86,
+    "evidence_refs": ["cash-movements"],
+    "evidence_summary": ["34 ciclos de tesorería emparejados", "12 transferencias intragrupo identificadas"],
+    "correction": { "apparent_operating": -86700000, "identified_operating": 25600, "observed_support": 4140000, "explanation": "Se separan 86,7256 M€ de salidas de circulación antes consideradas operativas. Es una corrección de clasificación, no caja nueva." },
+    "comparison": { "company_id": "COMP_0655", "apparent_net": 4165600, "operating_net": 3850000, "support_net": 315600, "circulation_gross": 2400000, "explanation": "Misma posición aparente de caja. Distinta realidad financiera." }
+  },
+  "time_borrowed": {
+    "ar": {
+      "counterparty_id": "COUNTERPARTY_02340",
+      "before": { "period": "ene – mar 2026", "payment_term": 75, "time_to_cash": 85, "delay": 10 },
+      "after": { "period": "jun – ago 2026", "payment_term": 90, "time_to_cash": 97, "delay": 7 },
+      "headline": "Más plazo concedido. La caja tarda más en llegar.",
+      "explanation": "El plazo aumentó 15 días y el menor retraso solo compensa parte del tiempo adicional financiado.",
+      "methodology": "Medianas independientes en días naturales, agrupadas por fecha de pago. No se suman ni permiten inferir motivos.",
+      "confidence": 88,
+      "evidence_count": 48,
+      "evidence_refs": ["ar-timing"]
+    },
+    "ap": {
+      "counterparty_id": "COUNTERPARTY_04821",
+      "before": { "period": "ene – mar 2026", "payment_term": 60, "time_to_cash": 64, "delay": 4 },
+      "after": { "period": "jun – ago 2026", "payment_term": 45, "time_to_cash": 48, "delay": 3 },
+      "headline": "Menos plazo recibido. La caja se necesita antes.",
+      "explanation": "El plazo concedido por proveedores se redujo 15 días. No se identifica la causa.",
+      "methodology": "Medianas independientes en días naturales. El tiempo hasta pago no es una medida de calidad del proveedor.",
+      "confidence": 88,
+      "evidence_count": 48,
+      "evidence_refs": ["ap-timing"]
+    }
+  },
+  "alerts": [
+    { "id": "support", "severity": "high", "title": "Aumenta la dependencia de liquidez", "explanation": "El apoyo identificado acompaña a un neto operativo ligeramente positivo.", "period": "sep 2025 – ago 2026", "evidence_refs": ["cash-movements"] },
+    { "id": "terms", "severity": "medium", "title": "Se amplían los plazos a clientes", "explanation": "La empresa financia más tiempo antes del vencimiento.", "period": "jun – ago 2026", "evidence_refs": ["ar-timing"] }
+  ],
+  "evidence": [
+    {
+      "id": "cash-movements", "title": "Clasificación de caja y apoyo identificado", "period": "sep 2025 – ago 2026", "explanation": "Movimientos representativos de ejemplo, no una conciliación completa.", "confidence": 86, "total_count": 156,
+      "rows": [
+        { "kind": "transaction", "id": "TX-001", "transaction_date": "2026-08-03", "amount": -2500000, "category": "circulation", "description": "Salida de tesorería" },
+        { "kind": "transaction", "id": "TX-002", "transaction_date": "2026-08-04", "amount": 2500000, "category": "circulation", "description": "Entrada de tesorería emparejada" },
+        { "kind": "transaction", "id": "TX-003", "transaction_date": "2026-08-05", "amount": 180000, "category": "operating", "description": "Cobros identificados" },
+        { "kind": "transaction", "id": "TX-004", "transaction_date": "2026-08-07", "amount": -154400, "category": "operating", "description": "Pagos operativos identificados" },
+        { "kind": "transaction", "id": "TX-005", "transaction_date": "2026-08-14", "amount": 600000, "category": "support", "description": "Apoyo intragrupo identificado" },
+        { "kind": "transaction", "id": "TX-006", "transaction_date": "2026-08-19", "amount": 210000, "category": "uncertain", "description": "Finalidad no identificada" }
+      ]
+    },
+    {
+      "id": "ar-timing", "title": "Plazos y cobros de clientes", "period": "ene – mar 2026 frente a jun – ago 2026", "explanation": "Muestra de facturas de clientes. No reproduce el conjunto completo.", "confidence": 88, "total_count": 48,
+      "rows": [
+        { "kind": "invoice", "id": "AR-001", "invoice": "FACT-001", "counterparty_id": "COUNTERPARTY_02340", "side": "ar", "issue_date": "2026-01-01", "due_date": "2026-03-17", "payment_date": "2026-03-27", "amount": 18000 },
+        { "kind": "invoice", "id": "AR-002", "invoice": "FACT-002", "counterparty_id": "COUNTERPARTY_02340", "side": "ar", "issue_date": "2026-01-01", "due_date": "2026-03-17", "payment_date": "2026-03-27", "amount": 20500 },
+        { "kind": "invoice", "id": "AR-003", "invoice": "FACT-003", "counterparty_id": "COUNTERPARTY_02340", "side": "ar", "issue_date": "2026-01-01", "due_date": "2026-03-17", "payment_date": "2026-03-27", "amount": 23000 },
+        { "kind": "invoice", "id": "AR-004", "invoice": "FACT-004", "counterparty_id": "COUNTERPARTY_02340", "side": "ar", "issue_date": "2026-05-01", "due_date": "2026-07-30", "payment_date": "2026-08-06", "amount": 25500 },
+        { "kind": "invoice", "id": "AR-005", "invoice": "FACT-005", "counterparty_id": "COUNTERPARTY_02340", "side": "ar", "issue_date": "2026-05-01", "due_date": "2026-07-30", "payment_date": "2026-08-06", "amount": 28000 },
+        { "kind": "invoice", "id": "AR-006", "invoice": "FACT-006", "counterparty_id": "COUNTERPARTY_02340", "side": "ar", "issue_date": "2026-05-01", "due_date": "2026-07-30", "payment_date": "2026-08-06", "amount": 30500 }
+      ]
+    },
+    {
+      "id": "ap-timing", "title": "Plazos y pagos a proveedores", "period": "ene – mar 2026 frente a jun – ago 2026", "explanation": "Muestra de facturas de proveedores. No permite inferir motivos.", "confidence": 88, "total_count": 48,
+      "rows": [
+        { "kind": "invoice", "id": "AP-001", "invoice": "FACT-P-001", "counterparty_id": "COUNTERPARTY_04821", "side": "ap", "issue_date": "2026-01-01", "due_date": "2026-03-02", "payment_date": "2026-03-06", "amount": 18000 },
+        { "kind": "invoice", "id": "AP-002", "invoice": "FACT-P-002", "counterparty_id": "COUNTERPARTY_04821", "side": "ap", "issue_date": "2026-01-01", "due_date": "2026-03-02", "payment_date": "2026-03-06", "amount": 20500 },
+        { "kind": "invoice", "id": "AP-003", "invoice": "FACT-P-003", "counterparty_id": "COUNTERPARTY_04821", "side": "ap", "issue_date": "2026-01-01", "due_date": "2026-03-02", "payment_date": "2026-03-06", "amount": 23000 },
+        { "kind": "invoice", "id": "AP-004", "invoice": "FACT-P-004", "counterparty_id": "COUNTERPARTY_04821", "side": "ap", "issue_date": "2026-05-01", "due_date": "2026-06-15", "payment_date": "2026-06-18", "amount": 25500 },
+        { "kind": "invoice", "id": "AP-005", "invoice": "FACT-P-005", "counterparty_id": "COUNTERPARTY_04821", "side": "ap", "issue_date": "2026-05-01", "due_date": "2026-06-15", "payment_date": "2026-06-18", "amount": 28000 },
+        { "kind": "invoice", "id": "AP-006", "invoice": "FACT-P-006", "counterparty_id": "COUNTERPARTY_04821", "side": "ap", "issue_date": "2026-05-01", "due_date": "2026-06-15", "payment_date": "2026-06-18", "amount": 30500 }
+      ]
+    }
+  ],
+  "simulation": {
+    "inputs": [
+      { "key": "customer_term", "label": "Plazo acordado con clientes", "unit": "days", "baseline": 90, "min": -30, "max": 30, "step": 1, "explanation": "Ajuste del tiempo concedido a clientes." },
+      { "key": "collection_delay", "label": "Retraso en los cobros", "unit": "days", "baseline": 7, "min": -7, "max": 30, "step": 1, "explanation": "Ajuste del retraso respecto al vencimiento." },
+      { "key": "supplier_term", "label": "Plazo acordado con proveedores", "unit": "days", "baseline": 45, "min": -30, "max": 30, "step": 1, "explanation": "Ajuste del tiempo recibido de proveedores." },
+      { "key": "internal_support", "label": "Apoyo intragrupo", "unit": "%", "baseline": 100, "min": -50, "max": 50, "step": 1, "explanation": "Cambio porcentual respecto al apoyo actual." }
+    ],
+    "scenarios": [
+      {
+        "id": "terms-example",
+        "label": "Menos plazo a clientes y más plazo de proveedores",
+        "inputs": { "customer_term": -15, "collection_delay": -3, "supplier_term": 7, "internal_support": -10 },
+        "health_score": 78,
+        "impacts": [
+          { "key": "customer_term", "label": "Plazo acordado con clientes", "points": 4.5 },
+          { "key": "collection_delay", "label": "Retraso en los cobros", "points": 1.5 },
+          { "key": "supplier_term", "label": "Plazo acordado con proveedores", "points": 1.4 },
+          { "key": "internal_support", "label": "Apoyo intragrupo", "points": -1.4 }
+        ],
+        "explanation": "Resultado ilustrativo precalculado para esta combinación exacta. Escenario, no predicción."
+      },
+      {
+        "id": "less-support",
+        "label": "Reducción del apoyo intragrupo",
+        "inputs": { "customer_term": 0, "collection_delay": 0, "supplier_term": 0, "internal_support": -10 },
+        "health_score": 71,
+        "impacts": [{ "key": "internal_support", "label": "Apoyo intragrupo", "points": -1.4 }],
+        "explanation": "Retirar apoyo reduce la liquidez disponible en este ejemplo; no demuestra autosuficiencia."
+      }
+    ],
+    "example_id": "terms-example",
+    "methodology": "Resultados precalculados por el proveedor de datos. El frontend solo selecciona coincidencias exactas. Las contribuciones pueden diferir de la variación final por el redondeo del proveedor. No se recalcula la confianza."
+  }
+}
+```
+
+## Verificación de la entrega
+
+Desde `frontend/`: `npm test`, `npm run lint`, `npm run build`, `npm run typecheck`. Para navegador: `npx playwright install chromium` y `npm run test:e2e` tras el build. Las pruebas cubren JSON ausentes/inválidos, ruta predeterminada, actualizaciones, ausencia de fallback, valores suministrados sin recálculo, escenarios sin coincidencia, español, accesibilidad y responsive.

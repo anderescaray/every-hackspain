@@ -8,10 +8,18 @@ export default defineConfig({
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "mobile", use: { ...devices["iPhone 13"], defaultBrowserType: "chromium" } },
   ],
-  webServer: {
-    command: "npm run start -- --hostname 127.0.0.1 --port 3106",
-    url: "http://127.0.0.1:3106/companies/COMP_0356",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  webServer: [
+    {
+      command: "npx tsx scripts/fixtureServer.ts start --hostname 127.0.0.1 --port 3106",
+      url: "http://127.0.0.1:3106/companies/COMP_0356",
+      reuseExistingServer: false,
+      timeout: 120000,
+    },
+    {
+      command: "npx tsx scripts/fixtureServer.ts empty --hostname 127.0.0.1 --port 3108",
+      url: "http://127.0.0.1:3108/companies/COMP_0356",
+      reuseExistingServer: false,
+      timeout: 120000,
+    },
+  ],
 });

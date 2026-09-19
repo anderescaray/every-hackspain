@@ -1,125 +1,179 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+const untranslated = /Cash Truth|Time Borrowed|View evidence|Scenario, not forecast|Pulse Score|Current Pulse|Stability|Deteriorating|Improving|Mock data|Not identified|supporting records|Time to cash|Payment term|Late payment|\bdays\b/;
+
 for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
-  test(`${id} has no automated accessibility violations`, async ({ page }, testInfo) => {
+  test(`${id}: accesibilidad, español y capturas responsive`, async ({ page }, testInfo) => {
     await page.goto(`/companies/${id}`);
-    await page.getByRole("checkbox", { name: "Show Health" }).check();
-    await page.getByRole("checkbox", { name: "Show Health" }).uncheck();
+    await page.getByRole("slider", { name: "Explorar mes" }).fill("23");
     await page.screenshot({ path: testInfo.outputPath("company.png"), fullPage: true });
-    await page.getByRole("region", { name: "Cash Truth", exact: true }).screenshot({ path: testInfo.outputPath("cash-truth.png") });
-    await page.getByRole("region", { name: "Time Borrowed", exact: true }).screenshot({ path: testInfo.outputPath("time-borrowed.png") });
+    await page.getByRole("region", { name: "Estado financiero global", exact: true }).screenshot({ path: testInfo.outputPath("health-score.png") });
+    await page.getByRole("region", { name: "Origen de la caja", exact: true }).screenshot({ path: testInfo.outputPath("cash-truth.png") });
+    await page.getByRole("region", { name: "Tiempo financiado", exact: true }).screenshot({ path: testInfo.outputPath("time-borrowed.png") });
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
     expect(results.violations.map((violation) => ({ id: violation.id, nodes: violation.nodes.map((node) => ({ html: node.html, issue: node.failureSummary })) }))).toEqual([]);
-    await page.getByRole("button", { name: "View evidence: Cash Truth explanation", exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "es");
+    expect(await page.locator("main").textContent()).not.toMatch(untranslated);
+    await page.getByRole("button", { name: "Ver evidencia: Origen de la caja", exact: true }).click();
+    expect(await page.getByRole("dialog").textContent()).not.toMatch(untranslated);
     const evidence = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
     expect(evidence.violations).toEqual([]);
   });
-}
 
-for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
-  test(`${id} renders all insights without overflow or client errors`, async ({ page }) => {
+  test(`${id}: todas las secciones, sin desbordamiento ni errores de cliente`, async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const response = await page.goto(`/companies/${id}`);
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: id, exact: true })).toBeVisible();
-    await expect(page.getByText("Demo · Mock data")).toBeVisible();
-    for (const name of ["Trajectory", "Cash Truth", "Time Borrowed", "What-if"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect(page.getByText("Demo · Datos de ejemplo")).toBeVisible();
+    for (const name of ["Trayectoria", "Origen de la caja", "Tiempo financiado", "Simulador de escenarios"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
 }
 
-test("Cash Truth correction, comparison and traceable modal", async ({ page }) => {
+test("una puntuación protagonista, cuatro dimensiones y confianza separada", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
-  const cash = page.getByRole("region", { name: "Cash Truth", exact: true });
-  await expect(cash.getByText("−€86.7M", { exact: true })).toBeVisible();
-  await expect(cash.getByText("+€25.6k", { exact: true }).first()).toBeVisible();
-  await expect(cash.getByText("+€4.14M", { exact: true }).first()).toBeVisible();
-  await expect(cash.getByText("False weakness. Real dependency.")).toBeVisible();
-  const trigger = cash.getByRole("button", { name: "View evidence: Cash Truth explanation", exact: true });
+  const header = page.locator("main > header");
+  await expect(header.getByRole("heading", { name: "Health Score", exact: true })).toHaveCount(1);
+  await expect(header.getByTestId("health-score")).toHaveText("72");
+  await expect(header.getByText("Confianza del análisis:", { exact: false })).toContainText("Alta");
+  await expect(header.getByText("Cobertura de datos: 88 %")).toBeVisible();
+  await expect(header.getByText("Señales de presión y dependencia de apoyo", { exact: true })).toBeVisible();
+  await expect(header.locator("dt")).toHaveCount(4);
+  await expect(header.locator("dd strong")).toHaveText(["68", "81", "74", "59"]);
+  expect(await header.getByTestId("health-score").evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThan(70);
+  expect(await header.locator("dd strong").first().evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeLessThan(25);
+  await header.getByText("Cómo se calcula", { exact: false }).click();
+  await expect(header.getByText("25 % Momentum + 30 % Generación de caja + 25 % Resiliencia + 20 % Deuda.", { exact: false })).toBeVisible();
+  expect(await header.textContent()).not.toMatch(/Pulse Score|Stability|Estabilidad/);
+});
+
+test("origen de caja: corrección, comparación y modal trazable", async ({ page }) => {
+  await page.goto("/companies/COMP_0356");
+  const cash = page.getByRole("region", { name: "Origen de la caja", exact: true });
+  await expect(cash.getByText("−86,7 M€", { exact: true })).toBeVisible();
+  await expect(cash.getByText("+25,6 mil €", { exact: true }).first()).toBeVisible();
+  await expect(cash.getByText("+4,14 M€", { exact: true }).first()).toBeVisible();
+  await expect(cash.getByText("Falsa debilidad. Dependencia real.")).toBeVisible();
+  const trigger = cash.getByRole("button", { name: "Ver evidencia: Origen de la caja", exact: true });
   await trigger.click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("DEMO-TX-001", { exact: true })).toBeVisible();
-  await expect(dialog.getByText("Mock evidence", { exact: false })).toBeVisible();
   await expect(dialog.getByRole("row")).toHaveCount(9);
-  await expect(dialog.getByRole("button", { name: "Close evidence" })).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Cerrar evidencia" })).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   expect(await page.evaluate(() => document.querySelector("dialog")?.contains(document.activeElement))).toBe(true);
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(trigger).toBeFocused();
-  await cash.getByRole("link", { name: "Explore COMP_0655" }).click();
+  await cash.getByRole("link", { name: "Explorar COMP_0655" }).click();
   await expect(page.getByRole("heading", { name: "COMP_0655", exact: true })).toBeVisible();
 });
 
-test("Time Borrowed keeps punctuality distinct and switches AR/AP", async ({ page }) => {
+test("tiempo financiado: puntualidad independiente y selector AR/AP", async ({ page }) => {
   await page.goto("/companies/COMP_1171");
-  const timing = page.getByRole("region", { name: "Time Borrowed", exact: true });
+  const timing = page.getByRole("region", { name: "Tiempo financiado", exact: true });
   await expect(timing.getByText("COUNTERPARTY_06105", { exact: true })).toBeVisible();
-  await expect(timing.getByRole("heading", { name: "Punctuality improved. Cash conversion became slower." })).toBeVisible();
+  await expect(timing.getByRole("heading", { name: "Más puntualidad. Más tiempo hasta convertir la venta en caja." })).toBeVisible();
   await expect(timing.getByText("102", { exact: true })).toHaveCount(2);
-  await expect(timing.getByText("81", { exact: true })).toBeVisible();
-  await timing.getByText("How to read these clocks", { exact: false }).click();
-  await expect(timing.getByText("Separate cohort medians", { exact: false })).toBeVisible();
-  await timing.getByRole("button", { name: "View evidence: Customer payment timing", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("columnheader", { name: "Due date", exact: true })).toBeVisible();
+  for (const value of ["62", "81", "20", "0"]) await expect(timing.getByText(value, { exact: true })).toBeVisible();
+  await timing.getByText("Cómo interpretar los tiempos", { exact: false }).click();
+  await expect(timing.getByText("Son medianas independientes", { exact: false })).toBeVisible();
+  await timing.getByRole("button", { name: "Ver evidencia: Plazos y cobros de clientes", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("columnheader", { name: "Vencimiento", exact: true })).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("row")).toHaveCount(7);
-  await page.getByRole("button", { name: "Close evidence" }).click();
-  await timing.getByRole("button", { name: "AP · Suppliers", exact: true }).click();
-  await expect(timing.getByRole("button", { name: "AP · Suppliers", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(timing.getByText("Time to payment", { exact: true })).toBeVisible();
-  await expect(timing.getByRole("heading", { name: "Less time received. Cash is needed earlier." })).toBeVisible();
-  await timing.getByRole("button", { name: "AR · Customers", exact: true }).click();
+  await page.getByRole("button", { name: "Cerrar evidencia" }).click();
+  await timing.getByRole("button", { name: "Proveedores · AP", exact: true }).click();
+  await expect(timing.getByRole("button", { name: "Proveedores · AP", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(timing.getByText("Tiempo hasta pago", { exact: true })).toBeVisible();
+  await expect(timing.getByRole("heading", { name: "Menos plazo recibido. La caja se necesita antes." })).toBeVisible();
+  await timing.getByRole("button", { name: "Clientes · AR", exact: true }).click();
   await expect(timing.getByText("COUNTERPARTY_06105", { exact: true })).toBeVisible();
 });
 
-test("trajectory can be explored by keyboard with optional Health", async ({ page }) => {
+test("trayectoria del Health Score: teclado y 24 meses en tabla", async ({ page }) => {
   await page.goto("/companies/COMP_0655");
-  const trajectory = page.getByRole("region", { name: "Trajectory", exact: true });
-  await trajectory.getByRole("checkbox", { name: "Show Health" }).check();
-  const slider = trajectory.getByRole("slider", { name: "Explore month" });
+  const trajectory = page.getByRole("region", { name: "Trayectoria", exact: true });
+  const slider = trajectory.getByRole("slider", { name: "Explorar mes" });
   await slider.focus();
   await page.keyboard.press("Home");
-  await expect(slider).toHaveAttribute("aria-valuetext", "Sept 2024: Pulse 45, Health 50");
-  await trajectory.getByText("View monthly values", { exact: true }).click();
+  await expect(slider).toHaveAttribute("aria-valuetext", "sept 2024: Health Score 59");
+  await trajectory.getByText("Ver valores mensuales", { exact: true }).click();
   await expect(trajectory.getByRole("row")).toHaveCount(25);
 });
 
-test("alerts expand and provide evidence", async ({ page }) => {
+test("alertas priorizadas desplegables con evidencia", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
-  const alerts = page.getByRole("region", { name: "Prioritized alerts", exact: true });
+  const alerts = page.getByRole("region", { name: "Alertas priorizadas", exact: true });
   const summary = alerts.locator("summary").first();
-  await expect(summary).toContainText("Liquidity dependency increasing");
+  await expect(summary).toContainText("Aumenta la dependencia de liquidez");
   await summary.click();
-  await alerts.getByRole("button", { name: "View evidence: Liquidity dependency increasing", exact: true }).click();
+  await alerts.getByRole("button", { name: "Ver evidencia: Aumenta la dependencia de liquidez", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
-  await page.getByRole("button", { name: "Close evidence" }).click();
+  await page.getByRole("button", { name: "Cerrar evidencia" }).click();
 });
 
-test("what-if is mechanical, editable, resettable and separate from current Pulse", async ({ page }) => {
+test("crecimiento bajo presión afecta dimensiones, no añade otro score", async ({ page }) => {
+  await page.goto("/companies/COMP_1171");
+  const drivers = page.getByRole("region", { name: "Factores del Health Score" });
+  await expect(drivers.getByRole("heading", { name: "Crecimiento bajo presión", exact: true })).toBeVisible();
+  await drivers.getByRole("button", { name: "Ver evidencia: Crecimiento bajo presión", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("rowheader", { name: "Facturación", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("rowheader", { name: "Conversión de ventas a caja", exact: true })).toBeVisible();
+  await expect(dialog.getByText("no una relación causal demostrada", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Cerrar evidencia" }).click();
+});
+
+test("simulador: solo resultados precalculados, sin interpolación y con reset", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
-  const scenario = page.getByRole("region", { name: "What-if", exact: true });
-  await expect(scenario.getByTestId("scenario-pulse")).toHaveText("68");
-  await expect(scenario.getByRole("button", { name: "Reset scenario" })).toBeDisabled();
-  await scenario.getByRole("button", { name: "Try example" }).click();
-  await expect(scenario.getByTestId("scenario-pulse")).toHaveText("74");
-  await expect(scenario.getByText("Scenario, not forecast.", { exact: true }).first()).toBeVisible();
-  const term = scenario.getByRole("slider", { name: "Customer payment term", exact: true });
+  const scenario = page.getByRole("region", { name: "Simulador de escenarios", exact: true });
+  await expect(scenario.getByTestId("scenario-health-score")).toHaveText("72");
+  await expect(scenario.getByRole("button", { name: "Restablecer escenario" })).toBeDisabled();
+  await scenario.getByRole("button", { name: "Probar ejemplo" }).click();
+  await expect(scenario.getByTestId("scenario-health-score")).toHaveText("78");
+  await expect(scenario.getByText("Escenario, no predicción.", { exact: true }).first()).toBeVisible();
+  const term = scenario.getByRole("slider", { name: "Plazo acordado con clientes", exact: true });
   await term.focus();
   await page.keyboard.press("ArrowLeft");
   await expect(term).toHaveValue("-16");
-  await scenario.getByRole("button", { name: "Reset scenario" }).click();
-  await expect(scenario.getByTestId("scenario-pulse")).toHaveText("68");
+  await expect(scenario.getByTestId("scenario-health-score")).toHaveText("—");
+  await expect(scenario.getByText("No hay un escenario precalculado", { exact: false })).toBeVisible();
+  await scenario.getByRole("combobox", { name: "Escenarios disponibles" }).selectOption("less-support");
+  await expect(scenario.getByTestId("scenario-health-score")).toHaveText("71");
+  await scenario.getByRole("button", { name: "Restablecer escenario" }).click();
+  await expect(scenario.getByTestId("scenario-health-score")).toHaveText("72");
   await expect(term).toHaveValue("0");
+  await expect(page.getByTestId("health-score")).toHaveText("72");
   await page.goto("/companies/COMP_1171");
-  await expect(page.getByRole("slider", { name: "Collection delay", exact: true })).toHaveAttribute("min", "0");
+  await expect(page.getByRole("slider", { name: "Retraso en los cobros", exact: true })).toHaveAttribute("min", "0");
 });
 
-test("unknown companies show an honest not-found state", async ({ page }) => {
-  await page.goto("/companies/COMP_9999");
-  await expect(page.getByRole("heading", { name: "Company not available" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Cash Truth", exact: true })).not.toBeVisible();
+test("sin JSON: estado limpio incluso para los casos conocidos, nunca datos falsos", async ({ page }) => {
+  for (const id of ["COMP_0356", "COMP_0655", "COMP_1171", "COMP_9999"]) {
+    await page.goto(`http://127.0.0.1:3108/companies/${id}`);
+    await expect(page.getByRole("heading", { name: "Datos de análisis todavía no disponibles." })).toBeVisible();
+    await expect(page.getByTestId("health-score")).toHaveCount(0);
+    await expect(page.getByText("Demo · Datos de ejemplo")).toHaveCount(0);
+  }
+});
+
+test("JSON inválido e identificador inválido tienen estados honestos en español", async ({ page }) => {
+  await page.goto("/companies/COMP_9998");
+  await expect(page.getByRole("heading", { name: "Los datos de análisis necesitan revisión." })).toBeVisible();
+  await expect(page.getByTestId("health-score")).toHaveCount(0);
+  await page.goto("/companies/invalid");
+  await expect(page.getByRole("heading", { name: "Empresa no disponible" })).toBeVisible();
+});
+
+test("sin desbordamiento en móvil estrecho y tablet", async ({ page }) => {
+  await page.goto("/companies/COMP_0356");
+  for (const width of [320, 768, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
 });
