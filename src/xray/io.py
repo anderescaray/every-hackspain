@@ -40,7 +40,12 @@ def read_raw(table: str, raw_dir: Path = RAW_DIR) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"No existe {path}. Coloca los CSV originales en {raw_dir}")
     source = io.BytesIO(path.read_bytes().replace(b"\x00", b"")) if table == "transactions" else path
-    return pd.read_csv(source, parse_dates=DATE_COLUMNS.get(table, []), low_memory=False)
+    df = pd.read_csv(source, low_memory=False)
+    # `parse_dates` deja la columna como texto si una sola fecha se sale del rango de
+    # datetime64[ns] (años 3025, 6913...). Se fuerza el parseo y esas fechas pasan a NaT.
+    for col in DATE_COLUMNS.get(table, []):
+        df[col] = pd.to_datetime(df[col], errors="coerce")
+    return df
 
 
 def read_cleaned(table: str, cleaned_dir: Path = CLEANED_DIR) -> pd.DataFrame:

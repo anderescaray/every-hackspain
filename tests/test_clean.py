@@ -96,7 +96,7 @@ def inv_frame(rows):
             "concept", "counterparty_id"]
     df = pd.DataFrame(rows, columns=cols)
     for c in ["issuance_date", "due_date", "payment_date"]:
-        df[c] = pd.to_datetime(df[c])
+        df[c] = pd.to_datetime(df[c], errors="coerce")  # como read_raw: fuera de rango -> NaT
     return df
 
 
