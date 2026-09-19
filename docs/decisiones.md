@@ -762,3 +762,48 @@ Los cambios grandes revisados son correcciones, no artefactos: COMP_1101 (score 
 - `interest_or_debt` sin usar: el servicio de deuda sigue dependiendo de `debt_repayment/interest_charge` del banco (con la ruptura D29). Los dos `Noul` de estrés están en el artefacto (129 plantillas / 10.307 filas de recibo devuelto ≥0,7; 409 / 3.960 de descubierto/embargo) pero **ninguna feature los consume** todavía; candidatos a complementar D30 `event_type`.
 - El artefacto cubre solo plantillas vistas en este dataset: un dataset nuevo con textos distintos requiere otra pasada (créditos) o quedará `uncategorized` como hoy.
 - Decidir si D31 pasa a ser el default del pipeline (`01_build_monthly_features.py --ai-categories resources/jev_categories/template_categories.parquet`) y regenerar `processed`/`scores_v2` con él.
+
+## 16. Capa de producto y API — 19-09-2026 (noche)
+
+Implementado sobre V2 sin recalcular ningún score. Código en `src/xray/product/` y `backend/`; plan completo en [roadmap-tecnico-mvp.md](./roadmap-tecnico-mvp.md); contrato de la API en [brief-backend-api.md](./brief-backend-api.md). Todo lo de esta sección está en `origin/main`.
+
+### PR01 · Lo que existe y cómo se reproduce
+
+```bash
+python -X utf8 scripts/05_compute_scores_v2.py fit      # scores_v2/
+python -X utf8 scripts/08_build_product.py              # data/processed/product/  (~1 min)
+uvicorn app.main:app --app-dir backend --port 8000      # API de solo lectura
+python -m pytest -q tests                               # pipeline + producto
+python -m pytest -q -p no:asyncio backend/tests         # API
+```
+
+`data/processed/product/`: `portfolio.json` (1.286 filas, moneda principal, último mes), `companies/{id}.json` (timeline 24 m, «por qué ha cambiado», confidence, cash truth, por moneda), `groups/{id}.json`, `score_changes.parquet`, `confidence.parquet`, `cash_truth_monthly.parquet`, `cash_truth_summary.parquet`, `evidence/cash_truth_tx.parquet`, `_product_manifest.json` (hashes de entradas/salidas y commit).
+
+### PR02 · Decisiones
+
+| ID | Decisión | Motivo |
+|---|---|---|
+| PR-01 | **La API sirve, no calcula.** FastAPI lee los JSON precomputados y se recarga sola cuando cambia el sha256 del manifiesto; cada respuesta lleva `X-Xray-Manifest` | Cuando datos/score cambian, la API no cambia; se audita qué versión se enseñó |
+| PR-02 | `POST /import` ejecuta `00 → 01 → 05 predict --reference <congelada> → 08` en subproceso con `XRAY_DATA_DIR` aislado por job; se consulta con `?dataset=job_id` y **no** sustituye el dataset principal | Mismo contrato que el test oculto: nunca `fit` con empresas nuevas |
+| PR-03 | «Por qué ha cambiado» = delta de la contribución exacta de cada término entre meses naturales consecutivos, separado en **efecto valor** (Δ nota × peso anterior) y **efecto peso** (aparición/desaparición/renormalización). La suma reproduce `delta_vs_prev` (validado en las 67.392 filas) | Responde al requisito obligatorio del enunciado con la aritmética del score, sin narrativa inventada. `reference_changed` marca que parte del efecto valor puede venir de la referencia expansiva; no se aísla todavía |
+| PR-04 | **Confidence** 0–100 = media ponderada de historia (25), componentes disponibles (25), calidad del mes (15), tendencia calculable (15) y caja identificada (20); tope 70 con cobertura parcial de moneda; 0 sin movimientos. Se declara «no es probabilidad de acierto» | Compone campos que V2 ya publica; los pesos son propuesta de UI, no calibración |
+| PR-05 | **Cash Truth**: un bucket por movimiento elegible (mismo criterio de elegibilidad que features), por prioridad `own_circulation (D04) → group_support (D05) → financing_investment → operations (INFLOW∪OUTFLOW) → unpaired_transfer → uncertain`. Lo no identificado se publica como `uncertain`, nunca se reparte | No inventar clasificación. Reutiliza los espejos de limpieza en vez de contrapartes (que no se comparten entre empresas) |
+| PR-06 | `support_dependency_ratio = apoyo_recibido_6m / (entradas_operativas_6m + apoyo_recibido_6m)`, ventana hacia atrás, mínimo 3 meses activos; tendencia = trimestre reciente − anterior; rol `net_receiver/net_provider/balanced`. Test de prefijo | Señal de «Internal Support Dependency» de la propuesta, sin mirar t+1 |
+| PR-07 | Las dimensiones «dependencia de apoyo» y «resiliencia» de la propuesta **no entran en el score**; viven en Cash Truth y Confidence | El score V2 tiene cuatro componentes; no prometer en pantalla lo que el número no contiene |
+| PR-08 | Time Borrowed, alertas, what-if y frontend siguen pendientes (F3–F6 del roadmap). `/alerts` devuelve lista vacía hasta que exista `alerts.json` | Priorizar por cobertura medida (PR03) |
+
+### PR03 · Cobertura medida que justifica el orden
+
+- Cash Truth: reparto del importe elegible — operación 33 %, circulación propia 18 %, incierto 18 %, traspasos sin emparejar 16 %, apoyo intragrupo 13 %, financiación 1 %. En agosto 2026 el ratio de dependencia existe para 1.152 empresas; **307 ≥ 30 %**, 143 con tendencia ≥ +10 pp. Caso de demo: `COMP_0647` (apoyo 77,5 % del movimiento, operación saca 22 M€ y mete 1,1 M€).
+- Time Borrowed (medido sobre `cleaned/invoices`, aún sin implementar): relaciones comparables (≥10 facturas pagadas, ≥6 meses, plazo real) AR 2.069 en 264 empresas, AP 4.184 en 418. El patrón «puntualidad mejora pero tiempo a caja empeora» aparece en **6 relaciones / 4 empresas** (`COMP_1191`/`COUNTERPARTY_48964`); proveedores acortando ventana ≥15 d: 324 relaciones / 130 empresas. Es alerta de nicho, no señal universal.
+- Contrapartes: 0 `counterparty_id` de facturas compartidos entre empresas → no hay red de contagio posible con estos datos.
+
+### PR04 · Correcciones de datos
+
+- `io.read_raw`: cinco fechas de facturas con años 3025–7025 desbordan `datetime64[ns]`; con pandas 2.2 `parse_dates` dejaba la columna como texto y la limpieza fallaba antes de llegar a F05. Ahora se fuerzan a `NaT` y F05 las trata. Fixture de `tests/test_clean.py` alineado.
+
+### PR05 · Límites
+
+- Cash Truth clasifica por reglas de limpieza y categoría del banco; el bucket `uncertain` (18 %) es información, no error. Las categorías AI (§15) no se usan aún en los buckets.
+- Confidence no está calibrada contra ningún resultado; ordena evidencia, no acierto.
+- No hay anticipación medida publicada (`lead_time.json` pendiente en F3) ni despliegue público: la API corre en local.

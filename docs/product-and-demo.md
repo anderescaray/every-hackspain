@@ -1,6 +1,6 @@
 # Producto y demo — HackSpain X-Ray · Embat
 
-> **Estado: diseño pendiente, no existe API/frontend ni despliegue verificado en este repositorio.** Las URLs y métricas de abajo son ejemplos de diseño, no servicios ni resultados comprobados. La implementación actual y siguientes pasos están en [decisiones.md](./decisiones.md). Comprador prioritario: Embat sobre su cartera, o un financiador. Dos caras: deterioro y mejora; la vista del tesorero es complementaria. No hay red de contagio ni promesa de anticipación demostrada.
+> **Estado 19-09-2026: existe la capa de producto (`src/xray/product/`, artefactos en `data/processed/product/`) y una API FastAPI de solo lectura en `backend/` (ver `brief-backend-api.md`, `roadmap-tecnico-mvp.md` y `decisiones.md` §16). No hay frontend ni despliegue público todavía.** Las URLs y métricas de abajo son ejemplos de diseño, no servicios ni resultados comprobados. La implementación actual y siguientes pasos están en [decisiones.md](./decisiones.md). Comprador prioritario: Embat sobre su cartera, o un financiador. Dos caras: deterioro y mejora; la vista del tesorero es complementaria. No hay red de contagio ni promesa de anticipación demostrada.
 
 Documentación de diseño del futuro producto encima del score, la API, el frontend desplegable y el pitch para el jurado.
 

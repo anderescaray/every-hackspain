@@ -1,5 +1,7 @@
 # Roadmap técnico — Embat Pulse MVP
 
+> **Estado 19-09-2026 (noche):** F0, F1, F2 y backend hechos y en `origin/main`; pendientes F3 (alertas + lead time), F4 (Time Borrowed), F5 (what-if), F6 (import UI/deploy) y el frontend. Decisiones tomadas en `decisiones.md` §16.
+
 > Traduce `embat_pulse_mvp_propuesta_final.md` a módulos de código, partiendo de lo que **ya existe** en `src/xray/`. Cada bloque dice: qué hay, qué falta, dónde va, contrato de entrada/salida, tests mínimos y orden. Cifras de cobertura medidas el 19-09-2026 sobre `data/cleaned/` (ver §0).
 
 ---
@@ -238,9 +240,10 @@ Frontend en Vercel; backend en Railway/Render con `data/processed/product/` empa
 
 | Fase | Tareas | Depende de | Paralelizable con |
 |---|---|---|---|
-| **F0** (ya) | Pipeline reproducible con el fix de fechas (`io.py`); V2 calculado en `scores_v2/` | — | — |
-| **F1** | 2.3 change_narrative · 2.4 confidence · 2.7 bundle (solo score) · `scripts/08` | F0 | Front con fixtures (Company Detail, Portfolio) |
-| **F2** | 2.1 cash_truth + evidence | F0 | F1 |
+| **F0** ✅ | Pipeline reproducible con el fix de fechas (`io.py`); V2 calculado en `scores_v2/` | — | — |
+| **F1** ✅ | 2.3 change_narrative · 2.4 confidence · 2.7 bundle · `scripts/08` (commit `40c30da`) | F0 | Front con fixtures (Company Detail, Portfolio) |
+| **Backend** ✅ | `backend/` FastAPI según `brief-backend-api.md`, incl. `/import` (commit `366093f`) | F1 | — |
+| **F2** ✅ | 2.1 cash_truth + evidence, integrado en bundle y portfolio (commit `5c91af7`) | F0 | F1 |
 | **F3** | 2.5 alerts (tipos de score + `SUPPORT_DEPENDENCY_UP`) · lead_time.json | F1, F2 | Backend GET |
 | **F4** | 2.2 time_borrowed + evidence + alertas AR/AP | F0 | F3 |
 | **F5** | 2.6 whatif + `POST /whatif` | F1 | UI Alerts/Group |
