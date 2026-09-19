@@ -277,3 +277,37 @@ def test_technical_placeholder_movement_stays_in_flows_but_breaks_prior_cash():
     context = result['reconstructed_liquidity_context'].set_index(['product_id', 'month'])
     assert context.loc[('P1', pd.Timestamp('2026-07-01')), 'is_reconstruction_unreliable']   # el ajuste es posterior
     assert company(result).loc['2026-08-01', 'tx_cash_inflow'] == 100 + 999_999_999         # D32: sigue en los flujos
+
+
+def _paid_invoices(start_id, months, late_days):
+    rows = []
+    for m in months:
+        for k in range(12):
+            due = pd.Timestamp(f'2025-{m:02d}-{10 + k:02d}')
+            rows.append(inv(start_id + 100 * m + k, issued=f'2025-{m:02d}-01', due=str(due.date()),
+                            paid=str((due + pd.Timedelta(days=late_days)).date())))
+    return rows
+
+
+def test_filler_payment_dates_make_delay_unmeasurable_only_once_history_shows_it():
+    # D39: 12 facturas al mes pagadas exactamente al vencimiento; con >= 30 en el historial ya no es medible.
+    panel = company(build(fixture_tables([row(1)], invoices=_paid_invoices(0, (1, 2, 3, 4), late_days=0))))
+    assert panel.loc['2025-01-01', 'inv_ar_delay_median'] == 0                 # 12 en el historial: aún medible
+    assert not panel.loc['2025-02-01', 'inv_ar_payment_date_filler']           # 24
+    assert panel.loc['2025-03-01', 'inv_ar_payment_date_filler']               # 36 -> relleno
+    assert pd.isna(panel.loc['2025-03-01', 'inv_ar_delay_median'])             # NaN, nunca un 0 falso
+    assert panel.loc['2025-03-01', 'inv_ar_delay_count'] == 12                 # los conteos se conservan
+
+
+def test_real_late_payments_are_never_treated_as_filler():
+    panel = company(build(fixture_tables([row(1)], invoices=_paid_invoices(0, (1, 2, 3, 4), late_days=3))))
+    assert not panel.inv_ar_payment_date_filler.any()
+    assert panel.loc['2025-04-01', 'inv_ar_delay_median'] == 3
+
+
+def test_filler_detection_does_not_look_at_the_future():
+    rows = _paid_invoices(0, (1, 2, 3, 4), late_days=0)
+    short = company(build(fixture_tables([row(1)], invoices=[r for r in rows if r[3] < '2025-03-01']), end='2025-02-01'))
+    full = company(build(fixture_tables([row(1)], invoices=rows)))
+    assert short.inv_ar_payment_date_filler.tolist() == full.inv_ar_payment_date_filler.tolist()[:2]
+    assert short.inv_ar_delay_median.tolist() == full.inv_ar_delay_median.tolist()[:2]
