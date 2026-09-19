@@ -148,7 +148,7 @@ Facturas: leer `invoices` con `read_cleaned`; filtrar `document_type == invoice`
 - **Anticipación con regla independiente:** `t_evidente` = primer mes con evento tras seis meses observados sin eventos (texto) o primer mes con caja < 0 tras seis con caja ≥ 0; `t_señal` = primer mes marcado en los seis previos; lead = diferencia en meses (mediana, p25, p75), cuota detectada, falsas alarmas = filas marcadas sin evento en los seis meses siguientes (solo con futuro observable). Simétrico para mejora: recuperación = inicio de seis meses limpios tras un evento.
 - **Sensibilidad:** cuotas de etiqueta y falsas alarmas de `deteriorating` con `direction_z` 1,0/1,5/2,0.
 
-Resultado resumido: V2 reduce la mediana de |Δ| de 8,77 a 3,31 y los extremos de 1.617 a 716; frente a los dos proxies, ni V1 ni V2 discriminan (AUC 0,49–0,56; IC95 de la diferencia incluyen 0) y la actividad sola explica gran parte del proxy textual. **La estabilidad se ha comprobado; la anticipación no.** Tests del comparador en `tests/test_evaluation_compare.py`.
+Resultado resumido: V2 reduce la mediana de |Δ| de 8,77 a 3,31 y los extremos de 1.617 a 716; frente a los dos proxies, ni V1 ni V2 discriminan (AUC 0,49–0,56; IC95 de la diferencia incluyen 0) y la actividad sola explica gran parte del proxy textual. **La estabilidad se ha comprobado; la anticipación está medida desde el 19-09 (D41/D42) y es débil: 32% de detección con 3 meses de mediana y 78% de falsas alarmas.** Tests del comparador en `tests/test_evaluation_compare.py`.
 
 ## Diseño de comparación V2 original (ejecutado parcialmente: sin variantes de liquidez ni fallback)
 
@@ -176,13 +176,19 @@ Split **siempre por `group_id`**, conservando todas las filiales en el mismo fol
 
 La selección de `is_training_eligible` garantiza un mínimo de cobertura bancaria, no que exista target ni información suficiente en ERP o en otras monedas. Informar sensibilidad a cobertura parcial y tamaño del universo de entrenamiento.
 
-## Anticipación sin circularidad (pendiente)
+## Anticipación medida (D41/D42) y su protocolo
 
 Definir **antes** de ajustar parámetros:
 
 - `t_señal`: primer cruce del umbral de alerta del modelo.
 - `t_evidente`: evento observable según regla independiente del modelo, sin recurrir al propio score ni a sus features reservadas.
 - `lead_time = t_evidente - t_señal`.
+
+**Medido el 19-09-2026** (`scripts/11_lead_time.py` → `evaluation/lead_time.{json,md}` y `lead_time_events.parquet`, decisión D41). Evento = primer estrés **propio** (cuota impagada, embargo propio —sin los embargos a terceros de D41—, aplazamiento, descubierto, recargo de apremio, demora) tras seis meses observados sin estrés; señal = primera etiqueta `emerging_deterioration`/`deteriorating` en los seis meses previos, con el umbral vigente de V2 y sin calibrar contra los eventos. Resultado: **153 inicios (142 evaluables, 11 censurados), 45 detectados (32%), antelación mediana 3 meses (p25–p75 2–5), 78% de falsas alarmas y ×1,2 sobre la tasa base**. Por tipo, aplazamiento (41%, 5 meses) y recargo de apremio (50%, 5 meses) son los que más se anticipan.
+
+**Comparación de alertas (D42, `scripts/12_early_warning.py`).** Con el mismo protocolo y sobre los mismos 43 eventos comunes: `runway<1m` detecta el 93% pero está encendida el 53% de los meses (×1,1: alarma trivial); `score_z ≤ −1` detecta 67% con 20% de meses en alarma; a igual coste (~7% de meses) la intersección score+caja detecta 35% frente al 28% del `score_z ≤ −2`, con ×1,5 de lift y 2 meses de antelación. **La caja sola no mejora al score y ninguna alerta supera ×1,7 sobre la tasa base.** Se publica `alarm_rate` justamente para no confundir detección con estar siempre encendido.
+
+Las 123 empresas que dejan de tener datos **no se usan como evento**: 53 cortan de golpe con actividad normal (baja en Embat) y 52 se apagan (cobros al 5%), y el apagado se define con los mismos flujos que alimentan el score, así que validarlo con ellas sería circular.
 
 Reportar mediana, p25/p75, falsas alarmas con el mismo umbral, cobertura y censura. Una recuperación observada en t+1 puede etiquetar retrospectivamente un bache, pero no puede suprimir en el backtest una alerta que se habría emitido en t.
 
