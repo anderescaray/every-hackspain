@@ -2,6 +2,8 @@
 
 **Implementado:** primer baseline sin etiquetas oficiales, con nivel 0–100 y tendencia separada. Fuente de verdad: `src/xray/score/`. Estado, resultados reales y decisiones pendientes en [decisiones.md](./decisiones.md).
 
+**Revisión posterior:** V1 es el control, no una solución financiera validada. La auditoría de `decisiones.md` §12 detecta ruido, cobertura insuficiente y sesgo en crecimiento. **V2 (`financial_smoothed_v2`) está implementada en `src/xray/score_v2/` y documentada en [scoring-v2.md](./scoring-v2.md)**; decisiones §13 registra qué mejora (estabilidad ×2,6, extremos a la mitad, bache frente a tendencia) y qué no (discriminación frente a proxies, dentro del ruido para ambas). El resto de este documento hasta §6 describe el código V1; §7 fue la propuesta que V2 ejecutó parcialmente (sin liquidez ni fallback).
+
 El usuario ha aclarado que el organizador evaluará nuestros scores frente a resultados que solo él conoce. **No entrenamos un GBM contra un target inventado para aparentar que aprendemos ese score.** Esta versión usa reglas financieras explícitas y una referencia estadística que se fija con grupos y meses anteriores. No es una probabilidad de impago ni una predicción validada a 3/6 meses.
 
 ## Ejecutar
@@ -81,9 +83,9 @@ Se renormalizan pesos entre dimensiones disponibles. `level_coverage` es la suma
 
 La referencia puede cambiar entre meses y mover ligeramente el nivel. Por eso la tendencia se calcula con cambios financieros, **no con la diferencia de scores normalizados**. `delta_vs_prev` se conserva como diagnóstico, junto a máscara de componentes y avisos de cambios de cobertura/cuentas.
 
-## 3. Momentum: mejora y deterioro simétricos
+## 3. Momentum V1: transformación simétrica, crecimiento pendiente de corregir
 
-Cada señal pasa por `50 + 50 × tanh(orientación × cambio / escala)`:
+La simetría de la transformación no corrige el sesgo de promediar retornos simples; ver §7. Cada señal pasa por `50 + 50 × tanh(orientación × cambio / escala)`:
 
 | Señal | Peso | Escala | Mejora |
 |---|---:|---:|---|
@@ -148,4 +150,20 @@ El CSV es un **export genérico de candidatos**, no una submission oficial valid
 
 Tests: monotonía financiera, simetría de mejora/deterioro, huecos, mínimo de muestra, cero entradas con deuda, fuente opcional ausente, cambios de composición, referencia congelada, prefijos, serialización, contribuciones exactas, publicación y hashes. El informe no inventa accuracy, probabilidad, correlación con el organizador ni lead time.
 
-Siguiente iteración: revisar casos y cobertura; recibir formato/feedback del leaderboard; comparar variantes predefinidas manteniendo un holdout de grupos. No entrenar un GBM para reproducir nuestra propia fórmula y presentar ese ajuste como generalización a la puntuación oculta.
+Siguiente iteración: preservar V1 y ejecutar el experimento de §7 / `decisiones.md` §12. No entrenar un GBM para reproducir nuestra propia fórmula y presentar ese ajuste como generalización a la puntuación oculta.
+
+## 7. Revisión para V2 — propuesta, no código ejecutado
+
+La auditoría posterior reproduce mediana/p75 de |delta| **8,77/17,94** en toda la historia, 1.617 scores exactamente en extremos y 1.972 a ≤1/≥99. En agosto quedan 410 empresas sin score. Las 2.373 clasificaciones improving frente a766 deteriorating y7.537 watch justifican revisar señales, **no imponer equilibrio artificial**.
+
+**Fallo de interpretación de crecimiento a corregir:** la media de retornos simples de `100→200→100→100` da +16,67% con cambio acumulado cero. La función tanh es simétrica respecto a su entrada, pero eso no vuelve insesgada la entrada. La V2 debe probar crecimiento compuesto/logarítmico o variación simétrica, tratando ceros y cambios de cuentas explícitamente.
+
+**Otros frentes:** peso efectivo de operación hasta100% cuando desaparecen fuentes, saltos al pasar de media3 a mensual, normalización cambiante y watch que agrupa conflictos/no confirmación/neutralidad parcial. Mediana de |delta|17,40 al cambiar componentes frente a7,74 sin cambio. Suavizar 3–6 meses y estabilizar fuentes/pesos puede ayudar, pero se debe medir reactividad y no ocultar shocks legítimos.
+
+**Liquidez como nueva dimensión candidata:** retirar el veto absoluto para una variante experimental versionada, no modificar silenciosamente V1. Usar caja normalizada con flags/cobertura/moneda correctos. La fiabilidad actual mira el tramo posterior al corte, por lo que una máscara aparentemente fiable puede introducir selección retrospectiva. Comparar con/sin caja en cohortes comunes y reportar la cobertura adicional aparte. La observación de saldo en producción no demuestra por sí sola que el libro sintético permita reconstrucción histórica exacta.
+
+**Fallback de entrega:** separar score observado de score exportado. Explorar datos actuales parciales → historia reciente con vigencia explícita → prior de referencia. Origen, antigüedad y confianza de datos visibles; un retorno al prior por pérdida de información no es recuperación. No convertir meses previos al onboarding en observaciones ficticias. Hoy V1 no implementa ese fallback.
+
+**Comparación propuesta:** A V1 congelado; B caja sola; C V1 estabilizado y crecimiento corregido sin caja; D caja+C; E fallback, separado. Proxy interno normalizado por exposición, controles de actividad y persistencia, grupos/tiempo, mismas filas para discriminación y métricas de cobertura/saturación/estabilidad/retardo. El holdout ya se inspeccionó: declarar su reutilización y no afinar todo sobre él.
+
+El AUC bruto de caja supera al score frente a eventos textuales, pero actividad sola da un resultado parecido (tabla y reproducción en `validation.md`). Eso **no** establece pesos óptimos, verdad latente, anticipación validada o acuerdo con el organizador. HHI sigue descriptivo y país permanece eliminado según decisión confirmada del usuario.

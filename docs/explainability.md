@@ -1,6 +1,15 @@
-# Explicabilidad del score v1
+# Explicabilidad del score (V1 y V2)
 
-**Implementado:** contribuciones analíticas exactas del baseline financiero, en `data/processed/scores/*_score_explanations.parquet`. No se llaman SHAP: no hay un GBM entrenado contra etiquetas. Los detalles del score y su estado están en [scoring.md](./scoring.md) y [decisiones.md](./decisiones.md).
+**Implementado:** contribuciones analíticas exactas, en `data/processed/scores/*_score_explanations.parquet` (V1) y `data/processed/scores_v2/*_score_explanations.parquet` (V2). No se llaman SHAP: no hay un GBM entrenado contra etiquetas. Los detalles del score y su estado están en [scoring.md](./scoring.md), [scoring-v2.md](./scoring-v2.md) y [decisiones.md](./decisiones.md).
+
+## Qué añade V2
+
+- Columna `standardized_value`: el cambio dividido por la volatilidad propia de la empresa (z) que realmente entra en el momentum; `value` sigue siendo el cambio bruto (p. ej. margen del trimestre reciente − anterior). Vacía en la capa de nivel.
+- Las contribuciones de momentum ya están centradas (suman exactamente `momentum − 50`) y se reparten con un factor de saturación común `k(z̄)`: cada término conserva el signo de su señal y `final_contribution = 0,2 × contribution`.
+- Las features del nivel son agregados de ventana (`op_margin_w`, `debt_service_w`, `ar_delay_w`, `ap_delay_w`, o el indicador `debt_without_inflow_w`); las de momentum son `op_margin_qoq`, `debt_service_qoq`, `ar_delay_qoq`, `ap_delay_qoq`, `inflow_growth_q`.
+- El «por qué ha cambiado» tiene ahora columnas propias en `*_monthly_scores.parquet`: `trajectory`, `episode`, `momentum_z`, `current_month_support_z`, `op_margin_w`, `op_margin_q_recent`, `op_margin_q_prior`, `op_margin_m1`, `op_margin_deviation_z`, `is_atypical_month`, `direction_held`. Relato tipo: *"nivel 6m de margen X; trimestre reciente Y frente a Z anterior (k desviaciones propias); el mes actual sigue/no sigue del mismo lado; tendencia confirmada / bache aislado"*. Ejemplo real en [scoring-v2.md](./scoring-v2.md) §4.
+
+El resto de este documento describe la estructura común a ambas versiones.
 
 ## Qué explica cada fila
 

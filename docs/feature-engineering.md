@@ -121,7 +121,9 @@ Persistencia: número de meses de neto operativo negativo en seis meses completo
 
 No se entrenan percentiles, escaladores, imputadores ni winsorizadores cross-sectional en esta capa. Eso se ajustará **solo con train y por fold de grupo**.
 
-## 5. Liquidez y deuda: contexto, no predictores históricos
+## 5. Liquidez y deuda: contexto en V1; liquidez a evaluar en V2
+
+**Alcance:** la exclusión describe V1, no una prohibición permanente de usar liquidez. La revisión de `docs/decisiones.md` §12 propone una variante versionada que use caja fiable normalizada, auditando reconstrucción, cobertura y dependencia retrospectiva del flag. Todavía no está implementada ni añadida al catálogo V1. No autoriza usar deuda final estática como historia.
 
 Reconstrucción únicamente de cuentas `checking`:
 
@@ -138,8 +140,8 @@ Deuda: signo invertido para mostrar deuda positiva; utilización pendiente/conce
 ## 6. Uso por el siguiente paso
 
 1. Ejecutar validación y leer `_feature_catalog.json`.
-2. Seleccionar exactamente `model_features`; **no** usar `select_dtypes(number)` sobre todas las columnas.
-3. Aplicar elegibilidad y evaluar sensibilidad a moneda incompleta, onboarding y cobertura ERP. Una fila no elegible puede mostrarse como datos insuficientes; no se le asigna un score neutral por defecto.
+2. V1 usa el contrato explícito de señales; **no** usar `select_dtypes(number)` sobre todas las columnas. La variante V2 propuesta debe versionar su lista, especialmente si añade liquidez, sin modificar silenciosamente el catálogo V1.
+3. Aplicar elegibilidad y evaluar moneda, onboarding y ERP. Las features ausentes siguen siendo NaN; V1 no imputa score neutral. El fallback V2 de exportación propuesto se documenta aparte con origen/confianza y no convierte esos huecos en observaciones financieras.
 4. Definir el target y su horizonte antes de entrenar. Censurar filas sin futuro observable; no completar etiquetas con cero.
 5. Separar grupos completos entre train/val/test. Identificadores, ERP y datos de cobertura no son señales económicas por defecto.
 6. Si una feature termina formando parte de la regla de target, retirarla de sus predictores conforme a la definición acordada.

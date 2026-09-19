@@ -70,10 +70,10 @@ def latest_scores(scores, unit):
     return latest.sort_values(keys).reset_index(drop=True)
 
 
-def example_cases(scores, explanations, unit):
+def example_cases(scores, explanations, unit, trajectories=("improving", "deteriorating", "stable", "watch")):
     latest = scores.loc[scores.month.eq(scores.month.max()) & scores.score.notna() & scores.reference_partition.eq("holdout")]
     cases = []
-    for trajectory in ("improving", "deteriorating", "stable", "watch"):
+    for trajectory in trajectories:
         selected = latest.loc[latest.trajectory.eq(trajectory)].sort_values(["momentum_strength", unit], ascending=[False, True]).head(2)
         for _, row in selected.iterrows():
             history = scores.loc[scores[unit].eq(row[unit]) & scores.currency.eq(row.currency)]

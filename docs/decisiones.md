@@ -1,6 +1,6 @@
 # Decisiones del proyecto: datos, score y producto
 
-**Estado al 19-09-2026: limpieza, feature engineering y primer score financiero explicable implementados; ver §10 para método, resultados y límites del baseline.** Este documento es autosuficiente para saber qué está hecho, qué ha cambiado, cómo reproducirlo y qué falta decidir. La lógica ejecutable está en `src/xray/`; los notebooks conservan la evidencia exploratoria, no son otra implementación del pipeline.
+**Estado al 19-09-2026 (tarde): limpieza, features, score V1 (`a1af735`, control) y score V2 suavizado (`financial_smoothed_v2`, `src/xray/score_v2/`) implementados; comparador V1/V2 ejecutado.** Para continuar sin la conversación: leer primero §13 (V2: qué se hizo, resultados y qué no mejora), después §12 (auditoría que motivó V2), §10 (V1) y §11 (producto). Detalle metodológico de V2 en `docs/scoring-v2.md`. Este documento es autosuficiente para saber qué está hecho, qué ha cambiado, cómo reproducirlo y qué falta decidir. La lógica ejecutable está en `src/xray/`; los notebooks conservan la evidencia exploratoria, no son otra implementación del pipeline.
 
 ## 1. Resumen: qué tienes ya
 
@@ -29,7 +29,7 @@ No hace falta resolverlo para regenerar esta v1. Sí antes de cerrar el modelo, 
 | 2 · D07 | ¿En qué moneda viene `transactions.amount` cuando FX ≠ 1? ¿Cómo convertir y con qué fecha/tasa? | No convertir ni sumar monedas distintas. Excluir FX ≠ 1 y productos desconocidos de importes bancarios | Recuperar cobertura y consolidar grupos/empresas multimoneda |
 | 3 · D17 | ¿Último movimiento significa cese, desconexión o baja de Embat? ¿Hay logs de cobertura bancaria/ERP? | Ausencia = dato no observado; no etiquetar cese/churn ni rellenar caja con 0 | Targets de actividad y censura; distinguir deterioro de pérdida de conexión |
 | 4 · D11/D13/D22 | ¿Qué representan `paymentDocument`, `invoiceGroup`, `note/refund`, pagos futuros y pagos anteriores a emisión? | Solo facturas estándar; documentos ambiguos fuera; anticipos fuera de DSO/DPO; fechas futuras no son pagos realizados | Facturación neta correcta, abonos y más cobertura de comportamiento de pago |
-| 5 · FE06 | ¿La foto de saldos es apertura o cierre del día? ¿Está completo el libro de movimientos? | Asumir cierre del día únicamente en contexto retrospectivo; no usarlo como predictor histórico | Validar liquidez y eventualmente una variante del modelo con saldos auditados |
+| 5 · FE06 / V2-01 | ¿La foto de saldos es apertura o cierre del día? ¿Está completo el libro? | V1 mantiene contexto separado y supuesto cierre del día. V2 propone investigar caja fiable normalizada con auditoría temporal, aún sin implementar | Validar inclusión de liquidez, cohortes comparables y límites de reconstrucción |
 | 6 · M02 | Si hay que definir target propio, ¿qué 2–3 eventos y reglas fijas se usarán a 3/6 meses? | Eventos textuales reservados en artefacto separado; ningún target construido | Modelo de producto, medición independiente de anticipación y falsas alarmas |
 
 **Cambio de prioridad (SC01):** el primer score ya se calcula sin etiquetas. M01 sirve para adaptar/evaluar la entrega y M02 sería un trabajo posterior si se necesita predicción supervisada de eventos, no un requisito previo del baseline. No aprender un GBM sobre nuestra propia fórmula y llamarlo validación contra el organizador; no evaluar anticipación contra una caída del propio score. Nunca dividir filiales entre referencia y holdout.
@@ -146,7 +146,7 @@ La emisión y el nominal sobreviven a un vencimiento imposible: no se borra la f
 
 ### Tablas pequeñas
 
-- S01: fuera `companies.country` (82% nulo y no normalizado). **Revisión del 19-09, mejora pendiente, no aplicada en este commit:** auditoría de solo lectura confirma 1.056 nulos de 1.286 empresas (82,1%); 230 tienen país, 170 corresponden a variantes de España, y la cobertura alcanza 62 grupos. Como separación de capas, es preferible conservar el valor original y normalizar variantes inequívocas a `country_iso2` (ES/España/Espanya/Spain → ES; Portugal/PT → PT…), manteniendo desconocidos como nulos, sin inferir país por moneda. Eliminarlo en cleaned fue una simplificación reversible del MVP (raw lo conserva), no una demostración de irrelevancia. El score actual sigue sin usar país; una correlación con sus propias notas no demostraría valor frente al organizador. Antes de incluirlo, revisar cobertura/sesgo y validar su aportación por grupos cuando exista referencia adecuada. No se modifica ahora S01 ni se regenera el pipeline: se priorizan cobertura/estabilidad del score y demo.
+- **S01 · Decisión confirmada por el usuario tras la revisión: mantener eliminado `companies.country` por simplicidad y prioridad del producto. No restaurarlo ni abrir un estudio de país en V2.** Auditoría: 1.056 nulos de 1.286 empresas (82,1%); 230 con país, 170 variantes de España, cobertura en 62 grupos. Se propuso conservar/normalizar a ISO, pero el usuario decidió no priorizarlo: esa restauración ya no es una tarea pendiente. Raw conserva la información. El porcentaje de nulos no demuestra irrelevancia universal; esta es una decisión de alcance del MVP. El score continúa sin país.
 - S02: fuera `label/service` de productos bancarios/deuda (metadatos técnicos redundantes para esta v1).
 - S03: fuera `balances.available` (100% nulo). El resto de columnas dudosas se conserva.
 - S04: fuera `debt_schedule_config.amortization_type` (constante).
@@ -292,15 +292,16 @@ Validación automática: hashes, claves/calendario, conteos y signos coherentes,
 - Concentración como riesgo de red → contexto local descriptivo.
 - Supresión de alertas con t+1 / anticipación contra caída del propio score → no válida para evaluación causal; diseño futuro debe usar regla independiente.
 
-`docs/feature-engineering.md` y `docs/validation.md` reflejan la implementación. `docs/README.md` y README raíz tienen comandos actuales. Los otros diseños llevan aviso explícito de estado. `CLAUDE.md` local incorpora notas de continuidad para próximas sesiones; las decisiones compartibles están todas aquí.
+`docs/feature-engineering.md` y `docs/validation.md` reflejan la implementación. El `README.md` raíz (único README) tiene comandos y estado actuales. Los otros diseños llevan aviso explícito de estado. `CLAUDE.md` local incorpora notas de continuidad para próximas sesiones; las decisiones compartibles están todas aquí.
 
 ## 9. Siguiente trabajo, en orden
 
-1. Revisar scores, ejemplos y abstenciones de §10. El índice existe; no es necesario fabricar un target para producir esta primera entrega.
-2. Confirmar formato/unidad/escala del envío y recibir feedback del organizador. Sin sus resultados no hay MAE, correlación ni acierto oficial que reportar.
-3. Investigar cobertura baja, saltos de nivel, dependencia de componentes opcionales y moneda incompleta. Comparar variantes predefinidas con un holdout fijo, no ajustar para que la distribución parezca bonita.
-4. En paralelo, cerrar el alcance de producto de §11 y desplegar cartera + ficha + solicitud/revisión. Backend/API solo si hace falta persistencia multiusuario; una demo estática con estado local declarado sirve para el primer recorrido.
-5. Si después se quiere un modelo supervisado de eventos, cerrar M02, censura, split temporal/purga y SHAP. Ese modelo no aprendería automáticamente a imitar el score oculto. Medir anticipación contra una regla independiente antes de prometer 3/6 meses.
+1. Conservar V1 como control (`a1af735`, datos/modelos actuales con manifiestos) y reproducir la auditoría de §12 / `docs/validation.md`. No sobrescribir el control al experimentar.
+2. Implementar un comparador reproducible con proxy interno normalizado por exposición, split por grupo/tiempo y control de tamaño. No entrenar contra una etiqueta inventada para imitar al organizador.
+3. Comparar V1, caja sola, V1 estabilizado y una V2 con liquidez + dinámica corregida; evaluar el fallback aparte. Ver variantes, restricciones y entregables en §12.
+4. Confirmar formato/unidad/escala del envío y semántica de saldos con Embat. No hay canal conectado y no se ha enviado la pregunta de §12; no bloquear el experimento por esperar un script.
+5. En paralelo, cerrar alcance de producto (§11) y avanzar cartera + ficha + solicitud/revisión. API solo si hace falta persistencia multiusuario; no invertir el resto del hackathon únicamente en el score.
+6. Elegir cambios por evidencia comparativa y declarar sus límites. Si más adelante se entrena un modelo supervisado, cerrar target/censura y explicabilidad; no presentar los proxies internos como notas oficiales ni prometer anticipación no medida.
 
 ## 10. Primer score ejecutable — 19-09-2026
 
@@ -445,4 +446,205 @@ Para no depender de leer otro documento, los pendientes comerciales de `nueva-pr
 6. Mantener LLM, pricing detallado, marketplace y contrafactuales complejos detrás de la entrega mínima. El simulador no promete causalidad ni aprobación.
 7. Comprobar URL en incógnito/otro dispositivo y todos los botones del recorrido. Vídeo de respaldo no sustituye una demo navegable. Backend opcional mientras la persistencia local y el cambio de rol sean explícitamente de demo.
 
+## 12. Auditoría posterior y relevo hacia V2 — 19-09-2026
+
+**Prioridad vigente para el siguiente agente.** Lo que sigue distingue resultados reproducidos, hipótesis y trabajo propuesto. La auditoría fue de solo lectura; todavía no se ha corregido el algoritmo, incorporado liquidez, definido un proxy normalizado persistente ni implementado fallback. Los 167 tests comprueban mecánica de V1, **no suficiencia financiera o predictiva**. El siguiente paso es comparar variantes, no declarar V1 terminado como producto.
+
+### RV01 · Evidencia reproducida de V1, toda la historia
+
+Fuentes locales: `company_monthly_features.parquet`, `scores/company_monthly_scores.parquet`, `company_currency_liquidity_context.parquet`, `stress_events_reserved.parquet`; todos en `data/processed/`. Baseline consolidado en commit `a1af735`; manifiesto de scores generado el `2026-09-19T06:53:33+00:00`. El manifiesto conserva el HEAD anterior a ese commit porque se generó antes de commitear: los hashes de fuentes permiten comprobar el código utilizado. Protocolo y fragmento reproducible en `docs/validation.md`.
+
+| Medida | Toda la ventana 2024-09–2026-08 |
+|---|---:|
+| Empresa-mes con score / total | 15.782 / 30.864 |
+| Sin score | 15.082 (48,87%) |
+| Sin score anteriores a la primera observación bancaria | 8.634 |
+| Sin score restantes | 6.448 |
+| Mediana / p75 / p95 de cambio mensual absoluto | 8,77 / 17,94 / 44,26 puntos |
+| Scores exactamente 0 o 100 | 1.617 |
+| Scores ≤1 o ≥99 | 1.972 |
+| `improving` / `deteriorating` | 2.373 / 766 |
+| `watch` / `stable` / `insufficient_history` entre puntuadas | 7.537 / 201 / 4.905 |
+| Mediana de cambio absoluto con cambio de componentes | 17,40 (2.541 pares) |
+| Mediana sin cambio de componentes | 7,74 (11.105 pares) |
+
+No confundir estas cifras con §10, que describe principalmente **agosto**: allí el cambio absoluto mediano era 8,63. Tampoco llamar 1.972 «exactamente saturados»: son valores dentro de un punto del extremo. Los 8.634 meses previos al primer dato no deben convertirse en historia financiera inventada para mejorar artificialmente cobertura. El problema de entrega más inmediato son las **410 empresas sin score en agosto (31,88%)**.
+
+### RV02 · Prueba exploratoria frente a eventos futuros, sin normalizar tamaño
+
+Etiqueta exploratoria: al menos una coincidencia de EMBARGO, IMPAGADO, APLAZAMIENTO, DESCUBIERTO/EXCEDIDO o DEMORA en t+1..t+h. Se suman las columnas `stress_*` de la tabla reservada para determinar presencia; el evento del mes t no se incluye. Exigir que los h meses futuros tengan registro bancario observable en esa tabla; NaN futuro implica censura, no ausencia de evento. Esto no garantiza integridad del libro ni que una mención textual sea estrés propio.
+
+Se utiliza el holdout de V1 y, **dentro de cada horizonte**, exactamente las mismas filas con score y runway disponibles para comparar tres riesgos: `-score`, `-cash_runway_months_retrospective` y `log1p(tx_all_currency_count)`.
+
+| Horizonte | Filas / grupos | Positivos | AUC menor score | AUC menor runway | AUC mayor actividad |
+|---|---:|---:|---:|---:|---:|
+| 3 meses | 1.398 / 36 | 170 | 0,5261 | 0,6811 | 0,6650 |
+| 6 meses | 973 / 25 | 161 | 0,5185 | 0,6273 | 0,5961 |
+
+**Interpretación limitada:** V1 muestra poca señal frente a este proxy bruto. Caja parece más útil, pero solo contar transacciones se aproxima mucho a su AUC: tamaño/actividad puede explicar parte del resultado. No hay intervalos de confianza, ajustes por exposición, episodios incidentes ni validación de semántica del texto. Las ventanas se solapan y las filas no son independientes por empresa/grupo. No es comparación con la nota del organizador ni lead time medido. Los JSON de V1 siguen con métricas oficiales nulas; estas AUC proceden de una auditoría puntual, no de un evaluador persistente ya implementado.
+
+El holdout de 50 grupos **ya se ha mirado**, también para esta comparación. No presentarlo después como un test completamente intacto. Ajustar variantes dentro de los grupos de desarrollo y declarar cualquier reutilización del holdout; no cambiar semilla para buscar un resultado favorable. Una nueva evaluación final debe reservarse antes de ajustar y quedar identificada por grupos/fechas.
+
+### RV03 · Causas que debe investigar/corregir la siguiente versión
+
+1. **Sesgo alcista mecánico del crecimiento.** `features/transactions.py` calcula `(entrada_actual−entrada_previa)/entrada_previa` en cuentas comunes y `score/trajectory.py` promedia tres tasas simples. `100 → 200 → 100 → 100` da media **+16,67%**, aunque crecimiento total sea 0; la media de cambios logarítmicos da 0. Probar crecimiento compuesto/logarítmico con tratamiento explícito de ceros, o variación simétrica acotada. No forzar 50/50 entre mejora y deterioro: corregir la asimetría, no maquillar la distribución.
+2. **Peso efectivo y disponibilidad.** El margen tiene peso nominal 45%, pero puede pesar **100%** si solo él está disponible. Los cambios de componentes y sus pesos renormalizados pueden mover el nivel sin una mejora financiera equivalente. Medir por separado valor, disponibilidad, normalizador y transición media3→valor mensual.
+3. **Suavizado frágil.** Hoy se usa media3 cuando hay soporte; al perderlo se vuelve al dato mensual. Un pago grande o el cambio de ventana puede generar saltos. Comparar agregados de flujos 3/6 meses, ratios de agregados, medianas y/o EWMA causal; no elegir parámetros únicamente para que el gráfico resulte suave.
+4. **`watch` agrupa cosas diferentes.** Primer indicio, señales contrapuestas y agregados neutrales con alguna señal individual activa acaban ahí. Separar motivos: señal no confirmada, conflicto, estable con incertidumbre y soporte insuficiente. No llamar estable a lo desconocido ni confirmar un bache con t+1.
+5. **Normalización cambiante.** Aun congelado para inferencia, el JSON de V1 contiene distintas referencias mensuales. Medir cuánto del cambio de nivel procede de ellas. Preservar escala comparable y no confundir crecimiento del universo/onboarding con mejora.
+
+### V2-01 · Liquidez: candidato prioritario, inclusión aún NO aplicada
+
+La exclusión absoluta de caja fue conservadora para el control V1; **no debe interpretarse como prohibición de investigarla en V2**. Una reconstrucción contable puede aproximar un saldo que existía en t y que en producción se observaría directamente. Pero la identidad solo es válida con libro/moneda/fecha coherentes; no basta argumentar que Embat dispone de saldos diarios.
+
+Disponibilidad en el panel primario: caja reconstruida en **14.704 filas**; runway en **11.400**, de las que **2.260 carecen de score V1**. En agosto hay runway para 818 empresas; entre las 410 sin score, **286 tienen caja y 149 runway**. Estas cifras no demuestran fiabilidad histórica completa ni autorizan imputar el resto como caja cero.
+
+Probar caja normalizada por salidas operativas y, como variante explícita, por salidas recurrentes incluyendo servicio de deuda, evitando doble conteo. El runway actual divide solo por `tx_outflow_ma3`: no es burn neto, gasto total ni meses de supervivencia garantizados. Mantener caja negativa como información, controlar ceros del denominador y evaluar nivel robusto/evolución por moneda.
+
+**Salvaguardas obligatorias:**
+
+- Respetar `is_reconstruction_unreliable` y cobertura de cuentas; no reutilizar valores que ya están invalidados.
+- Auditar fecha real de snapshot y supuesto apertura/cierre, transferencias conservadas para saldo, libro incompleto y huecos. Flag falso no prueba integridad.
+- El flag actual examina transacciones **posteriores a t** (`features/context.py`). Su disponibilidad es retrospectiva: no usar el flag ni su patrón de missingness como predictor de estrés ni presentar una selección retrospectiva como información conocida entonces.
+- Comparar con/sin caja sobre una **cohorte común** y reportar cobertura ampliada aparte. La V2 debe distinguir reconstrucción retrospectiva de saldos realmente observados en producción.
+- Versionar la lista de señales de V2; no meter contexto de liquidez silenciosamente en la allowlist/modelo V1. Deuda final estática y eventos reservados no quedan autorizados por esta revisión.
+- Test contable útil: añadir un movimiento futuro y ajustar coherentemente la foto final no debe alterar el saldo anterior. Cambiar arbitrariamente la foto sin ajustar el libro sí cambia la historia inferida: no confundir esta revisión de datos con una prueba causal válida. Mantener pruebas de no futuro para flujos, rolling, normalización y decisiones de alerta.
+
+### V2-02 · Estabilidad y dirección
+
+Probar señales de nivel suavizadas de 3–6 meses y reducir dependencia de un único margen mensual. Comparar horizonte corto/largo y medir el retraso de reacción: seis meses de media pueden retrasar más de un mes; el ejemplo 45→65 del enunciado **no es una restricción numérica de volatilidad**.
+
+Corregir el crecimiento asimétrico, estabilizar pesos cuando falta una fuente y separar señal de salud de cambios de cobertura. Si se introducen priors por componente, estos se ajustan solo con referencia/pasado; no convertir la pérdida de información en una recuperación aparente. Mantener nivel y momentum explicables y las dos direcciones simétricas. No disimular ruido recortando todas las notas a una banda estrecha.
+
+### V2-03 · Cobertura de entrega y fallback
+
+El usuario necesita poder entregar un número por entidad. Proponer dos salidas diferenciadas: **score sustentado por observaciones** (puede estar ausente) y **score de exportación con fallback** (finito cuando el contrato lo requiera).
+
+Jerarquía a implementar/evaluar: dimensiones fiables actuales → último estado fiable con antigüedad/decaimiento explícitos → prior de referencia. No inventar cero actividad ni una nota saludable. El prior es una estimación de último recurso, no un dato observado ni una etiqueta del organizador.
+
+Incluir `score_source`, confianza **de datos** o grado de evidencia, última observación y aviso de prior puro/obsolescencia; no llamarlo probabilidad calibrada de acierto. La trayectoria requiere observaciones comparables: **ir hacia el prior por perder datos no significa mejorar**. Preservar huecos antes del onboarding en el historial; completar un export exigido no obliga a pintar una historia ficticia. Aún no hay fallback en el código V1: conserva NaN.
+
+### V2-04 · HHI y unidad
+
+**HHI permanece descriptivo por ahora**, no factor prioritario del score. HHI bancario disponible en 11.606 filas: cobertura identificada mediana **51,35%**, p25 **11,20%**, p75 **98,83%**; solo **4.442** filas tienen ≥80% del importe identificado. No confundir HHI entre contrapartes conocidas con concentración total ni asignar todo lo desconocido a un cliente ficticio.
+
+HHI de facturas AR disponible en **9.753** filas, de las que **9.750** tienen ≥80% de nominal identificado; los tres cuartiles de cobertura son 100%. Se midió con `invoice` AR no duplicadas, emisión hasta agosto y moneda declarada de la empresa. El porcentaje de identificación **no demuestra cobertura completa del ERP**.
+
+Mejora propuesta: top1/top3 y HHI en ventanas de 3–6 meses, con tamaño de muestra, moneda, fuente y porcentaje desconocido. Separar concentración de **facturación** de concentración de **cobros**. No hay red de contagio ni score de las contrapartes.
+
+Unidad de trabajo propuesta: empresa como motor y grupo derivado recalculando magnitudes/ratios, no promediando sin más scores. No sumar divisas. La unidad oficial y el formato siguen pendientes; el código actual soporta empresa y grupo-moneda, no un rating único multimoneda.
+
+### V2-05 · Proxy interno y experimento concreto, pendiente de implementar
+
+**No hay un target oficial visible.** La idea de que la nota oculta refleja una «salud latente» del generador es una hipótesis razonable, **no un hecho comprobado**. El proxy sirve para comparar variantes, no para entrenar a ciegas ni reemplazar la verdad del organizador.
+
+Antes de ajustar pesos, fijar definición, exposición, cohortes y horizontes:
+
+- Contar operaciones/episodios de estrés deduplicados y definir qué menciones significan estrés propio. Evitar sumar varios términos de la misma operación como sucesos independientes.
+- Normalizar por exposición adecuada: movimientos booked no duplicados con texto observable, en el mismo universo de empresa/ventana que el numerador. `tx_all_currency_count` solo fue un baseline aproximado de actividad, no ese denominador exacto.
+- Para muestras pequeñas, comparar tasas con suavizado hacia un prior estimado en referencia; futuros sin observación suficiente se censuran. Tasas futuras son resultados de evaluación, nunca features disponibles en t.
+- **Dividir por N y volver a etiquetar «tasa >0» no corrige el sesgo de presencia de eventos.** Evaluar tasas/residuos normalizados, estratos de tamaño y referencias de actividad/persistencia, con umbrales elegidos en desarrollo.
+- Split por grupo y tiempo, purga de horizontes solapados y agregación/incertidumbre a nivel de grupo. No presentar miles de ventanas repetidas como muestras independientes. No reaprender referencia, imputadores o percentiles con el test oculto.
+
+Variantes acotadas, predefinidas y versionadas:
+
+| Variante | Pregunta |
+|---|---|
+| A · V1 congelado | Control reproducible, sin cambiarlo mientras se compara |
+| B · Solo liquidez fiable normalizada | ¿Cuánta señal aporta la dimensión simple? |
+| C · V1 estabilizado y crecimiento corregido, sin liquidez | ¿Cuánto mejora quitar ruido y asimetría? |
+| D · Liquidez + las señales estabilizadas de C | ¿Aporta combinación incremental sobre caja sola y C? |
+| E · Fallback de exportación sobre la variante elegida | ¿Qué cobertura añade y qué incertidumbre/error introduce? Evaluación separada |
+
+Comparar A–D en las mismas filas observables; añadir una evaluación del universo ampliado y E por separado, sin fingir una mejora al cambiar la muestra. Baselines mínimos: actividad/tamaño y persistencia/no cambio, además de caja sola. Informar proxy 3/6 meses, cobertura, falsos avisos si hay definición suficiente, cambios de score, saturación, persistencia, transiciones y retraso de reacción. No seleccionar solo por AUC ni por suavidad: un score constante puede parecer estable y no servir.
+
+**Entregable del siguiente agente:** comparador ejecutable con configuración y manifiestos; informe A–E con denominadores y límites; candidato V2 con nivel/momentum/confianza/origen, explicaciones actualizadas y exportación; tests de causalidad donde proceda, monedas, crecimiento cerrado sin falsa mejora, fallbacks sin falsa recuperación y sensibilidad a cobertura. Guardar variantes fuera de los artefactos V1 y registrar qué se adopta/rechaza. Si no hay mejora defendible, decirlo.
+
+### RV04 · Contacto con Embat y estado de trabajo
+
+No hay canal MCP/mensajería conectado en esta sesión. **No se ha contactado con Embat ni recibido respuesta.** Pregunta preparada para que el usuario la traslade:
+
+> ¿La unidad evaluada es company_id o group_id? ¿Score final por entidad o serie mensual? ¿Fecha de corte, escala/sentido, columnas, métrica y tratamiento de pocas observaciones? ¿Se evalúa nivel, trayectoria o ambos? Para liquidez: ¿los saldos están reconciliados con todos los movimientos y son de apertura o cierre del día?
+
+La falta de respuesta no bloquea el comparador ni justifica inventar el contrato oficial. No pedir scores ocultos como requisito para trabajar, ni afirmar una integración/contacto inexistente.
+
+**Relevo:** base publicada `a1af735`, rama `ander/clean-pipeline`. `data/` y resultados viven solo localmente y están ignorados; `CLAUDE.md` está excluido localmente de git. `nueva-proposicion.md` debe seguir fuera de commits por petición del usuario; su resumen necesario está en §11. Esta auditoría/plan se documenta después del commit; no asumir que un clon remoto ya tiene estos cambios sin comprobarlo. V2 se implementó después (§13). No resetear cambios ajenos ni publicar código/commits sin petición.
+
 Esta v1 no bloquea futuras políticas: modificar la regla, añadir el cambio a este registro, regenerar y repetir tests/validación. No borrar raw ni hacer cambios silenciosos de significado en columnas existentes.
+
+## 13. Score V2 suavizado — 19-09-2026 (tarde)
+
+**Petición del usuario:** un score más suavizado, que distinga un mes malo de una tendencia mala, que diga si la empresa está en buen momento o decayendo y que todo sea explicable. Implementado como versión nueva `financial_smoothed_v2` en `src/xray/score_v2/`, rama `ander/score-v2`; **V1 no se ha modificado** (único cambio en `src/xray/score/report.py`: `example_cases` acepta una lista opcional de etiquetas, comportamiento por defecto idéntico). Método completo en `docs/scoring-v2.md`; protocolo de comparación en `docs/validation.md`.
+
+### SC08 · Diagnóstico previo que motiva el diseño
+
+Reproducida la auditoría de §12 sobre los artefactos V1 actuales (mediana/p75/p95 de |Δ| 8,77/17,94/44,26; 1.617 extremos exactos; trayectorias 7.537 watch / 2.373 improving / 766 deteriorating). Medido además, sobre `company_monthly_features`: la desviación típica del margen operativo **mensual** dentro de una misma empresa, en ventanas de seis meses, tiene mediana **0,29** (empresas pequeñas 0,44; grandes 0,20). La diferencia trimestre-a-trimestre del margen agregado tiene IQR ±0,17 y el signo de la desviación del mes actual respecto al nivel de seis meses persiste al mes siguiente solo el 53% de las veces (ruido). Con escalas fijas de 0,10 como las de V1, el ruido mensual satura el momentum: por eso V1 saltaba y etiquetaba mejora/deterioro casi al azar. Cualquier V2 debía normalizar los cambios por la volatilidad propia de cada empresa.
+
+### SC09 · Decisiones de diseño adoptadas
+
+| ID | Decisión | Motivo / alternativa descartada |
+|---|---|---|
+| V2-L1 | Nivel = ratios de **flujos agregados en seis meses** (mín. 3 meses con calidad), mismas anclas y misma mezcla 70/30 que V1, `reference_months=24` | Agregar antes de dividir evita que un mes minúsculo arrastre el nivel; la referencia expansiva elimina el ruido de normalización mensual (RV03.5). Media de ratios y EWMA descartadas por menos explicables y menos robustas a meses pequeños |
+| V2-L2 | Retrasos AR/AP = media de medianas mensuales ponderada por número de pagos, mín. 5 pagos en la ventana | No existe la mediana agrupada en features; la ponderación por soporte es la aproximación más fiel disponible |
+| V2-M1 | Momentum = trimestre reciente − trimestre anterior sobre los mismos agregados | Explicable en una frase; sustituye a delta3 de valores mensuales |
+| V2-M2 | Crecimiento de entradas = suma de log(1+g) en tres meses, g recortado a −1 y log a ±1,5 | Corrige RV03.1 (ciclo 100→200→100→100 = 0, test dedicado) |
+| V2-M3 | Cada cambio se divide por σ mensual propia medida en los 12 meses **anteriores al trimestre reciente** (mín. 4, con suelos 0,05/0,02/3 días/0,05) y ajustada a la ventana (√(2/3), √3) | Con σ incluyendo el trimestre reciente, una ruptura grande inflaba su propia σ y se anulaba (comprobado: escalón de 0,20 no confirmado, escalón de 0,16 sí). Con σ previa, a mayor ruptura mayor z (test) |
+| V2-M4 | Agregación por **Z de Stouffer** `Σwz/√Σw²`, pesos margen 0,35 · crecimiento 0,25 · deuda 0,20 · AR 0,10 · AP 0,10; `momentum = 50+50·tanh(z̄/2)` | La media ponderada de tanh diluía una ruptura clara de una sola dimensión (margen z=−2,7 quedaba «stable»); con Stouffer el agregado es N(0,1) bajo ruido con cualquier subconjunto de fuentes, así que el umbral no depende de tener ERP |
+| V2-M5 | Dirección si `|z̄| ≥ 1,5`; confirmación con dos meses seguidos **y** mes actual del mismo lado de su nivel (`current_month_support_z`); histéresis 0,75 para mantener una dirección confirmada | Es la regla que separa bache de tendencia sin mirar t+1. Umbral 1,0 daba 26% de etiquetas direccionales y 1,5 un 21% de |z̄|>1,5 frente al 13% esperado bajo ruido; la sensibilidad 1,0/1,5/2,0 está en el comparador |
+| V2-M6 | Momentum solo si las señales disponibles suman ≥50% del peso nominal; si no, NaN y `insufficient_history` (no se rellena con 50) | Evitar «estable» sostenido por una única señal |
+| V2-E1 | `episode`: `trend_*`, `one_off_dip/spike` (|desviación mensual| ≥ 2σ sin tendencia confirmada), `not_sustained_by_current_month`, `none` | Hace explícita la respuesta a «bache o caída». Un umbral absoluto de 0,20 marcaba el 44% de los meses como atípicos; 2σ propia marca el 8,9% |
+| V2-Q1 | Mes actual fino (1–4 movimientos) se puntúa con la ventana como `provisional` / `thin_current_month`; sin movimientos → `not_scored`; ventana < 3 meses → `insufficient_window_history` | Más cobertura legítima en agosto (922 frente a 876) sin imputar |
+| V2-X1 | Explicación aditiva exacta; contribuciones de momentum `k(z̄)·wᵢzᵢ/‖w‖` con factor de saturación común; columna nueva `standardized_value` | Suma validada automáticamente; cada término conserva el signo de su señal |
+| V2-X2 | Salida en `data/processed/scores_v2/`; el pipeline rechaza escribir sobre `scores/` | V1 conservado como control |
+
+Se conservan de V1: umbrales de calidad mensual, split 200/50 por `group_id` con semilla 20260918 (holdout ya inspeccionado, declarado en el JSON), anclas, fit/predict con referencia congelada, publicación con staging/backup/manifiesto, exclusión de saldos, deuda final, eventos reservados, HHI y país.
+
+### SC10 · Resultados (panel empresa, toda la historia y agosto 2026)
+
+| Métrica | V1 | V2 |
+|---|---:|---:|
+| Filas puntuadas | 15.782 | 14.084 |
+| Mediana / p75 / p95 de cambio mensual absoluto | 8,77 / 17,94 / 44,26 | **3,31 / 7,26 / 17,87** |
+| Cambios > 10 puntos | 20,0% | **6,5%** |
+| Scores exactamente 0/100 · a ≤1/≥99 | 1.617 · 1.972 | **716 · 953** |
+| Cambio de etiqueta mes a mes | 32,5% | **25,8%** |
+| Puntuadas en agosto | 876 (150 scored / 726 provisional) | **922** (285 / 637) |
+| Trayectorias (toda la historia) | 7.537 watch · 2.373 imp. · 766 det. · 201 stable · 4.905 s/hist. | 6.443 stable · 635 emerging imp. · 790 emerging det. · 163 improving · 321 deteriorating · 155 mixed · 5.577 s/hist. |
+| Agosto | 502 watch · 167 imp. · 63 det. · 14 stable · 130 s/hist. | 554 stable · 53 em. imp. · 68 em. det. · **15 improving · 19 deteriorating** · 10 mixed · 203 s/hist. |
+
+Filas comunes 13.198 (solo V1 2.584: los dos primeros meses de cada empresa; solo V2 886: meses actuales finos): |Δ| mediana 8,64 → 3,46; Spearman entre scores 0,79. Episodios en agosto: 36 `one_off_dip`, 24 `one_off_spike`, 22 `not_sustained_by_current_month`, 19 `trend_deterioration`, 15 `trend_improvement`. Grupo-moneda: 192 parejas puntuadas en agosto (V1: 187). Validación de prefijo hasta 2026-02 correcta en ambos paneles: regenerar con datos hasta febrero reproduce exactamente los scores históricos.
+
+Momentum publicado en 8.507 filas; |z̄| > 1,5 en el 21,4% (13% esperado bajo ruido puro): hay señal por encima del ruido, pero la mayor parte de los meses son, correctamente, `stable`. Deterioros confirmados (321) doblan a mejoras confirmadas (163); no se ha forzado simetría.
+
+### SC11 · Lo que V2 NO mejora (comparador `scripts/07_compare_scores.py`, informe en `data/processed/evaluation/`)
+
+Protocolo fijado en código antes de mirar resultados; partición de desarrollo (200 grupos), holdout aparte y etiquetado como ya inspeccionado; mismas filas para todas las señales; bootstrap de 200 remuestreos por grupo completo; detalle en `docs/validation.md`.
+
+- **Proxy de texto de estrés futuro** (EMBARGO/IMPAGADO/…, t+1..t+h, censurando futuros no observados): AUC V1 0,509/0,510 y V2 0,517/0,522 a 3/6 meses (8.233 y 6.234 filas comunes); IC95 de V2−V1 [−0,008, +0,027] y [−0,009, +0,032]. **Ninguna de las dos discrimina.** La actividad bancaria sola da AUC 0,71 en la dirección «más movimientos → más menciones»: el proxy mide sobre todo exposición; dentro de terciles de actividad ambos scores quedan en 0,54–0,55. Spearman con la tasa de eventos por movimiento ≈0,02–0,04.
+- **Proxy de caja reconstruida negativa futura** (independiente del score; runway < 1 se descartó como evento porque ocurre en el 51% de las filas, caja < 0 en el 7,5%): AUC V1 0,50–0,56 y V2 0,49–0,54 según horizonte y partición; IC95 incluyen 0. La persistencia de la caja actual da 0,86–0,93: la caja predice caja, pero no es feature de ninguna versión (D de §12 sigue pendiente).
+- **Riesgo relativo por etiqueta a 6 meses (desarrollo):** V2 `deteriorating` 0,246 frente a `stable` 0,232 (RR 1,06); `improving` 0,266 (RR 1,15, en la dirección equivocada); V1 `deteriorating` RR 1,18. `one_off_dip` tiene la tasa más baja (0,176). Las etiquetas no predicen estas menciones.
+- **Anticipación con regla independiente** (inicio de episodio tras seis meses limpios; señal en los seis meses previos): texto, 180 inicios: V1 confirmado detecta 26% con lead mediano 3 meses; V2 confirmado 11% con lead 2,5; V2 emerging-o-confirmado 27% con lead 3. Falsas alarmas a seis meses ≈75% para todos con tasa base 20%. Caja negativa, 55 inicios: V1 16%, V2 confirmado 4%, V2 emerging 18%; falsas alarmas 87–90% con tasa base 14%. Mejora: 141 recuperaciones (seis meses limpios tras evento); V1 improving detecta 43%, V2 confirmado 4%, V2 emerging 21%.
+- **Sensibilidad al umbral:** con `direction_z` 1,0/1,5/2,0 las cuotas de `deteriorating` son 6,6%/3,8%/2,2% y sus falsas alarmas 76%/75%/74%: el umbral cambia cuántas veces se avisa, no la calidad del aviso frente a este proxy.
+
+**Conclusión honesta:** V2 cumple lo pedido (estabilidad ×2,6 en la mediana de cambio, extremos a menos de la mitad, etiquetas que separan bache de tendencia con regla explícita, cobertura mayor en agosto, explicación exacta) **sin perder** discriminación frente a los proxies (diferencias dentro del ruido). No se puede afirmar que anticipe eventos de estrés: los proxies disponibles apenas se relacionan con la dinámica de flujos operativos de ninguna de las dos versiones, y el texto sintético es sobre todo exposición. Se adopta V2 como candidato de entrega por estabilidad y explicabilidad, con V1 como control; la calibración contra la nota del organizador sigue siendo el único juez que falta.
+
+### SC12 · Reproducir
+
+```bash
+python -X utf8 scripts/05_compute_scores_v2.py fit
+python -X utf8 scripts/06_validate_scores_v2.py --check-prefix 2026-02-01
+python -X utf8 scripts/05_compute_scores_v2.py fit --panel group_currency
+python -X utf8 scripts/06_validate_scores_v2.py --panel group_currency --check-prefix 2026-02-01
+python -X utf8 scripts/07_compare_scores.py
+python -W error -m pytest -q          # 201 tests: 167 V1 + 26 V2 + 8 comparador
+```
+
+Tests V2 (`tests/test_score_v2.py`): ciclo de entradas sin mejora ficticia, agregación de flujos frente a media de ratios, calendario natural sin puentear huecos, meses de baja calidad fuera de la ventana, no-futuro, bache nunca confirmado como tendencia (y `not_sustained_by_current_month`), escalón confirmado en ≤3 meses con score monótono y `stable` al estabilizarse en el nuevo régimen, mejora simétrica con histéresis, ruptura mayor → z mayor, empresa estable sin dirección, momentum 50 en serie constante, referencia serializable y grupos disjuntos, prefijo/mutación futura, referencia congelada e independencia del batch, descomposición exacta, primeros dos meses sin score, mes fino provisional, mes sin movimientos no puntuado, desaparición del ERP sin salto (>7 puntos) y desvanecimiento en la ventana, ERP ausente permitido pero no sano, error de esquema por columna núcleo, mediana de retraso sin conteo rechazada, deuda sin entradas → nota 0, snapshots/texto no consumidos, orden de entrada, configuración incoherente rechazada. Tests del comparador (`tests/test_evaluation_compare.py`): AUC, Spearman, censura y normalización del proxy, inicios/recuperaciones, caja negativa futura, lead time, bootstrap reproducible, métricas de estabilidad.
+
+### SC13 · Pendientes tras V2
+
+1. Producto/demo sobre V2: cartera con `trajectory`/`episode`, ficha con la tabla de contribuciones y el relato «nivel 6m · trimestre reciente frente a anterior · mes actual». Sin desplegar aún.
+2. Contrato del leaderboard (D18/M01) sin cambios: confirmar unidad, escala y formato; `company_latest_scores.csv` de V2 es candidato, no submission.
+3. Liquidez como dimensión (variante D) y fallback de exportación (E) siguen sin implementar; la caja actual predice caja futura (AUC 0,86–0,93) y podría aportar una dimensión de nivel si se resuelve la auditoría de fiabilidad retrospectiva de §12.
+4. El rebote simétrico del momentum tres meses después de un mes atípico está documentado (`atypical_months_in_window`), no suavizado.
+5. Ninguna cifra de este apartado equivale a acuerdo con el score oculto ni a anticipación financiera demostrada; los proxies son texto sintético y caja reconstruida.
