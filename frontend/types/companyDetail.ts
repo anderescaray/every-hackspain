@@ -88,6 +88,50 @@ const simulationInputSchema = z.object({ key: scenarioKeySchema, label: text, un
 const scenarioSchema = z.object({ id: text, label: text, inputs: scenarioInputsSchema, health_score: score.int(), impacts: z.array(z.object({ key: scenarioKeySchema, label: text, points: amount })).max(4), explanation: text });
 const simulationSchema = z.object({ inputs: z.array(simulationInputSchema).length(4), scenarios: z.array(scenarioSchema).max(1000), example_id: text.nullable(), methodology: text });
 
+const actionLeverIdSchema = z.enum(["ap_on_time", "ar_faster", "debt_service_cut", "cut_outflow", "raise_inflow"]);
+const actionLeverSchema = z.object({
+  lever: actionLeverIdSchema,
+  type: z.enum(["treasury", "business"]),
+  label: text,
+  level_before: score,
+  level_after: score,
+  health_before: score.nullable(),
+  health_after: score.nullable(),
+  delta_points: amount.nullable(),
+  cash_equivalent: amount.nonnegative().nullable(),
+  source_grid_rel_change: amount.nullable(),
+  quantity: z.object({ label: text, before: amount, after: amount, unit: z.enum(["days", "EUR"]), direction: z.enum(["increase", "decrease"]) }).strict(),
+  resources: z.object({ kind: z.enum(["liquidity", "cash_flow_relief"]), required: amount.nonnegative().nullable(), own_available: amount.nonnegative().nullable(), gap: amount.nonnegative().nullable(), currency: z.literal("EUR"), feasibility: z.enum(["own_liquidity_sufficient", "requires_financing", "unknown"]), scope: z.literal("selected_grid_scenario").nullable() }).strict().nullable(),
+  efficiency: z.object({ value: amount, unit: z.literal("level_points_per_10k"), label: z.enum(["Eficiencia de liquidez", "Eficiencia de caja"]) }).strict().nullable(),
+  horizon: z.object({ k1_level_delta: amount.nullable(), k6_level_delta: amount.nullable(), full_effect_months: count.positive() }).strict(),
+  next_breakpoint: z.object({ available: z.boolean(), quantity: amount.nullable(), unit: z.enum(["days", "EUR"]) }).strict(),
+  scenario_id: z.null(),
+}).strict();
+const actionabilitySchema = z.object({
+  status: z.enum(["available", "business_sensitivity", "no_actionable_lever", "unavailable"]),
+  reason: text.nullable(),
+  method: z.literal("company_sensitivity_v1"),
+  month: date,
+  primary: actionLeverSchema.nullable(),
+  alternatives: z.array(actionLeverSchema).max(4),
+  next_band: z.object({ current_level: score.nullable(), target_level: score.nullable(), projected_level: score.nullable(), reachable_with_primary: z.boolean().nullable() }).strict().nullable(),
+  structural_issue: z.boolean(),
+  assumptions: z.array(text).max(20),
+  source: z.object({ method: z.literal("company_sensitivity_v1"), inputs_sha256: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) }).strict(),
+}).strict().superRefine((value, ctx) => {
+  const all = [value.primary, ...value.alternatives].filter((lever): lever is z.infer<typeof actionLeverSchema> => lever !== null);
+  if (new Set(all.map((lever) => lever.lever)).size !== all.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Palancas duplicadas", path: ["alternatives"] });
+  if ((value.status === "unavailable" || value.status === "no_actionable_lever") && (value.primary !== null || value.alternatives.length > 0)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Sin palanca evaluable no puede haber resultados", path: ["primary"] });
+  if (value.status === "available" && value.primary?.type !== "treasury") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La palanca disponible principal debe ser de tesorería", path: ["primary"] });
+  if (value.status === "business_sensitivity" && value.primary?.type !== "business") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La sensibilidad principal debe ser de negocio", path: ["primary"] });
+  all.forEach((lever, index) => {
+    const treasury = lever.lever === "ap_on_time" || lever.lever === "ar_faster" || lever.lever === "debt_service_cut";
+    if (lever.type !== (treasury ? "treasury" : "business")) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Tipo de palanca incoherente", path: [index === 0 ? "primary" : "alternatives"] });
+    if ((lever.lever === "ar_faster" || lever.lever === "raise_inflow") && lever.efficiency !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La eficiencia en euros no está identificada para esta palanca", path: [index === 0 ? "primary" : "alternatives", "efficiency"] });
+    if (lever.lever !== "ap_on_time" && lever.resources !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "No hay liquidez identificada para esta palanca", path: [index === 0 ? "primary" : "alternatives", "resources"] });
+  });
+});
+
 export const companyDetailSchema = z.object({
   schema_version: z.literal("2.0"),
   source: z.enum(["generated", "fixture"]),
@@ -110,6 +154,7 @@ export const companyDetailSchema = z.object({
   alerts: z.array(alertSchema).max(5),
   evidence: z.array(evidenceSchema).max(50),
   simulation: simulationSchema,
+  actionability: actionabilitySchema.optional(),
 }).strict().superRefine((company, ctx) => {
   const issue = (message: string, path: (string | number)[]) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path });
   const unique = (values: string[], path: (string | number)[]) => { if (new Set(values).size !== values.length) issue("Identificadores duplicados", path); };
@@ -238,3 +283,5 @@ export type ObservationEvidence = z.infer<typeof observationSchema>;
 export type ScenarioKey = z.infer<typeof scenarioKeySchema>;
 export type ScenarioInputs = z.infer<typeof scenarioInputsSchema>;
 export type Simulation = z.infer<typeof simulationSchema>;
+export type Actionability = z.infer<typeof actionabilitySchema>;
+export type ActionLever = z.infer<typeof actionLeverSchema>;

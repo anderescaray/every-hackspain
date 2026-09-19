@@ -27,10 +27,12 @@ data/processed/*_monthly_features.parquet
   ▼
 data/processed/scores_v2/
   │ 08 product (xray.product: change_narrative, confidence, cash_truth, bundle)
+  │ 08 treasury advisor (xray.group_advisor: company_sensitivity_v1, requiere score group_currency)
   │ 10 what-if (xray.product.whatif: 81 escenarios/empresa re-puntuados con la referencia congelada)
   ▼
 data/processed/product/
-  │ 09 export (xray.product.frontend_export → contrato JSON del frontend)
+  │ 09 export (xray.product.frontend_export → contrato JSON del frontend;
+  │            exige advisor contemporáneo para Actionability)
   ▼
 frontend/public/generated/{portfolio.json, companies/*.json, groups/*.json}   (gitignored)
   │
@@ -63,6 +65,7 @@ python3 -X utf8 scripts/05_compute_scores_v2.py fit
 python3 -X utf8 scripts/05_compute_scores_v2.py fit --panel group_currency   # lo exige el advisor de Ander
 python3 -X utf8 scripts/06_validate_scores_v2.py --check-prefix 2026-02-01
 python3 -X utf8 scripts/08_build_product.py
+python3 -X utf8 scripts/08_treasury_advisor.py                 # obligatorio para Actionability en 09
 python3 -X utf8 scripts/10_build_whatif.py                       # opcional; sin él el simulador dice "sin escenarios"
 python3 -X utf8 scripts/09_export_frontend.py
 
@@ -76,6 +79,8 @@ cd frontend && npm run dev -- --port 3111      # http://localhost:3111/
 Empresas útiles para la demo: `COMP_0764` (historia larga, simulador), `COMP_0001` (estable), `COMP_0647` (apoyo intragrupo dominante), `COMP_0045` (banco extranjero corregido por D31), `GROUP_0250`.
 
 ## 4b. Última integración de frontend
+
+**Actionability**: `09` adapta `company_sensitivity_v1` sin recalcular el score. Empresa recibe una palanca principal, alternativas, eficiencia marginal solo con equivalente de caja, factibilidad AP del escenario seleccionado y camino al siguiente tramo en **nivel V2**. `08_treasury_advisor.py` es requisito explícito para exportar; la ausencia de datos no se reemplaza por valores neutros. La interacción con What-if solo desplaza a su sección: las primitivas no tienen mapping exacto. Ver [`frontend-data-contract.md`](./frontend-data-contract.md).
 
 Rama `integracion` de Álvaro mergeada en `main` (red financiera interactiva con React Flow + dagre, rediseño visual de ficha/grupo/portfolio). Sus commits se hicieron sobre el contrato 3.0 de Pulse; al integrar se conservó su UI y se eliminaron las referencias 3.0 (`company.pulse`, `score_version`, `run_id`), manteniendo el contrato 2.0. Dependencias nuevas: `@xyflow/react`, `@dagrejs/dagre` (lockfile sincronizado con `npm install`). 73 tests frontend.
 

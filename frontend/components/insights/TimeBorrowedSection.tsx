@@ -22,7 +22,7 @@ export function TimeBorrowedSection({ timing, onOpen }: { timing: TimeBorrowed; 
   };
 
   return <section className={`${styles.panel} ${styles.featurePanel}`} aria-label="Tiempo financiado">
-    <SectionHeading number="04" title="Tiempo financiado" description="Plazos de cobro a clientes y pago a proveedores."><div className={styles.segmented} role="group" aria-label="Tipo de contraparte"><button aria-pressed={side === "ar"} onClick={() => setSide("ar")}>Clientes · AR</button><button aria-pressed={side === "ap"} onClick={() => setSide("ap")}>Proveedores · AP</button></div></SectionHeading>
+    <SectionHeading number="05" title="Tiempo financiado" description="Plazos de cobro a clientes y pago a proveedores."><div className={styles.segmented} role="group" aria-label="Tipo de contraparte"><button aria-pressed={side === "ar"} onClick={() => setSide("ar")}>Clientes · AR</button><button aria-pressed={side === "ap"} onClick={() => setSide("ap")}>Proveedores · AP</button></div></SectionHeading>
     {!data ? <p className={styles.emptyState}>No identificable con suficiente confianza. No hay evidencia de plazos de {side === "ar" ? "clientes" : "proveedores"} disponible.</p> : <>
       <div className={styles.timingContext}><span className={styles.mono}>{data.counterparty_id}</span><span>{data.before.period} <span aria-hidden="true">→</span> {data.after.period}</span><Confidence value={data.confidence} /></div>
       <div className={styles.clocks}>

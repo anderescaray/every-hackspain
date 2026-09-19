@@ -568,3 +568,70 @@
 @media (prefers-reduced-motion: reduce) {
   .expandIcon, .infoDisclosure > summary::after { transition: none; }
 }
+
+/* Actionability: one primary readout, one compact decision rail. */
+.actionSection { min-width: 0; }
+.actionLayout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(290px, 2fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.actionPrimary { padding: 26px 34px 27px 0; min-width: 0; }
+.actionIdentity > span { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .055em; }
+.actionIdentity h3 { font-size: clamp(20px, 2vw, 28px); letter-spacing: -.025em; line-height: 1.2; margin-top: 7px; }
+.actionStructural { font-size: 11px; color: var(--negative); margin-top: 9px !important; }
+.actionMetric { display: flex; align-items: baseline; gap: 11px; flex-wrap: wrap; margin-top: 27px; font-variant-numeric: tabular-nums; line-height: 1; }
+.actionMetric > span:first-child, .actionMetric strong { font-size: clamp(43px, 5vw, 64px); font-weight: 550; letter-spacing: -.04em; }
+.actionMetric strong { color: var(--accent); }
+.actionMetric .actionMetricArrow { font-size: 30px; font-weight: 300; color: #a6ada9; }
+.actionMetric em { margin-left: 8px; font-size: 15px; font-style: normal; font-weight: 650; color: var(--accent); letter-spacing: 0; }
+.actionMetricCaption { color: var(--muted); font-size: 11px; margin-top: 9px; }
+.actionQuantity { display: flex; align-items: baseline; gap: 10px 28px; flex-wrap: wrap; margin-top: 25px; }
+.actionQuantity > span { font-size: 11px; color: var(--muted); }
+.actionQuantity strong { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.actionQuantity strong span { color: var(--muted); font-weight: 400; padding: 0 3px; }
+.actionStats { display: flex; flex-wrap: wrap; margin-top: 28px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.actionStats > div { display: flex; flex: 1 1 135px; flex-direction: column; gap: 5px; padding: 15px 13px; min-width: 0; border-right: 1px solid var(--line); }
+.actionStats > div:first-child { padding-left: 0; }
+.actionStats > div:last-child { border-right: 0; }
+.actionStats strong { font-size: 16px; line-height: 1.2; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.actionStats span { font-size: 10px; line-height: 1.4; color: var(--muted); }
+.actionFeasibility { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 9px; margin-top: 17px; color: var(--ink); font-size: 11px; font-weight: 600; }
+.actionFeasibility small { font-size: 10px; font-weight: 400; color: var(--muted); }
+.actionFeasibility small:last-child { flex-basis: 100%; margin-left: 13px; }
+.actionStatusDot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #9aa39d; flex: 0 0 5px; }
+.actionStatusDot[data-state="own_liquidity_sufficient"] { background: var(--accent); }
+.actionStatusDot[data-state="requires_financing"] { background: var(--amber); }
+.actionSide { min-width: 0; border-left: 1px solid var(--line); padding: 27px 0 25px 31px; display: flex; flex-direction: column; }
+.actionPathTop { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.actionPathTop h3, .actionAlternatives h3 { font-size: 12px; font-weight: 650; }
+.actionPathTop strong { font-size: 13px; font-weight: 650; }
+.actionPathTrack { height: 22px; position: relative; border-bottom: 1px solid #b7bfba; margin: 17px 3px 0; }
+.actionPathTrack span { position: absolute; bottom: -4px; transform: translateX(-50%); }
+.actionPathCurrent { width: 7px; height: 7px; border-radius: 50%; background: var(--ink); z-index: 2; }
+.actionPathScenario { width: 8px; height: 8px; background: var(--accent); transform: translateX(-50%) rotate(45deg) !important; z-index: 3; }
+.actionPathTarget { width: 1px; height: 18px; background: var(--muted); bottom: -1px !important; }
+.actionPathLegend { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 7px 15px; margin-top: 14px; color: var(--muted); font-size: 10px; }
+.actionPathLegend span { display: inline-flex; align-items: center; gap: 4px; }
+.actionPathLegend strong { color: var(--ink); font-weight: 650; }
+.actionPathLegend i { width: 6px; height: 6px; background: var(--ink); border-radius: 50%; }
+.actionPathLegend .actionLegendScenario { border-radius: 0; transform: rotate(45deg); background: var(--accent); }
+.actionPathLegend .actionLegendTarget { border-radius: 0; width: 1px; height: 10px; background: var(--muted); margin: 0 2px; }
+.actionPath > p, .actionPathEmpty { font-size: 11px; color: var(--accent); margin-top: 13px; }
+.actionPathEmpty { color: var(--muted); margin-top: 0; }
+.actionAlternatives { margin-top: 35px; }
+.actionAlternatives h3 { margin-bottom: 11px; }
+.actionAlternatives ul { margin: 0; padding: 0; list-style: none; }
+.actionAlternatives li { border-top: 1px solid var(--line); }
+.actionAlternatives li:last-child { border-bottom: 1px solid var(--line); }
+.actionAlternatives button { display: grid; align-items: center; width: 100%; grid-template-columns: minmax(0, 1fr) auto auto 10px; gap: 5px 9px; padding: 12px 3px; background: none; border: 0; color: var(--ink); text-align: left; font-size: 12px; }
+.actionAlternatives button:hover, .actionAlternatives button:focus-visible { color: var(--accent); background: #f5f8f6; }
+.actionAlternatives button > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.actionAlternatives button small { font-size: 9px; font-weight: 650; color: var(--muted); border: 1px solid var(--line); border-radius: 2px; padding: 2px 4px; white-space: nowrap; }
+.actionAlternatives button strong { color: var(--accent); font-size: 12px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.actionAlternatives button > span:last-child { color: var(--muted); }
+.actionAlternatives > p, .actionBusinessNote { color: var(--muted); font-size: 10px; margin-top: 12px !important; }
+.actionExplore { align-self: flex-start; margin-top: auto; padding-top: 28px; font-weight: 650; font-size: 11px; color: var(--accent); text-decoration: none; }
+.actionExplore:hover { text-decoration: underline; text-underline-offset: 3px; }
+.actionQuietState { display: flex; flex-direction: column; gap: 5px; border-top: 1px solid var(--line); padding: 22px 0; font-size: 12px; }
+.actionQuietState span { color: var(--muted); }
+@media (max-width: 850px) { .actionLayout { grid-template-columns: 1fr; } .actionPrimary { padding-right: 0; } .actionSide { border-left: 0; border-top: 1px solid var(--line); padding: 24px 0; } }
+@media (max-width: 640px) { .actionMetric > span:first-child, .actionMetric strong { font-size: 48px; } .actionStats > div { flex-basis: 110px; } .actionAlternatives button { grid-template-columns: minmax(0, 1fr) auto auto; } .actionAlternatives button > span:last-child { display: none; } .actionAlternatives button small { font-size: 8px; } }
+@container analysis-content (max-width: 850px) { .actionLayout { grid-template-columns: 1fr; } .actionPrimary { padding-right: 0; } .actionSide { border-left: 0; border-top: 1px solid var(--line); padding: 24px 0; } }
+@container analysis-content (max-width: 640px) { .actionMetric > span:first-child, .actionMetric strong { font-size: 48px; } .actionStats > div { flex-basis: 110px; } .actionAlternatives button { grid-template-columns: minmax(0, 1fr) auto auto; } .actionAlternatives button > span:last-child { display: none; } .actionAlternatives button small { font-size: 8px; } }

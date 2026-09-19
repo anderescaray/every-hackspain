@@ -22,7 +22,7 @@ export function CashTruthSection({ cash, companyId, groupId, onOpen }: { cash: C
 
   return (
     <section className={`${styles.panel} ${styles.featurePanel}`} aria-label="Origen de la caja">
-      <SectionHeading number="03" title="Origen de la caja" description="De dónde viene la liquidez observada."><span className={styles.featureBadge}>{cash.period}</span></SectionHeading>
+      <SectionHeading number="04" title="Origen de la caja" description="De dónde viene la liquidez observada."><span className={styles.featureBadge}>{cash.period}</span></SectionHeading>
       <aside className={styles.cashConclusion} aria-label="Conclusión del origen de la caja">
         <span className={styles.eyebrow}>Conclusión</span>
         <h3>{cash.headline}</h3>

@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from xray.paths import PROCESSED_DIR, ROOT
+from xray.product.actionability import from_sensitivity, unavailable as actionability_unavailable
 
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
 MODEL_VERSION = "financial_smoothed_v2+frontend-export-1"
@@ -69,7 +70,7 @@ def _round(value, digits=2):
 
 
 def _text(value, fallback):
-    value = "" if value is None else str(value).strip()
+    value = "" if value is None or (not isinstance(value, str) and pd.isna(value)) else str(value).strip()
     return (value or fallback)[:5000]
 
 
@@ -242,7 +243,7 @@ def _simulation(scenarios=None, health_score=None, has_invoices=True):
     return {"inputs": inputs, "scenarios": out, "example_id": best[0] if best and best[1] != 0 else None, "methodology": METHODOLOGY}
 
 
-def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
+def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, sensitivity=None):
     """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno."""
     currency = "EUR"
     block = (company.get("currencies") or {}).get(currency)
@@ -259,7 +260,7 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
     dependency = _num(cash_summary_row.get("support_dependency_ratio")) if cash_summary_row is not None else None
     confidence = (block.get("confidence") or {}).get("confidence")
     cash = _cash_truth(company["company_id"], company.get("group_id"), block.get("cash_truth"), confidence, evidence_rows)
-    return {
+    detail = {
         "schema_version": "2.0", "source": "generated", "company_id": company["company_id"],
         "group_id": company.get("group_id"), "as_of": as_of, "currency": currency,
         "health_score": _score(last["score"]), "dimensions": dimensions,
@@ -275,6 +276,17 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
         "simulation": _simulation(scenarios, _score(last["score"]), has_invoices=_num(last.get("level_collections")) is not None
                                   or _num(last.get("level_payments")) is not None),
     }
+    if sensitivity is not None:
+        if sensitivity.get("company_id") != company["company_id"] or sensitivity.get("currency") != currency:
+            raise ValueError(f"Advisor sensitivity identity mismatch for {company['company_id']}")
+        if sensitivity.get("month") != pd.Timestamp(last["month"]).strftime("%Y-%m-%d"):
+            detail["actionability"] = actionability_unavailable(sensitivity, "unavailable", "score_month_not_current")
+        else:
+            advisor_score = _num((sensitivity.get("baseline") or {}).get("score"))
+            if advisor_score is not None and abs(advisor_score - float(last["score"])) > 1e-4:
+                raise ValueError(f"Advisor/V2 score mismatch for {company['company_id']}")
+            detail["actionability"] = from_sensitivity(sensitivity)
+    return detail
 
 
 def group_detail(group, member_details, cash_summary):
@@ -392,11 +404,48 @@ def _sample_evidence(evidence, company_id, window):
     return sample
 
 
-def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True):
-    product_dir, out_dir = Path(product_dir), Path(out_dir)
+def _advisor_sensitivities(advisor_dir, advisor_manifest, company_files):
+    """Preflight the entire advisor snapshot before writing any company JSON."""
+    docs = {}
+    outputs = advisor_manifest.get("outputs_sha256") or {}
+    for file in company_files:
+        rel = f"company_sensitivity/{file.stem}.json"
+        path = advisor_dir / rel
+        expected = outputs.get(rel)
+        if not path.is_file() or not expected:
+            raise FileNotFoundError(f"Falta sensibilidad verificada para {file.stem}: {path}; ejecutá scripts/08_treasury_advisor.py")
+        if _sha(path) != expected:
+            raise ValueError(f"Hash de sensibilidad no coincide con el manifiesto del advisor: {path}")
+        docs[file.stem] = json.loads(path.read_text(encoding="utf-8"))
+    return docs
+
+
+def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED,
+        advisor_dir=PROCESSED_DIR / "advisor", verbose=True):
+    product_dir, out_dir, advisor_dir = Path(product_dir), Path(out_dir), Path(advisor_dir)
     say = print if verbose else (lambda *a, **k: None)
     portfolio = json.loads((product_dir / "portfolio.json").read_text(encoding="utf-8"))
     latest = pd.Timestamp(portfolio["latest_month"])
+    advisor_manifest_path = advisor_dir / "_advisor_manifest.json"
+    sensitivity_dir = advisor_dir / "company_sensitivity"
+    if not advisor_manifest_path.is_file() or not sensitivity_dir.is_dir():
+        raise FileNotFoundError(f"Falta company_sensitivity_v1 en {advisor_dir}; ejecutá scripts/08_treasury_advisor.py antes de 09_export_frontend.py")
+    advisor_manifest = json.loads(advisor_manifest_path.read_text(encoding="utf-8"))
+    if advisor_manifest.get("method") != "treasury_advisor_v1" or advisor_manifest.get("month") != latest.strftime("%Y-%m-%d"):
+        raise ValueError(f"Advisor incompatible o desactualizado en {advisor_manifest_path}; ejecutá scripts/08_treasury_advisor.py")
+    product_manifest_path = product_dir / "_product_manifest.json"
+    if not product_manifest_path.is_file():
+        raise FileNotFoundError(f"Falta manifiesto de producto: {product_manifest_path}")
+    product_manifest = json.loads(product_manifest_path.read_text(encoding="utf-8"))
+    product_inputs, advisor_inputs = product_manifest.get("inputs_sha256") or {}, advisor_manifest.get("inputs_sha256") or {}
+    shared = (("scores", "scores_v2/company_monthly_scores.parquet"),
+              ("feature_manifest", "_feature_manifest.json"),
+              ("feature_artifact:company_monthly_features.parquet", "company_monthly_features.parquet"))
+    if any(not product_inputs.get(product_key) or product_inputs.get(product_key) != advisor_inputs.get(advisor_key)
+           for product_key, advisor_key in shared):
+        raise ValueError("Producto y advisor usan entradas V2/features distintas; regenerá 08_build_product.py y 08_treasury_advisor.py")
+    company_files = sorted((product_dir / "companies").glob("COMP_*.json"))
+    sensitivities = _advisor_sensitivities(advisor_dir, advisor_manifest, company_files)
     summary = pd.read_parquet(product_dir / "cash_truth_summary.parquet")
     summary = summary[summary.month.eq(latest) & summary.currency.eq("EUR")].set_index("company_id")
     evidence_path = product_dir / "evidence" / "cash_truth_tx.parquet"
@@ -410,19 +459,22 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     else:
         whatif_groups = {}
     details, written, skipped = {}, 0, 0
-    for file in sorted((product_dir / "companies").glob("COMP_*.json")):
+    for file in company_files:
         company = json.loads(file.read_text(encoding="utf-8"))
         block = (company.get("currencies") or {}).get("EUR") or {}
         window = [pd.Timestamp(m) for m in (block.get("cash_truth") or {}).get("window_months", [])]
         rows = _sample_evidence(evidence, company["company_id"], window) if window else evidence.iloc[:0]
         summary_row = summary.loc[company["company_id"]].to_dict() if company["company_id"] in summary.index else None
-        detail = company_detail(company, summary_row, rows, whatif_groups.get(company["company_id"]))
+        sensitivity = sensitivities[company["company_id"]]
+        detail = company_detail(company, summary_row, rows, whatif_groups.get(company["company_id"]), sensitivity)
         if detail is None:
             skipped += 1
             continue
         details[company["company_id"]] = detail
-        _write_json(out_dir / "companies" / f"{company['company_id']}.json", detail)
         written += 1
+    # Only publish after every detail has passed identity, month, score and hash checks.
+    for company_id, detail in details.items():
+        _write_json(out_dir / "companies" / f"{company_id}.json", detail)
     groups = 0
     cash_by_company = {cid: row for cid, row in summary.to_dict(orient="index").items()}
     for file in sorted((product_dir / "groups").glob("GROUP_*.json")):
@@ -434,6 +486,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     manifest = {"model_version": MODEL_VERSION, "latest_month": portfolio["latest_month"], "companies_written": written,
                 "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
                 "companies_with_scenarios": len(whatif_groups),
+                "advisor_method": advisor_manifest["method"], "advisor_manifest_sha256": _sha(advisor_manifest_path),
                 "product_manifest_sha256": _sha(product_dir / "_product_manifest.json")}
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)
     say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} · portfolio {len(portfolio['companies'])} -> {out_dir}")
