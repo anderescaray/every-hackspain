@@ -300,9 +300,11 @@ function NetworkCanvasInner({
           nodesDraggable={false}
           nodesConnectable={false}
           elementsSelectable
-          panOnScroll
-          zoomOnScroll
-          zoomOnPinch
+          panOnScroll={false}
+          zoomOnScroll={false}
+          zoomOnPinch={false}
+          preventScrolling={false}
+          panOnDrag
           proOptions={{ hideAttribution: true }}
           defaultEdgeOptions={{ type: "relation" }}
         >
