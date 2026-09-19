@@ -28,6 +28,8 @@ python -X utf8 scripts/04_validate_scores.py
 python -X utf8 scripts/05_compute_scores_v2.py fit              # V2 -> data/processed/scores_v2/
 python -X utf8 scripts/06_validate_scores_v2.py --check-prefix 2026-02-01
 python -X utf8 scripts/07_compare_scores.py                     # -> data/processed/evaluation/
+python -X utf8 scripts/08_build_product.py                      # -> data/processed/product/
+python -X utf8 scripts/09_export_frontend.py                    # -> frontend/public/generated/ (contrato del frontend)
 python -m pytest -q -p no:asyncio                               # 233 tests (-W error si no hay pytest-asyncio global)
 ```
 
