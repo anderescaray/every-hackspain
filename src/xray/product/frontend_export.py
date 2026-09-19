@@ -291,7 +291,7 @@ def _publish(staged: Path, root: Path, manifest: dict[str, Any]) -> Path:
 def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "EUR",
         verbose: bool = True) -> dict[str, Any]:
     if currency != "EUR":
-        raise ValueError("This web contract is an explicit EUR view; no FX consolidation or currency relabelling")
+        raise ValueError("This web contract is an EUR view; since D32 the ledger converts every currency to EUR at a fixed rate")
     run_dir, out_dir = Path(run_dir).absolute(), Path(out_dir).absolute()
     check_output_path(out_dir, run_dir)
     _safe_destination(out_dir)
