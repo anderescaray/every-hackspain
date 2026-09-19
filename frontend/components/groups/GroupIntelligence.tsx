@@ -13,9 +13,9 @@ import base from "@/components/insights/insights.module.css";
 import styles from "./groups.module.css";
 
 const questions: Record<GroupView, string> = {
-  overview: "¿Cómo está el grupo y dónde debería prestar atención?",
-  network: "¿Cómo están conectadas financieramente las sociedades?",
-  recommendations: "¿Qué debería revisar el equipo de tesorería antes de actuar?",
+  overview: "Tres números del grupo y las sociedades a las que mirar primero.",
+  network: "El grafo: quién se conecta con quién y por cuánto.",
+  recommendations: "Las revisiones priorizadas antes de mover caja.",
 };
 
 export function GroupIntelligence({ group, view, initialRelation, initialCompany }: { group: GroupDetail; view: GroupView; initialRelation?: string; initialCompany?: string }) {

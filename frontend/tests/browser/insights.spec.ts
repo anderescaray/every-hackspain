@@ -28,7 +28,7 @@ for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: id, exact: true })).toBeVisible();
     await expect(page.getByText("Demo · Datos de ejemplo")).toBeVisible();
-    for (const name of ["Trayectoria", "Origen de la caja", "Tiempo financiado", "Simulador de escenarios"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    for (const name of ["Tendencia", "Origen de la caja", "Tiempo financiado", "Simulador de escenarios"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
@@ -57,7 +57,7 @@ test("origen de liquidez separado de movimientos de tesorería", async ({ page }
   const origins = cash.getByRole("group", { name: "Origen de la liquidez", exact: true });
   await expect(origins.getByRole("article", { name: "Generación operativa", exact: true }).getByText("+25,6 mil €", { exact: true })).toBeVisible();
   await expect(origins.getByRole("article", { name: "Apoyo intragrupo", exact: true }).getByText("+4,14 M€", { exact: true })).toBeVisible();
-  await expect(origins.getByRole("article", { name: "No identificado", exact: true }).getByText("210 mil €", { exact: true })).toBeVisible();
+  await expect(origins.getByRole("article", { name: "Origen no identificado", exact: true }).getByText("210 mil €", { exact: true })).toBeVisible();
   await expect(origins.getByRole("article")).toHaveCount(3);
   const treasury = cash.getByRole("region", { name: "Movimientos de tesorería", exact: true });
   await expect(treasury.getByRole("heading", { name: "Circulación entre cuentas propias", exact: true })).toBeVisible();
@@ -115,9 +115,9 @@ test("tiempo financiado: puntualidad independiente y selector AR/AP", async ({ p
   await expect(timing.getByText("COUNTERPARTY_06105", { exact: true })).toBeVisible();
 });
 
-test("trayectoria del Health Score: teclado y 24 meses en tabla", async ({ page }) => {
+test("tendencia del Health Score: teclado y 24 meses en tabla", async ({ page }) => {
   await page.goto("/companies/COMP_0655");
-  const trajectory = page.getByRole("region", { name: "Trayectoria", exact: true });
+  const trajectory = page.getByRole("region", { name: "Tendencia", exact: true });
   const slider = trajectory.getByRole("slider", { name: "Explorar mes" });
   await slider.focus();
   await page.keyboard.press("Home");

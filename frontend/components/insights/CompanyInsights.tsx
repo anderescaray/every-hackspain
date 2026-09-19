@@ -30,7 +30,6 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     <header id="health-score" data-company-section="health-score" className={styles.companyHeader}>
       <div className={styles.headerIdentity}>
         <div><div className={styles.companyMeta}><span className={styles.eyebrow}>Empresa · {company.group_id === null ? "Sin grupo" : `Grupo ${company.group_id}`}</span><span>Datos a {dateLabel(company.as_of)}</span></div><h1>{company.company_id}</h1><p>{company.summary}</p></div>
-        <span className={styles.periodBadge}>Análisis financiero</span>
       </div>
       <div className={styles.healthOverview}>
         <section className={styles.healthHero} aria-label="Estado financiero global">
@@ -41,23 +40,21 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
           <div className={styles.analysisConfidence}>
             <span>Confianza del análisis: <strong>{confidenceLabel(company.confidence)}</strong></span>
             <Confidence value={company.confidence} />
-            <small>Calidad y cobertura de la información, no probabilidad de acierto. No forma parte del Health Score.</small>
           </div>
         </section>
         <section className={styles.composition} aria-label="Composición del Health Score">
-          <span className={styles.eyebrow}>¿De dónde sale tu Health Score?</span>
           <h2>Composición del Health Score</h2>
-          <p>Cuatro dimensiones, una única visión de la empresa.</p>
           <dl className={styles.dimensionList}>
             {HEALTH_DIMENSIONS.map((dimension) => <div key={dimension.key}>
-              <dt><span>{dimension.label}</span><small>{dimension.explanation}</small>{company.dimensions[dimension.key] !== null && <span className={styles.dimensionTrack} aria-hidden="true"><i style={{ width: `${company.dimensions[dimension.key]}%` }} /></span>}</dt>
-              <dd><strong>{company.dimensions[dimension.key] === null ? "No evaluable" : numberLabel(company.dimensions[dimension.key]!, 2)}</strong><span>{numberLabel(company.health_score_model.weights[dimension.key] * 100)} % del total</span></dd>
+              <dt><span>{dimension.label}</span><small>{dimension.explanation}</small><span className={styles.dimensionTrack} aria-hidden="true">{company.dimensions[dimension.key] !== null && <i style={{ width: `${company.dimensions[dimension.key]}%` }} />}</span></dt>
+              <dd><strong className={company.dimensions[dimension.key] === null ? styles.muted : undefined}>{company.dimensions[dimension.key] === null ? "No evaluable" : numberLabel(company.dimensions[dimension.key]!, 2)}</strong></dd>
             </div>)}
           </dl>
           <details className={styles.methodology}>
-            <summary>Cómo se calcula · {company.health_score_model.provisional ? "evidencia parcial" : "PulseFourPillars"}</summary>
+            <summary>Cómo se calcula</summary>
             <p>{HEALTH_DIMENSIONS.map(({ key, label }) => `${numberLabel(company.health_score_model.weights[key] * 100)} % ${label}`).join(" + ")}. Valores suministrados por el motor, sin recalcular ni completar componentes ausentes.</p>
             <p>Pesos iniciales no calibrados científicamente. Diagnóstico de tesorería y alerta temprana, no probabilidad de impago. Momentum describe la trayectoria observada, no un pronóstico; deuda mide presión del servicio observado, no solvencia ni deuda contractual total.</p>
+            <p>La confianza del análisis mide calidad y cobertura de la información, no probabilidad de acierto, y no forma parte del Health Score.</p>
             {company.health_score === null && <p>Límites de identificación: {numberLabel(company.pulse.health_min, 2)}–{numberLabel(company.pulse.health_max, 2)}. No son intervalos de confianza. Componentes ausentes: {company.pulse.missing_components.join(", ")}.</p>}
             <p>Método: {company.score_version} · Clasificación: {company.classification_version} · Run: {company.run_id}</p>
           </details>
@@ -67,16 +64,17 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     <div id="trajectory" data-company-section="trajectory" className={styles.overviewGrid}>
       <TrajectoryChart history={company.history} trajectory={company.trajectory} />
       <section className={styles.panel} aria-label="Factores del Health Score">
-        <SectionHeading number="02" title="¿Por qué está cambiando el Health Score?" description="Las señales detrás de la evolución financiera." />
-        <p className={styles.smallText}>{company.drivers_period}</p>
+        <SectionHeading number="02" title="¿Por qué cambia el Health Score?" />
         <div className={styles.drivers}>{company.drivers.map((driver) => <article className={styles.driver} key={driver.id}>
           <div className={styles.inlineHeading}><h3>{driver.driver}</h3><strong className={driver.direction === "positive" ? styles.positiveText : driver.direction === "negative" ? styles.negativeText : styles.muted}>{signedNumber(driver.impact)} <small>puntos</small></strong></div>
           <p>{driver.explanation}</p>
-          <p className={styles.dimensionContext}>Afecta a {HEALTH_DIMENSIONS.filter(({ key }) => driver.affected_dimensions.includes(key)).map(({ label }) => label).join(" · ")}</p>
-          <div className={styles.evidenceMeta}><span>{driver.evidence_count} registros de respaldo</span><EvidenceButton refs={driver.evidence_refs} title={driver.driver} onOpen={openEvidence} /></div>
+          <div className={styles.driverFooter}>
+            <span className={styles.dimensionChips}>{HEALTH_DIMENSIONS.filter(({ key }) => driver.affected_dimensions.includes(key)).map(({ key, label }) => <span key={key}>{label}</span>)}</span>
+            <EvidenceButton refs={driver.evidence_refs} title={driver.driver} onOpen={openEvidence} />
+          </div>
         </article>)}</div>
         {!company.drivers.length && <p className={styles.emptyState}>No hay factores con suficiente respaldo para este análisis.</p>}
-        <p className={styles.disclaimer}>{isMock ? "Contribuciones ilustrativas. " : "Contribuciones seleccionadas. "}No tienen por qué sumar la variación completa del Health Score.</p>
+        <p className={styles.footnote}>{company.drivers_period}{company.drivers.length > 0 && !isMock ? " · Contribuciones seleccionadas: no suman necesariamente toda la variación." : ""}</p>
       </section>
     </div>
     <div id="cash-truth" data-company-section="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>

@@ -46,20 +46,20 @@ test("el acceso aparece automáticamente solo en empresas con grupo", async ({ p
 
 test("overview permite priorizar sociedades y revisar evidencias", async ({ page }) => {
   await page.goto("/groups/GROUP_0042");
-  const table = page.getByRole("region", { name: "Tabla de sociedades", exact: true });
-  await expect(table.getByRole("row")).toHaveCount(7);
-  await expect(table.getByRole("columnheader", { name: "Deuda y obligaciones", exact: true })).toBeVisible();
-  await page.getByLabel("Trayectoria", { exact: true }).selectOption("deteriorating");
-  await expect(table.getByRole("row")).toHaveCount(3);
+  const list = page.getByRole("list", { name: "Tabla de sociedades", exact: true });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await page.getByRole("button", { name: /Todas/ }).click();
+  await expect(list.getByRole("listitem")).toHaveCount(6);
   await page.getByLabel("Buscar sociedad", { exact: true }).fill("COMP_0412");
-  await expect(table.getByRole("row")).toHaveCount(2);
-  const button = table.getByRole("button", { name: "Ver evidencia: Sociedad COMP_0412", exact: true });
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  await list.getByRole("listitem").locator("summary").click();
+  const button = list.getByRole("button", { name: "Ver evidencia: Sociedad COMP_0412", exact: true });
   await button.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("columnheader", { name: "Sociedad observada", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(button).toBeFocused();
-  await table.getByRole("link", { name: "Ver en la red", exact: true }).click();
+  await list.getByRole("link", { name: "Ver en la red", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "Detalle de la selección" }).getByRole("heading", { name: "COMP_0412", exact: true })).toBeVisible();
 });
 
@@ -82,11 +82,12 @@ test("la red selecciona nodos por teclado y abre la ficha de sociedad", async ({
 test("la red distingue candidatas, desconocidas y relaciones confirmadas", async ({ page }) => {
   await page.goto("/groups/GROUP_0042/network");
   await page.getByLabel("Evidencia de la relación", { exact: true }).selectOption("candidate");
+  await page.getByText("Ver todas las transferencias", { exact: true }).click();
   const list = page.getByRole("region", { name: "Lista de relaciones", exact: true });
   await expect(list.getByRole("button")).toHaveCount(1);
   await list.getByRole("button").click();
   const detail = page.getByRole("complementary", { name: "Detalle de la selección" });
-  await expect(detail.getByText("No es una relación confirmada.", { exact: false })).toBeVisible();
+  await expect(detail.getByText("No confirmada.", { exact: false })).toBeVisible();
   await detail.getByRole("button", { name: /^Ver evidencia: Relación/ }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("G-P-001", { exact: true })).toBeVisible();
@@ -98,8 +99,8 @@ test("la red distingue candidatas, desconocidas y relaciones confirmadas", async
   await expect(page.getByRole("button", { name: /^Seleccionar relación/ })).toHaveCount(0);
   await list.getByRole("button").click();
   await expect(detail.getByText("COMP_1033 → Destino no identificado", { exact: true })).toBeVisible();
-  await expect(detail.getByText("No disponible", { exact: true }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Restablecer vista", exact: true }).click();
+  await expect(detail.getByText("—", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Restablecer", exact: true }).click();
   await expect(list.getByRole("button")).toHaveCount(5);
 });
 
@@ -113,13 +114,14 @@ test("de la relación al plan de revisión, sin ejecución de transferencias", a
   await expect(page.getByText("Relación: COMP_0007 → COMP_0412", { exact: true })).toBeVisible();
   await expect(page.getByText("Revisar el apoyo interno recurrente", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Quitar filtro de relación" }).click();
-  await page.getByLabel("Tipo de revisión", { exact: true }).selectOption("insufficient_evidence");
-  await expect(page.getByText("1 revisión visible", { exact: true })).toBeVisible();
+  await page.getByLabel("Prioridad", { exact: true }).selectOption("medium");
+  await expect(page.getByText("4 revisiones", { exact: true })).toBeVisible();
   await expect(page.getByText("Completar la evidencia antes de concluir", { exact: true })).toBeVisible();
+  await page.getByRole("article").filter({ hasText: "Completar la evidencia antes de concluir" }).getByText("Ver pasos y límites").click();
   await expect(page.getByText("La falta de conexiones no demuestra ausencia de relaciones.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Ejecutar|Transferir|Pagar/i })).toHaveCount(0);
   await page.getByRole("button", { name: "Restablecer filtros" }).click();
-  await expect(page.getByText("7 revisiones visibles", { exact: true })).toBeVisible();
+  await expect(page.getByText("7 revisiones", { exact: true })).toBeVisible();
 });
 
 test("sin JSON, con JSON inválido o perímetro vacío no se inventa inteligencia", async ({ page }) => {

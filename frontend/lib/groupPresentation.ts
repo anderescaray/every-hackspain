@@ -2,9 +2,9 @@ import type { GroupMember, GroupRecommendation, GroupRelation, GroupView } from 
 import { money, numberLabel } from "./companyFormat";
 
 export const groupTabs: { key: GroupView; label: string; description: string; suffix: string }[] = [
-  { key: "overview", label: "Visión general", description: "Qué ocurre y dónde prestar atención", suffix: "" },
-  { key: "network", label: "Red financiera", description: "Cómo se conectan las sociedades", suffix: "/network" },
-  { key: "recommendations", label: "Recomendaciones", description: "Qué revisar antes de actuar", suffix: "/recommendations" },
+  { key: "overview", label: "Visión general", description: "Magnitudes y sociedades a revisar", suffix: "" },
+  { key: "network", label: "Red financiera", description: "Grafo de flujos del grupo", suffix: "/network" },
+  { key: "recommendations", label: "Recomendaciones", description: "Revisiones priorizadas", suffix: "/recommendations" },
 ];
 export const roleLabels: Record<GroupMember["role"], string> = { provider: "Aportante", receiver: "Receptora", both: "Aporta y recibe", none_identified: "Sin rol interno identificado", unknown: "Rol no determinado" };
 export const relationStatusLabels: Record<GroupRelation["status"], string> = { identified: "Identificada · evidencia alta", candidate: "Candidata · por confirmar", unknown: "Desconocida · no atribuible" };
