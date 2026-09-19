@@ -41,7 +41,8 @@ def test_tax_with_positive_sign_becomes_refund_and_debt_is_ignored():
 
 
 def test_features_use_ai_categories_when_configured(tmp_path):
-    rows = [row(1, date="2025-02-01", amount=100),
+    rows = [row(0, date="2025-01-20", amount=5000),   # enero: primer mes, parcial (D33); febrero ya es comparable
+            row(1, date="2025-02-01", amount=100),
             row(2, date="2025-02-05", amount=80, category="-", description="PAYOUT STRIPE 1"),
             row(3, date="2025-02-06", amount=-40, category="-", description="SEPA Overboeking Naam: X"),
             row(4, date="2025-02-07", amount=-500, category="-", description="SCF-AJUS.SALDO C., DC: 1"),

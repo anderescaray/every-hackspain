@@ -49,13 +49,13 @@ Publicación: staging, copias anteriores en `.history/`, sustitución atómica *
 
 ### Estado de cobertura (FE10)
 
-`coverage_state` por entidad-moneda-mes: `no_data`, `pre_activity`, `dormant`, `onboarding`, `account_change`, `ok`. Una cuenta está dormida en el mes si tiene ≤3 movimientos utilizables y <2.000 unidades (comisiones); el estado usa solo cuentas no dormidas y datos ≤ mes. `account_change` exige que las cuentas que entran o salen pesen ≥10 % del volumen. Columnas auxiliares: `tx_active_accounts_real`, `tx_dormant_accounts`, `tx_new_active_accounts`, `tx_dropped_active_accounts`, `tx_account_change_share`, `months_since_first_activity`, `is_coverage_comparable`. Son cobertura, no predictores; las dinámicas deben calcularse entre meses `ok`. Umbrales en `FeatureConfig` (`dormant_max_transactions`, `dormant_max_amount`, `onboarding_months`, `account_change_min_share`). Detalle y cifras en `decisiones.md` FE10.
+`coverage_state` por entidad-moneda-mes: `no_data`, `pre_activity`, `dormant`, `onboarding`, `account_change`, `ok`. Una cuenta está dormida en el mes si tiene ≤3 movimientos utilizables y <2.000 € (comisiones; importes en EUR desde D32); el estado usa solo cuentas no dormidas y datos ≤ mes. `account_change` exige que las cuentas que entran o salen pesen ≥10 % del volumen. Columnas auxiliares: `tx_active_accounts_real`, `tx_dormant_accounts`, `tx_new_active_accounts`, `tx_dropped_active_accounts`, `tx_account_change_share`, `months_since_first_activity`, `is_coverage_comparable`. Son cobertura, no predictores; las dinámicas deben calcularse entre meses `ok`. **D33:** `onboarding` es solo el primer mes con actividad real y, salvo que sea el primer mes de la extracción (2024-09), es parcial: `is_partial_first_month` anula sus importes bancarios antes de ventanas y ratios. Umbrales en `FeatureConfig` (`dormant_max_transactions`, `dormant_max_amount`, `onboarding_months`, `account_change_min_share`). Detalle y cifras en `decisiones.md` FE10.
 
 ## 2. Monedas y transacciones
 
 No hay tipos de cambio fiables para consolidar. No se multiplican ni dividen importes por `exchange_rate`. Tampoco es válido dividir sumas de monedas mezcladas y llamarlo ratio independiente de moneda.
 
-Transacciones utilizables: `booked`, moneda de producto conocida, `exchange_rate == 1`, sin `is_extreme_amount`, `is_relative_outlier`, `is_sync_duplicate` ni `is_unknown_product`. El flag de outlier relativo ya es causal en `cleaned`.
+Transacciones utilizables: `booked`, moneda de producto conocida (importe convertido a EUR con tipo fijo, D32), sin `is_sync_duplicate` ni `is_unknown_product`. No hay ningún corte por tamaño (ni absoluto D01 ni relativo D02) ni filtro por `exchange_rate`.
 
 | Bloque | Categorías / fórmula |
 |---|---|

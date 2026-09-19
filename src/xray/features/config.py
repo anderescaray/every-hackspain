@@ -15,11 +15,12 @@ class FeatureConfig:
     # D31: artefacto estático de categorías AI para filas `uncategorized`; None = desactivado.
     ai_categories_path: str | None = None
     ai_min_confidence: float = 0.7
-    # FE10: cobertura. Cuenta dormida = ≤ N movimientos utilizables y < X unidades (moneda nominal) en el mes;
-    # onboarding = primeros M meses desde la primera actividad real de la entidad-moneda.
+    # FE10: cobertura. Cuenta dormida = ≤ N movimientos utilizables y < X € en el mes (importes en EUR, D32);
+    # onboarding = primer mes con actividad real: suele estar incompleto (empieza a mitad de mes, mediana día 14,
+    # ~60% de la actividad normal) y sus importes no entran en ventanas ni score (D33). El mes siguiente ya es normal.
     dormant_max_transactions: int = 3
     dormant_max_amount: float = 2000.0
-    onboarding_months: int = 2
+    onboarding_months: int = 1
     account_change_min_share: float = 0.10
 
     def __post_init__(self):

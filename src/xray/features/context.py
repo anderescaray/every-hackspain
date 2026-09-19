@@ -1,18 +1,23 @@
+import numpy as np
 import pandas as pd
 
 from xray.features.temporal import divide
+from xray.fx import REPORTING_CURRENCY, to_eur
 
 
 def reconstruct_liquidity(tables, config):
     bank = tables["banking_products"]
     accounts = bank.loc[bank.type.eq("checking"), ["product_id", "company_id", "currency", "created_at"]]
     balances = accounts.merge(tables["balances"][["product_id", "date", "balance"]], on="product_id", how="left", validate="one_to_one")
+    # D32: saldo y movimientos en EUR con el mismo tipo fijo, así la identidad hacia atrás se mantiene.
+    balances["balance"] = to_eur(balances.balance.astype(float), balances.currency)
+    balances["currency"] = REPORTING_CURRENCY
     tx = tables["transactions"]
     tx = tx.loc[tx.product_id.isin(balances.product_id)].copy()
+    tx["amount"] = to_eur(tx.amount.astype(float), tx.product_currency)
     tx = tx.merge(balances[["product_id", "date"]].rename(columns={"date": "snapshot_date"}), on="product_id", validate="many_to_one")
     tx = tx.loc[tx.date.lt(tx.snapshot_date.dt.normalize() + pd.Timedelta(days=1))]
-    tx["unsafe"] = (~tx.status.eq("booked") | ~tx.exchange_rate.eq(1) | tx.is_extreme_amount
-                    | tx.is_relative_outlier | tx.is_sync_duplicate)
+    tx["unsafe"] = ~tx.status.eq("booked") | tx.amount.isna() | tx.is_sync_duplicate
     first = tx.groupby("product_id").date.min()
     bank_flow = tx.loc[tx.status.eq("booked") & ~tx.is_sync_duplicate]
     frames = []
@@ -52,12 +57,35 @@ def liquidity_summary(accounts, panel):
     return p
 
 
+# D36: solo en productos rotativos el uso (dispuesto / concedido) indica tensión; en préstamos,
+# leasing, hipotecas o avales es amortización pendiente.
+REVOLVING_DEBT = frozenset({"lineofcredit", "confirming", "factoring"})
+
+
 def debt_snapshot(tables, config):
+    """Foto de deuda a extracción (contexto de producto, nunca predictor histórico; D21/D36).
+
+    Fuente principal `balances` (fechada, misma foto que los saldos de cuentas); `debt_products` solo
+    cuando falta. Las dos coinciden en ~71% de productos y difieren poco en el resto (desfase de fecha).
+    """
     debt = tables["debt_products"].copy()
+    snap = (tables["balances"].reindex(columns=["product_id", "balance", "granted", "liquidity"])
+            .rename(columns={"balance": "snap_outstanding", "granted": "snap_granted", "liquidity": "snap_liquidity"}))
+    debt = debt.merge(snap, on="product_id", how="left", validate="one_to_one")
     debt["snapshot_date"] = pd.Timestamp(config.extraction_date)
-    debt["debt_outstanding"] = -pd.to_numeric(debt.outstanding)
-    debt["debt_granted"] = -pd.to_numeric(debt.granted)
-    debt["debt_utilization"] = divide(debt.debt_outstanding, debt.debt_granted)
+    debt["source_currency"] = debt.currency
+    outstanding = pd.to_numeric(debt.snap_outstanding).fillna(pd.to_numeric(debt.outstanding))
+    granted = pd.to_numeric(debt.snap_granted).fillna(pd.to_numeric(debt.granted))
+    liquidity = pd.to_numeric(debt.snap_liquidity).fillna(pd.to_numeric(debt.liquidity))
+    debt["outstanding_source"] = np.select([debt.snap_outstanding.notna(), debt.outstanding.notna()],
+                                           ["balances", "debt_products"], default="missing")
+    debt["debt_outstanding"] = -to_eur(outstanding, debt.source_currency)
+    debt["debt_granted"] = -to_eur(granted, debt.source_currency)
+    debt["liquidity"] = to_eur(liquidity, debt.source_currency)
+    debt["currency"] = REPORTING_CURRENCY
+    debt["is_revolving"] = debt.type.isin(REVOLVING_DEBT)
+    debt["debt_utilization"] = divide(debt.debt_outstanding, debt.debt_granted).where(debt.is_revolving)
     debt["has_unexpected_sign"] = debt.debt_outstanding.lt(0) | debt.debt_granted.lt(0)
-    return debt[["company_id", "product_id", "currency", "type", "snapshot_date", "debt_outstanding",
-                 "debt_granted", "liquidity", "debt_utilization", "has_unexpected_sign"]]
+    return debt[["company_id", "product_id", "currency", "source_currency", "type", "is_revolving", "snapshot_date",
+                 "outstanding_source", "debt_outstanding", "debt_granted", "liquidity", "debt_utilization",
+                 "has_unexpected_sign"]]

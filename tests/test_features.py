@@ -7,6 +7,7 @@ from xray.clean.invoices import clean_invoices
 from xray.clean.log import CleaningLog
 from xray.clean.transactions import clean_transactions
 from xray.features import FeatureConfig, build_features
+from xray.fx import FX_TO_EUR
 
 
 def fixture_tables(rows=None, invoices=None):
@@ -33,14 +34,17 @@ def company(result, name='C1'):
 
 
 def test_calendar_missingness_filters_and_zero_denominator():
-    tables = fixture_tables([row(1, date='2025-02-01', amount=100),
+    # Enero es el primer mes con actividad real: parcial (D33), así febrero ya es un mes normal.
+    tables = fixture_tables([row(0, date='2025-01-20', amount=5000),
+                             row(1, date='2025-02-01', amount=100),
                              row(2, date='2025-02-05', amount=80, category='uncategorized'),
                              row(3, date='2025-02-08', amount=1e9),
                              row(4, date='2025-04-01', amount=20, category='transfer')])
     panel = company(build(tables))
     assert len(panel) == 6
-    assert panel.loc['2025-02-01', 'tx_inflow'] == 100
-    assert panel.loc['2025-02-01', 'tx_cash_inflow'] == 180
+    # D32: un importe enorme no se excluye por su tamaño.
+    assert panel.loc['2025-02-01', 'tx_inflow'] == 1e9 + 100
+    assert panel.loc['2025-02-01', 'tx_cash_inflow'] == 1e9 + 180
     assert panel.loc['2025-02-01', 'tx_outflow'] == 0
     assert pd.isna(panel.loc['2025-02-01', 'tx_inflow_outflow_ratio'])
     assert panel.loc['2025-04-01', 'tx_inflow'] == 0
@@ -48,6 +52,29 @@ def test_calendar_missingness_filters_and_zero_denominator():
     assert panel.loc['2025-03-01', 'is_missing_after_onboarding']
     assert not panel.loc['2025-01-01', 'is_missing_after_onboarding']
     assert pd.isna(panel.loc['2025-04-01', 'tx_inflow_ma3'])
+    assert panel.is_partial_first_month.tolist() == [True] + [False] * 5
+
+
+def test_first_month_of_the_extraction_is_complete_not_partial():
+    rows = [row(10 * m + i, date=f'2024-{m:02d}-{2 + i:02d}', amount=1000) for m in (9, 10, 11) for i in range(6)]
+    panel = company(build_features(fixture_tables(rows), FeatureConfig(start_month='2024-09-01', end_month='2024-11-01')))
+    assert panel.loc['2024-09-01', 'coverage_state'] == 'onboarding'
+    assert not panel.loc['2024-09-01', 'is_partial_first_month']
+    assert panel.loc['2024-09-01', 'tx_inflow'] == 6000
+
+
+def test_partial_first_month_keeps_counts_but_not_amounts():
+    rows = [row(i, date=f'2025-01-{15 + i:02d}', amount=1000) for i in range(3)]          # alta a mitad de mes
+    rows += [row(10 * m + i, date=f'2025-{m:02d}-{10 + i:02d}', amount=1000) for m in (2, 3, 4) for i in range(6)]
+    panel = company(build(fixture_tables(rows)))
+    assert panel.loc['2025-01-01', 'coverage_state'] == 'onboarding'
+    assert panel.loc['2025-01-01', 'is_partial_first_month']
+    assert panel.loc['2025-01-01', 'tx_usable_count'] == 3                               # el mes existe
+    assert pd.isna(panel.loc['2025-01-01', 'tx_inflow'])                                 # pero no sus importes
+    assert panel.loc['2025-02-01', 'coverage_state'] == 'ok'                             # un solo mes de onboarding
+    assert panel.loc['2025-02-01', 'tx_inflow'] == 6000
+    assert pd.isna(panel.loc['2025-03-01', 'tx_inflow_ma3'])                             # la ventana no usa enero
+    assert panel.loc['2025-04-01', 'tx_inflow_ma3'] == 6000                              # sin crecimiento falso
 
 
 def test_invoice_asof_uses_payment_month_and_correct_days():
@@ -78,18 +105,22 @@ def test_future_changes_do_not_change_historical_features():
         pd.testing.assert_frame_equal(original[name], historic)
 
 
-def test_currency_is_never_summed_and_group_excludes_intracompany_flows():
+def test_other_currencies_are_converted_to_eur_and_group_excludes_intracompany_flows():
     tables = fixture_tables([row(1, amount=100), row(2, product='P2', amount=200),
                              row(3, amount=50, date='2025-01-11'),
                              row(4, company='C2', product='P3', amount=-50, date='2025-01-11', category='payment')])
     tables['banking_products'].loc[1, 'currency'] = 'USD'
     tables['transactions'].loc[tables['transactions'].product_id == 'P2', 'product_currency'] = 'USD'
     result = build(tables)
-    assert company(result).loc['2025-01-01', 'tx_inflow'] == 100
+    expected = 100 + 200 / FX_TO_EUR['USD']
+    panel = company(result)
+    assert panel.loc['2025-01-01', 'tx_inflow'] == pytest.approx(expected)
+    assert panel.loc['2025-01-01', 'declared_currency'] == 'EUR'
+    assert panel.loc['2025-01-01', 'tx_primary_currency_row_share'] == pytest.approx(2 / 3)
     group = result['group_currency_monthly_features']
     january = group.loc[group.month == pd.Timestamp('2025-01-01')].set_index('currency')
-    assert january.loc['EUR', 'tx_inflow'] == 100
-    assert january.loc['USD', 'tx_inflow'] == 200
+    assert list(january.index) == ['EUR']
+    assert january.loc['EUR', 'tx_inflow'] == pytest.approx(expected)
 
 
 def test_snapshot_context_never_enters_model_panel():
@@ -122,14 +153,14 @@ def test_rolling_slope_and_prior_zscore_are_calendar_based():
     assert pd.isna(panel.loc['2025-03-01', 'tx_inflow_zscore_prior6'])
 
 
-def test_unknown_product_and_ambiguous_fx_are_not_money():
+def test_unknown_product_is_not_money_but_fx_rate_column_is_ignored():
     tables = fixture_tables([row(1, amount=100), row(2, product='P9', amount=9999),
                              row(3, date='2025-01-20', amount=200)])
     tables['transactions'].loc[tables['transactions'].transaction_id == 't3', 'exchange_rate'] = 1.1
     panel = company(build(tables))
-    assert panel.loc['2025-01-01', 'tx_cash_inflow'] == 100
+    assert panel.loc['2025-01-01', 'tx_cash_inflow'] == 300
     assert panel.loc['2025-01-01', 'tx_unknown_currency_count'] == 1
-    assert panel.loc['2025-01-01', 'tx_ambiguous_fx_count'] == 1
+    assert 'tx_ambiguous_fx_count' not in panel
     assert panel.loc['2025-01-01', 'has_partial_currency_coverage']
 
 
@@ -195,3 +226,18 @@ def test_debt_repayment_is_not_erased_by_own_account_settlement():
     panel = company(build(tables))
     assert panel.loc['2025-01-01', 'tx_outflow'] == 0
     assert panel.loc['2025-01-01', 'debt_principal_paid'] == 100
+
+
+def test_debt_snapshot_prefers_balances_and_utilization_only_for_revolving():
+    from xray.features.context import debt_snapshot
+    debt = pd.DataFrame({'product_id': ['L1', 'P1', 'P2'], 'company_id': 'C1', 'currency': 'EUR',
+                         'type': ['loan', 'lineofcredit', 'lineofcredit'], 'created_at': pd.Timestamp('2025-01-01'),
+                         'granted': [-1000., -500., -200.], 'outstanding': [-900., -100., -50.], 'liquidity': [None, 400., 150.]})
+    balances = pd.DataFrame({'product_id': ['L1', 'P1'], 'balance': [-880., -475.], 'granted': [-1000., -500.],
+                             'liquidity': [None, 25.]})
+    snap = debt_snapshot({'debt_products': debt, 'balances': balances}, FeatureConfig()).set_index('product_id')
+    assert snap.loc['L1', 'debt_outstanding'] == 880 and snap.loc['L1', 'outstanding_source'] == 'balances'
+    assert pd.isna(snap.loc['L1', 'debt_utilization'])                       # préstamo: no es tensión
+    assert snap.loc['P1', 'debt_utilization'] == pytest.approx(0.95)         # póliza casi al límite
+    assert snap.loc['P2', 'outstanding_source'] == 'debt_products'            # sin foto en balances
+    assert snap.loc['P2', 'debt_utilization'] == pytest.approx(0.25)

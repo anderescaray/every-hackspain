@@ -51,6 +51,31 @@ z_i = ( valor del último trimestre − valor del trimestre anterior )_i  /  σ_
 | \|z̄\| ≥ 1,5 **dos meses seguidos y el mes actual sigue del mismo lado de su nivel de seis meses** | `improving` / `deteriorating` (confirmado) |
 | Mes actual a más de 2σ de su nivel sin tendencia confirmada | episodio `one_off_dip` / `one_off_spike` (bache) |
 
+## ¿Por qué el momentum ajusta el nivel en vez de ser un porcentaje del score?
+
+Hay dos formas de combinar las dos partes. La elegida (A) suma un ajuste centrado en 50; la alternativa (B) sería una media ponderada de dos notas 0–100, p. ej. `0,70·nivel + 0,30·momentum`.
+
+**A · `nivel + 0,20·(momentum − 50)` (actual)**
+
+| Ventajas | Desventajas |
+|---|---|
+| El número se lee como **estado de salud**: 80 es sano y 30 no, vaya la empresa a mejor o a peor. Es la lectura de un analista de riesgo | El peso de la tendencia es fijo y pequeño (±10): una empresa en caída fuerte pero con nivel alto sigue alta (82 → 74). Si el leaderboard premia la dirección, el compuesto la refleja poco y hay que apoyarse en la etiqueta |
+| El momentum está centrado en cero: sin tendencia no aporta ni resta; si falta (empresa nueva), el score es el nivel sin inventar un 50 ni cambiar de escala | El 0,20 es una constante elegida a mano, explicable pero no calibrada |
+| Dos empresas con el mismo nivel y sin tendencia sacan el mismo score; el nivel es comparable entre empresas y en el tiempo | Hace falta recortar a 0–100: nivel 97 con momentum alto se satura en 100 y pierde información |
+| Tramos, límites de crédito y umbrales de producto cuelgan del nivel; la tendencia se muestra al lado, no los contamina | Quien solo mire el número puede no ver la tendencia: obliga a mostrar siempre nivel, momentum y etiqueta juntos |
+
+**B · `α·nivel + (1−α)·momentum`**
+
+| Ventajas | Desventajas |
+|---|---|
+| Da más protagonismo a la trayectoria: la que se tuerce baja antes, la que mejora sube antes | **Rompe la lectura del número como estado.** Con 70/30, una empresa excelente y estable (95, 50) saca 81,5 y una mediocre en racha (55, 95) saca 67; ninguna empresa estable puede superar `α·100 + (1−α)·50` = 85. La escala deja de significar salud |
+| Fórmula aún más simple de contar ("70 % dónde está, 30 % hacia dónde va") y sin recorte: la media de dos notas 0–100 ya está en rango | Cuando falta el momentum hay que imputar 50 (inventar neutralidad) o renormalizar a nivel puro, con lo que empresas nuevas y con historia no comparten escala |
+| Pesos como porcentajes explícitos, fáciles de negociar con negocio | Amplifica la parte más ruidosa: el momentum es por construcción la más volátil; darle un 30 % multiplica por 1,5 los saltos que acabamos de suavizar (el rebote tras un mes atípico pasaría de ±5 a ±15 puntos) |
+| | Cuenta la tendencia dos veces: el nivel de seis meses ya va incorporando el deterioro; sumar además un 30 % de momentum lo dobla mientras dura y luego el score rebota al normalizarse el momentum aunque el nivel siga bajo |
+| | Los tramos de producto cambiarían por una racha de dos trimestres sin cambio estructural |
+
+**Decisión:** mantener A como número principal. Si hace falta dar más peso a la trayectoria, hacerlo sin cambiar de esquema: subir el coeficiente (0,20 → 0,30, ±15 puntos) conservando el centrado en 50, y entregar siempre las tres cosas (nivel, momentum, score compuesto) más la etiqueta, para que quien evalúe la dirección la tenga ya calculada. Si algún día se optara por B, las condiciones mínimas son no imputar 50 cuando falte el momentum y mantener su peso por debajo del 20 %.
+
 ## Explicación
 
 Cada score se descompone exactamente en sumandos: la contribución de cada dimensión del nivel (`peso · nota`) más la contribución de cada señal del momentum (`0,20 · k(z̄) · w_i·z_i / √Σw²`, con `k` un factor común de saturación) más el recorte a 0–100. La suma coincide con el score con tolerancia numérica y se valida automáticamente. Por eso siempre se puede decir "saca 51 porque el margen de seis meses vale −12 % (+25 puntos), no paga deuda (+36) y el último trimestre es 4 desviaciones peor que el anterior (−10)".

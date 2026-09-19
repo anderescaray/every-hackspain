@@ -10,8 +10,6 @@ from xray.clean.annotations import annotate_products, annotate_text
 from xray.clean.log import CleaningLog
 
 TABLE = "transactions"
-EXTREME_AMOUNT = 1e8          # D01
-RELATIVE_OUTLIER_FACTOR = 20  # D02: |amount| > 20 × p99 de la empresa
 SYNC_DUP_SHARE = 0.5          # D03: empresa-mes con ≥ 50% de filas duplicadas
 SYNC_DUP_MIN_ROWS = 20        # D03: solo en meses con actividad suficiente
 PENDING_TWIN_DAYS = 5         # T02
@@ -45,15 +43,12 @@ def clean_transactions(tx: pd.DataFrame, products: pd.DataFrame, company_group: 
     log.add(TABLE, "T04", "normalize", mask.sum(), "category '-' / nulo -> 'uncategorized'")
 
     # --- Marcas para decisiones pendientes ---
-    absolute = t.amount.abs()
-    _flag(t, log, "D01", "is_extreme_amount", absolute > EXTREME_AMOUNT, f"|amount| > {EXTREME_AMOUNT:,.0f}")
-    _flag(t, log, "D02", "is_relative_outlier", relative_outliers(t),
-          f"|amount| > {RELATIVE_OUTLIER_FACTOR} × p99 empresa-moneda en 6 meses anteriores; mínimo 100 filas")
+    # D32: ningún movimiento se marca ni se excluye por su tamaño, ni absoluto (D01) ni relativo (D02).
     _flag(t, log, "D03", "is_sync_duplicate", sync_duplicates(t),
           f"repetición en empresa-mes con ≥ {SYNC_DUP_SHARE:.0%} de filas duplicadas")
-    candidates = t.loc[(t.status == "booked") & ~t.is_sync_duplicate & t.exchange_rate.eq(1)]
+    candidates = t.loc[(t.status == "booked") & ~t.is_sync_duplicate]
     internal = mirror_pairs(candidates, candidates.company_id).reindex(t.index, fill_value=False)
-    _flag(t, log, "D04", "is_internal_transfer", internal, "espejo +X/−X mismo día y moneda entre cuentas propias; booked y FX=1")
+    _flag(t, log, "D04", "is_internal_transfer", internal, "espejo +X/−X mismo día y moneda entre cuentas propias; booked")
     residual = candidates.loc[~internal.reindex(candidates.index)]
     intragroup = mirror_pairs(residual, residual.company_id.map(company_group), different_company=True)
     _flag(t, log, "D05", "is_intragroup", intragroup.reindex(t.index, fill_value=False),
@@ -62,7 +57,7 @@ def clean_transactions(tx: pd.DataFrame, products: pd.DataFrame, company_group: 
     _flag(t, log, "D06", "is_unknown_product", ~t.product_id.isin(known.index),
           "product_id no está en banking_products ni en debt_products")
     _flag(t, log, "D23", "has_invalid_exchange_rate", ~np.isfinite(t.exchange_rate) | t.exchange_rate.le(0),
-          "exchange_rate no finito o no positivo; no se imputa")
+          "exchange_rate no finito o no positivo; informativo, la conversión usa xray.fx (D32)")
     annotate_products(t, products, log)
     annotate_text(t, log)
     return t.reset_index(drop=True)
@@ -90,23 +85,6 @@ def sync_duplicates(t: pd.DataFrame) -> pd.Series:
     share = in_dup.groupby([t.company_id, month]).transform("mean")
     rows = in_dup.groupby([t.company_id, month]).transform("size")
     return t.duplicated(keys, keep="first") & (share >= SYNC_DUP_SHARE) & (rows >= SYNC_DUP_MIN_ROWS)
-
-
-def relative_outliers(t: pd.DataFrame) -> pd.Series:
-    flags = pd.Series(False, index=t.index)
-    keys = ["company_id", "product_currency"]
-    months = t.date.dt.to_period("M").dt.to_timestamp()
-    reference = t.loc[t.status.eq("booked") & t.exchange_rate.eq(1)
-                      & t.amount.abs().le(EXTREME_AMOUNT)].copy()
-    reference["absolute"] = reference.amount.abs()
-    for month in sorted(months.dropna().unique()):
-        prior = reference.loc[reference.date.ge(month - pd.DateOffset(months=6)) & reference.date.lt(month)]
-        grouped = prior.groupby(keys).absolute
-        threshold = (grouped.quantile(0.99) * RELATIVE_OUTLIER_FACTOR).where(grouped.count() >= 100)
-        current = t.loc[months == month]
-        limits = threshold.reindex(pd.MultiIndex.from_frame(current[keys])).to_numpy()
-        flags.loc[current.index] = current.amount.abs().to_numpy() > limits
-    return flags
 
 
 def mirror_pairs(t: pd.DataFrame, unit: pd.Series, different_company: bool = False) -> pd.Series:

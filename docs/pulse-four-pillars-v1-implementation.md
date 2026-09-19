@@ -14,7 +14,7 @@ python scripts/09_compute_pulse.py --raw-dir data \
   --data-vintage 2026-09-01 --company-id COMP_1084
 ```
 
-Sin `--company-id`, procesa el portfolio. La selección conserva otras empresas del grupo para detectar espejos; nunca mezcla monedas. `--previous-run` permite comparar una emisión almacenada, incluida una reexpresión del mismo `as_of`.
+Sin `--company-id`, procesa el portfolio. La selección conserva otras empresas del grupo para detectar espejos. Desde D32 todos los importes se convierten a EUR con tipo fijo por moneda (`xray.fx`) en el libro de caja. `--previous-run` permite comparar una emisión almacenada, incluida una reexpresión del mismo `as_of`.
 
 ## 2. Cash Truth
 

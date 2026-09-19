@@ -1,12 +1,16 @@
 import pandas as pd
 
 from xray.features.temporal import divide
+from xray.fx import REPORTING_CURRENCY
 from xray.ledger.classify import FIXED, QUALITY_FLAGS, classify_transactions
 
 FLAGS = list(QUALITY_FLAGS)
 AMOUNTS = ["tx_cash_inflow", "tx_cash_outflow", "tx_inflow", "tx_outflow", "tx_fixed_cost",
            "tx_fees_paid", "debt_principal_paid", "debt_interest_paid", "tx_uncategorized_amount",
            "tx_internal_amount", "tx_intragroup_amount", "tx_ai_categorized_amount", "tx_ai_nonoperating_amount"]
+# D33: columnas bancarias que dependen de tener el mes completo; se anulan en el primer mes parcial.
+PARTIAL_MONTH_COLUMNS = AMOUNTS + ["tx_counterparty_hhi", "tx_counterparty_known_share",
+                                   "tx_operating_amount_share", "tx_lfl_inflow_growth"]
 
 
 def prepare_transactions(tables, config):
@@ -85,17 +89,17 @@ def transaction_features(t, skeleton, unit):
 
 
 def coverage_by_company(t, companies, months):
-    grid = companies[["company_id", "currency"]].merge(pd.DataFrame({"month": months}), how="cross")
+    """`companies` con su moneda declarada; el panel sale en moneda de reporte (D32)."""
+    grid = (companies[["company_id"]].assign(currency=REPORTING_CURRENCY)
+            .merge(pd.DataFrame({"month": months}), how="cross"))
     keys = ["company_id", "month"]
     data = t.copy()
-    primary = data.company_id.map(companies.set_index("company_id").currency)
-    data["primary_currency_row"] = data.currency.eq(primary)
-    data["unknown_currency_row"] = data.currency.isna()
-    data["ambiguous_fx_row"] = ~data.exchange_rate.eq(1)
+    declared = data.company_id.map(companies.set_index("company_id").currency)
+    data["primary_currency_row"] = data.source_currency.eq(declared)
+    data["unknown_currency_row"] = data.source_currency.isna()
     agg = data.groupby(keys).agg(tx_all_currency_count=("amount", "size"),
                                  tx_primary_currency_count=("primary_currency_row", "sum"),
-                                 tx_unknown_currency_count=("unknown_currency_row", "sum"),
-                                 tx_ambiguous_fx_count=("ambiguous_fx_row", "sum"))
+                                 tx_unknown_currency_count=("unknown_currency_row", "sum"))
     p = grid.merge(agg.reset_index(), on=keys, how="left")
     columns = list(agg.columns)
     p[columns] = p[columns].fillna(0).astype(int)
