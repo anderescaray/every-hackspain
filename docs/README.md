@@ -21,7 +21,7 @@
 
 ```bash
 python -X utf8 scripts/00_clean_data.py
-python -X utf8 scripts/01_build_monthly_features.py
+python -X utf8 scripts/01_build_monthly_features.py             # D31 por defecto; --no-ai-categories para solo banco
 python -X utf8 scripts/02_validate_features.py
 python -X utf8 scripts/03_compute_scores.py fit                 # V1 control -> data/processed/scores/
 python -X utf8 scripts/04_validate_scores.py

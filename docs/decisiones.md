@@ -836,3 +836,31 @@ Revisión cruzada tras leer `docs/jev-categorias.md`. Lo implementado en §14/FE
 3. Fusión Noul → `event_type`; migrar `stress_events` a `event_type`.
 4. Exclusión D26–D28 por flag y D29 en servicio de deuda.
 5. Consumo de `coverage_state` en momentum de V2 más allá del `provisional` actual (deltas solo entre meses `ok` consecutivos).
+
+## 18. D31 como default, referencia V2 reajustada y regeneración — 19-09-2026 (cierre)
+
+Primer punto del bloque A del plan (`roadmap-tecnico-mvp.md`, «Estado consolidado»). Un solo cambio coordinado para que `processed`, `scores_v2` y `product` sean coherentes entre sí y con la referencia congelada.
+
+### SC21 · Qué se ha hecho
+
+- `scripts/01_build_monthly_features.py` usa por defecto `resources/jev_categories/template_categories.parquet` (`xray.paths.AI_CATEGORIES_PATH`); `--no-ai-categories` recupera el comportamiento anterior y `--ai-categories RUTA` permite otro artefacto. Si el artefacto no existe, falla con mensaje explícito en lugar de degradar en silencio. `FeatureConfig.ai_categories_path` sigue siendo `None` por defecto en la API de Python: `build_features` sin argumentos no cambia y los tests no dependen del artefacto.
+- Regenerados en orden: features (prefijo 2026-02 OK), `scores_v2 fit` (referencia reajustada sobre features D31, prefijo OK), `08_build_product`. El manifiesto de features registra `ai_categories_sha256 = 448d70d1…`.
+
+### SC22 · Resultado sobre datos reales
+
+| Medida | Antes (base) | Ahora (D31 + FE10 + estacional) |
+|---|---:|---:|
+| Agosto 2026 puntuadas / `not_scored` | 922 / 364 | **977 / 309** (281 `scored`, 696 `provisional`) |
+| Filas puntuadas, toda la historia | 14.084 | **14.932** |
+| Motivos `provisional` en agosto | — | optional_components_missing 409, trend_unavailable 125, thin_current_month 72, partial_currency 51, **coverage_account_change 27**, short_history 12 |
+| Filas `coverage_onboarding` / `coverage_account_change` en la historia | — | 357 |
+| Trayectoria agosto | — | stable 620, emerging_deterioration 66, emerging_improvement 61, deteriorating 19, improving 17, mixed 12, insufficient 491 |
+| Mediana de |Δ score mensual| | 3,18 | 3,05 |
+
+Factores estacionales del crecimiento vigentes en agosto 2026 (log-crecimiento, mediana centrada, ≥50 filas por mes del año): **ago −0,29**, ene −0,16, nov −0,11, dic +0,11, jul +0,06, resto |·|<0,07. Coinciden con la exploración (`hallazgos-datos.md` §3). En agosto de 2026 el ajuste suma +0,22 al crecimiento trimestral mediano: sin él, la caída estacional de agosto se leería como deterioro de entradas.
+
+### SC23 · Límites
+
+- La referencia congelada ahora presupone features con D31; `predict` sobre un dataset nuevo debe ejecutarse con el mismo artefacto (o con `--no-ai-categories` **y** una referencia ajustada sin D31). Plantillas no vistas quedan `uncategorized`: sigue pendiente el fallback por signo (A.3).
+- El manifiesto guarda la ruta absoluta del artefacto; el hash es lo que identifica la versión.
+- Las cifras de agosto no son acierto frente al organizador; miden cobertura y estabilidad.

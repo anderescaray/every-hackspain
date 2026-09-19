@@ -20,3 +20,6 @@ PROCESSED_DIR = DATA_DIR / "processed"
 
 # Fecha de la foto final (balances, status de facturas).
 EXTRACTION_DATE = pd.Timestamp("2026-09-01")
+
+# D31: artefacto estático de categorías AI (una pasada, versionado). Default del CLI de features.
+AI_CATEGORIES_PATH = ROOT / "resources" / "jev_categories" / "template_categories.parquet"

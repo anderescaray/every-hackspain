@@ -62,7 +62,7 @@ every.hackspain/
 
 ```bash
 python -X utf8 scripts/00_clean_data.py
-python -X utf8 scripts/01_build_monthly_features.py
+python -X utf8 scripts/01_build_monthly_features.py             # D31 por defecto; --no-ai-categories para solo banco
 # opcional (D31): rellena movimientos sin categoría con el artefacto estático de Jev
 # python -X utf8 scripts/01_build_monthly_features.py --ai-categories resources/jev_categories/template_categories.parquet
 python -X utf8 scripts/02_validate_features.py
