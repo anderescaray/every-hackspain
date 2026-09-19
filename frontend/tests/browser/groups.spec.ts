@@ -70,7 +70,7 @@ test("la red selecciona nodos por teclado y abre la ficha de sociedad", async ({
   await page.keyboard.press("Enter");
   const detail = page.getByRole("complementary", { name: "Detalle de la selección" });
   await expect(detail.getByRole("heading", { name: "COMP_0412", exact: true })).toBeVisible();
-  await expect(detail.getByText("42", { exact: true })).toBeVisible();
+  await expect(detail.getByTestId("selection-health-score")).toHaveText("42");
   await expect(detail.getByText("Receptora", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Reducir zoom de la red" }).click();
   await expect(page.getByLabel("Zoom de la red", { exact: true })).toHaveText("80 %");

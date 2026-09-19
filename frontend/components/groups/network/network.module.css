@@ -1,0 +1,304 @@
+.canvasShell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: min(72vh, 820px);
+  height: min(72vh, 820px);
+  border: 1px solid var(--line, #cfd9d2);
+  border-radius: 12px;
+  background:
+    radial-gradient(ellipse 70% 50% at 10% 0%, rgba(12, 122, 108, 0.08), transparent 55%),
+    linear-gradient(180deg, #f7faf7 0%, #eef3ef 100%);
+  overflow: hidden;
+  position: relative;
+}
+
+.canvasShell[data-expanded="true"] {
+  min-height: min(78vh, 900px);
+  height: min(78vh, 900px);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line, #cfd9d2);
+  background: rgba(251, 252, 249, 0.92);
+  font-size: 11px;
+  color: var(--muted, #5a6b64);
+  z-index: 4;
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.toolbarActions button,
+.toolButton {
+  border: 1px solid var(--line, #cfd9d2);
+  min-width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: white;
+  color: var(--signal-deep, #086057);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.toolbarActions button:hover:not(:disabled),
+.toolButton:hover:not(:disabled) {
+  background: var(--signal-soft, #d8efe9);
+}
+
+.toolbarActions button:disabled,
+.toolButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolbarActions output {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowHost {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.flowHost :global(.react-flow__renderer),
+.flowHost :global(.react-flow__pane),
+.flowHost :global(.react-flow__node),
+.flowHost :global(.react-flow__edge),
+.flowHost :global(.react-flow__edge-path),
+.flowHost :global(.react-flow__edge:focus),
+.flowHost :global(.react-flow__edge:focus-visible),
+.flowHost :global(.react-flow__node:focus),
+.flowHost :global(.react-flow__node:focus-visible),
+.flowHost :global(.react-flow__node.selectable:focus),
+.flowHost :global(.react-flow__node.selectable:focus-visible) {
+  outline: none !important;
+  box-shadow: none;
+}
+
+.flowHost :global(.react-flow__attribution) {
+  display: none;
+}
+
+.flowHost :global(.react-flow__background) {
+  background: transparent;
+}
+
+.companyNode {
+  width: 168px;
+  height: 92px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: rgba(251, 252, 249, 0.96);
+  border: 1.5px solid #b7c9c1;
+  box-shadow: 0 10px 28px -18px rgba(11, 31, 28, 0.35);
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-content: center;
+  justify-items: center;
+  gap: 1px;
+  padding: 12px 12px 10px;
+  cursor: pointer;
+  transition: transform 200ms ease, opacity 220ms ease, box-shadow 220ms ease, border-color 220ms ease, background 220ms ease;
+  color: var(--ink, #14201c);
+}
+
+.companyNode:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -16px rgba(11, 31, 28, 0.42);
+}
+
+.companyNode:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(42, 159, 140, 0.45), 0 14px 30px -16px rgba(11, 31, 28, 0.42);
+}
+
+.companyNode[data-selected="true"] {
+  background: #e7f6f1;
+  border-color: #0c7a6c;
+  box-shadow: 0 0 0 3px rgba(12, 122, 108, 0.28), 0 16px 34px -14px rgba(11, 31, 28, 0.4);
+  transform: scale(1.03);
+  z-index: 2;
+}
+
+.companyNode[data-related="true"]:not([data-selected="true"]) {
+  border-color: #5a9a8a;
+  background: #f3faf7;
+}
+
+.companyNode[data-dimmed="true"] {
+  opacity: 0.22;
+  filter: grayscale(0.35);
+  box-shadow: none;
+}
+
+.companyNode.tone-low {
+  border-top: 3px solid #b85c38;
+}
+
+.companyNode.tone-mid {
+  border-top: 3px solid #9a6b1f;
+}
+
+.companyNode.tone-high {
+  border-top: 3px solid #0c7a6c;
+}
+
+.companyNode.tone-unknown {
+  border-top: 3px solid #8a9a93;
+}
+
+.companyNode.attention-high {
+  box-shadow: inset 3px 0 0 #b85c38, 0 10px 28px -18px rgba(11, 31, 28, 0.35);
+}
+
+.nodeScore {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  line-height: 1;
+  color: #14332e;
+}
+
+.nodeId {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: #1e463f;
+}
+
+.nodeMeta {
+  font-size: 9px;
+  color: #6a7d74;
+  letter-spacing: 0.02em;
+}
+
+.handle {
+  width: 8px !important;
+  height: 8px !important;
+  background: #8fb5ab !important;
+  border: 1.5px solid #f7faf7 !important;
+  opacity: 0.9;
+}
+
+.relationEdge {
+  stroke-linecap: round;
+}
+
+.edge-identified {
+  stroke: #0c7a6c;
+}
+
+.edge-candidate {
+  stroke: #9a6b1f;
+  stroke-dasharray: 8 5;
+}
+
+.edge-unknown {
+  stroke: #677488;
+  stroke-dasharray: 2 6;
+}
+
+.edgeLabel {
+  position: absolute;
+  pointer-events: none;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(251, 252, 249, 0.94);
+  border: 1px solid #c5d9d2;
+  color: #14332e;
+  box-shadow: 0 4px 14px -8px rgba(11, 31, 28, 0.35);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.edgeLabel[data-status="candidate"] {
+  color: #7a5414;
+  border-color: #e2d2a8;
+  background: #fbf6e9;
+}
+
+.edgeLabel[data-status="unknown"] {
+  color: #52627a;
+  border-color: #d0d6de;
+}
+
+.edgeLabel[data-selected="true"] {
+  background: #0c7a6c;
+  border-color: #0c7a6c;
+  color: white;
+}
+
+.edgeHit {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.edgeHit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(42, 159, 140, 0.5);
+  background: rgba(12, 122, 108, 0.12);
+}
+
+.emptyCanvas {
+  margin: 24px;
+}
+
+@media (max-width: 900px) {
+  .canvasShell,
+  .canvasShell[data-expanded="true"] {
+    min-height: 56vh;
+    height: 56vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .canvasShell,
+  .canvasShell[data-expanded="true"] {
+    min-height: 48vh;
+    height: 48vh;
+  }
+
+  .companyNode {
+    width: 148px;
+    height: 84px;
+    padding: 10px;
+  }
+
+  .nodeScore {
+    font-size: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .companyNode,
+  .edgeLabel,
+  .relationEdge {
+    transition: none !important;
+  }
+}

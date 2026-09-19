@@ -1,22 +1,30 @@
 "use client";
 
 import { AnalysisLink as Link } from "@/components/navigation/AnalysisLink";
-import { useId, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { GroupDetail, GroupMember, GroupRelation } from "@/types/groupDetail";
 import { numberLabel, severityLabels, trajectoryLabels } from "@/lib/companyFormat";
 import { groupMoney, groupScore, relationChangeLabels, relationKindLabels, relationName, relationStatusLabels, roleLabels } from "@/lib/groupPresentation";
 import { Confidence, EvidenceButton, type OpenEvidence } from "@/components/insights/InsightPrimitives";
 import base from "@/components/insights/insights.module.css";
 import styles from "./groups.module.css";
+import { NetworkCanvas, type FocusMode } from "./network/NetworkCanvas";
 
-function MemberDetail({ member, group, onOpen }: { member: GroupMember; group: GroupDetail; onOpen: OpenEvidence }) {
+function MemberDetail({ member, group, onOpen, onShowEgo, onShowNetwork, focusMode }: {
+  member: GroupMember;
+  group: GroupDetail;
+  onOpen: OpenEvidence;
+  onShowEgo: () => void;
+  onShowNetwork: () => void;
+  focusMode: FocusMode;
+}) {
   const alerts = group.alerts.filter((alert) => alert.company_refs.includes(member.company_id));
   return <>
     <span className={base.eyebrow}>Sociedad</span>
     <h3>{member.company_id}</h3>
     <span className={styles.roleBadge}>{roleLabels[member.role]}</span>
     <dl className={styles.selectionMetrics}>
-      <div><dt>Health Score</dt><dd>{groupScore(member.health_score)}</dd></div>
+      <div><dt>Health Score</dt><dd data-testid="selection-health-score">{groupScore(member.health_score)}</dd></div>
       <div><dt>Momentum</dt><dd>{groupScore(member.dimensions.momentum)}</dd></div>
       <div><dt>Liquidez</dt><dd>{groupMoney(member.available_liquidity)}</dd></div>
       <div><dt>Trayectoria</dt><dd>{member.trajectory ? trajectoryLabels[member.trajectory] : "Sin evaluar"}</dd></div>
@@ -28,6 +36,13 @@ function MemberDetail({ member, group, onOpen }: { member: GroupMember; group: G
         <ul className={styles.simpleList}>{alerts.map((alert) => <li key={alert.id}><span className={`${base.severity} ${base[alert.severity]}`}>{severityLabels[alert.severity]}</span><strong>{alert.title}</strong></li>)}</ul>
       </>
     )}
+    <div className={styles.networkFocusActions}>
+      {focusMode === "ego" ? (
+        <button type="button" className={base.secondaryButton} onClick={onShowNetwork}>Ver toda la red</button>
+      ) : (
+        <button type="button" className={base.secondaryButton} onClick={onShowEgo}>Ver relaciones de esta sociedad</button>
+      )}
+    </div>
     <EvidenceButton refs={member.evidence_refs} title={`Sociedad ${member.company_id}`} onOpen={onOpen} />
     <Link href={`/companies/${member.company_id}`} className={base.primaryButton}>Abrir ficha de {member.company_id}</Link>
   </>;
@@ -60,31 +75,38 @@ export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }:
   const [selection, setSelection] = useState<{ kind: "company" | "relation"; id: string } | null>(initialRelation ? { kind: "relation", id: initialRelation } : initialCompany ? { kind: "company", id: initialCompany } : null);
   const [status, setStatus] = useState("all");
   const [company, setCompany] = useState(initialCompany && group.members.some((member) => member.company_id === initialCompany) ? initialCompany : "all");
-  const [zoom, setZoom] = useState(1);
-  const graphId = useId();
+  const [focusMode, setFocusMode] = useState<FocusMode>(initialCompany ? "ego" : "network");
   const detailPanel = useRef<HTMLElement>(null);
   const visible = group.relations.filter((relation) => (status === "all" || relation.status === status) && (company === "all" || relation.from_company_id === company || relation.to_company_id === company));
-  const resolved = visible.filter((relation) => relation.from_company_id !== null && relation.to_company_id !== null);
   const member = selection?.kind === "company" ? group.members.find((item) => item.company_id === selection.id) : undefined;
-  const relation = selection?.kind === "relation" ? visible.find((item) => item.id === selection.id) : undefined;
-  const canvasWidth = Math.max(760, group.members.length * 70);
-  const canvasHeight = Math.max(520, canvasWidth * 0.7);
-  const positions = new Map(group.members.map((item, index) => {
-    const angle = -Math.PI / 2 + (index * Math.PI * 2) / Math.max(1, group.members.length);
-    return [item.company_id, { x: canvasWidth / 2 + Math.cos(angle) * (canvasWidth / 2 - 110), y: canvasHeight / 2 + Math.sin(angle) * (canvasHeight / 2 - 90) }];
-  }));
-  const selectItem = (kind: "company" | "relation", id: string) => {
+  const relation = selection?.kind === "relation" ? visible.find((item) => item.id === selection.id) ?? group.relations.find((item) => item.id === selection.id) : undefined;
+  const hasSelection = Boolean(member || relation);
+
+  const selectItem = useCallback((kind: "company" | "relation", id: string) => {
     setSelection({ kind, id });
     requestAnimationFrame(() => detailPanel.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }));
+  }, []);
+
+  const selectCompany = useCallback((id: string) => selectItem("company", id), [selectItem]);
+  const selectRelation = useCallback((id: string) => selectItem("relation", id), [selectItem]);
+  const clearSelection = useCallback(() => {
+    setSelection(null);
+    setFocusMode("network");
+  }, []);
+
+  const resetView = () => {
+    setStatus("all");
+    setCompany("all");
+    setSelection(null);
+    setFocusMode("network");
   };
-  const selectRelation = (id: string) => selectItem("relation", id);
 
   return <>
     <section className={`${base.panel} ${styles.networkHero}`} aria-label="Explorar la red del grupo">
       <div className={styles.panelHeading}>
         <div>
           <h2>Grafo del grupo</h2>
-          <p>Haz clic en una flecha para ver la transferencia. Los nodos son sociedades.</p>
+          <p>Pan, zoom y selección sobre la red. Las flechas son transferencias; los nodos, sociedades.</p>
         </div>
         <div className={styles.networkLegend}>
           {Object.entries(relationStatusLabels).map(([key, label]) => <span key={key}><i className={styles[key]} />{label}</span>)}
@@ -93,66 +115,39 @@ export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }:
 
       <div className={styles.filters}>
         <label>Evidencia<select aria-label="Evidencia de la relación" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">Todas</option><option value="identified">Identificadas</option><option value="candidate">Candidatas</option><option value="unknown">Desconocidas</option></select></label>
-        <label>Sociedad<select aria-label="Sociedad conectada" value={company} onChange={(event) => setCompany(event.target.value)}><option value="all">Todas</option>{group.members.map((item) => <option key={item.company_id}>{item.company_id}</option>)}</select></label>
-        <button className={base.secondaryButton} onClick={() => { setStatus("all"); setCompany("all"); setSelection(null); setZoom(1); }}>Restablecer</button>
+        <label>Sociedad<select aria-label="Sociedad conectada" value={company} onChange={(event) => { setCompany(event.target.value); if (event.target.value !== "all") { setSelection({ kind: "company", id: event.target.value }); setFocusMode("ego"); } else setFocusMode("network"); }}><option value="all">Todas</option>{group.members.map((item) => <option key={item.company_id}>{item.company_id}</option>)}</select></label>
+        <button className={base.secondaryButton} onClick={resetView}>Restablecer</button>
       </div>
 
-      <div className={styles.networkLayout}>
-        <div className={styles.graphPanel}>
-          <div className={styles.graphToolbar}>
-            <span role="status">{visible.length} transferencias · {resolved.length} en el grafo</span>
-            <div>
-              <button aria-label="Reducir zoom de la red" disabled={zoom <= 0.6} onClick={() => setZoom(Math.max(0.6, zoom - 0.2))}>−</button>
-              <output aria-label="Zoom de la red">{numberLabel(zoom * 100, 0)} %</output>
-              <button aria-label="Ampliar zoom de la red" disabled={zoom >= 1.6} onClick={() => setZoom(Math.min(1.6, zoom + 0.2))}>+</button>
-            </div>
-          </div>
-          {group.members.length ? (
-            <div className={styles.graphViewport} tabIndex={0} role="region" aria-label="Lienzo desplazable de la red">
-              <svg width={canvasWidth * zoom} height={canvasHeight * zoom} viewBox={`0 0 ${canvasWidth} ${canvasHeight}`} role="group" aria-label="Grafo interactivo de sociedades y relaciones">
-                <defs>{["identified", "candidate", "unknown"].map((state) => <marker key={state} id={`${graphId}-${state}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L8,4 L0,8 Z" fill={state === "identified" ? "#3368bd" : state === "candidate" ? "#92651d" : "#677488"} /></marker>)}</defs>
-                {resolved.map((edge, index) => {
-                  const start = positions.get(edge.from_company_id!)!;
-                  const end = positions.get(edge.to_company_id!)!;
-                  const dx = end.x - start.x;
-                  const dy = end.y - start.y;
-                  const distance = Math.max(1, Math.hypot(dx, dy));
-                  const offset = (index % 2 ? -1 : 1) * (36 + index % 3 * 12);
-                  const path = `M ${start.x + dx / distance * 39} ${start.y + dy / distance * 39} Q ${(start.x + end.x) / 2 - dy / distance * offset} ${(start.y + end.y) / 2 + dx / distance * offset} ${end.x - dx / distance * 41} ${end.y - dy / distance * 41}`;
-                  return <g key={edge.id} role="button" tabIndex={0} aria-label={`Seleccionar relación ${relationName(edge)}: ${relationStatusLabels[edge.status]}`} aria-pressed={relation?.id === edge.id} className={styles.graphEdge} onClick={() => selectRelation(edge.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectRelation(edge.id); } }}>
-                    <title>{`${relationName(edge)} · ${relationKindLabels[edge.kind]} · ${groupMoney(edge.volume)}`}</title>
-                    <path d={path} fill="none" stroke="transparent" strokeWidth="22" />
-                    <path d={path} fill="none" stroke={edge.status === "identified" ? "#3368bd" : edge.status === "candidate" ? "#92651d" : "#677488"} strokeWidth={relation?.id === edge.id ? 4.5 : 2.5} strokeDasharray={edge.status === "candidate" ? "8 5" : edge.status === "unknown" ? "2 6" : undefined} markerEnd={`url(#${graphId}-${edge.status})`} />
-                  </g>;
-                })}
-                {group.members.map((item) => {
-                  const position = positions.get(item.company_id)!;
-                  return <g key={item.company_id} role="button" tabIndex={0} aria-label={`Seleccionar sociedad ${item.company_id}: Health Score ${groupScore(item.health_score)}, Momentum ${groupScore(item.dimensions.momentum)}, Resiliencia ${groupScore(item.dimensions.resilience)}`} aria-pressed={member?.company_id === item.company_id} transform={`translate(${position.x}, ${position.y})`} className={styles.graphNode} onClick={() => selectItem("company", item.company_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectItem("company", item.company_id); } }}>
-                    <circle r="38" fill={member?.company_id === item.company_id ? "#e7efff" : "white"} stroke={item.attention === "high" ? "#a76539" : "#7694c7"} strokeWidth={member?.company_id === item.company_id ? 3.5 : 2} />
-                    <text textAnchor="middle" y="-6" fill="#52647d" fontSize="9">Health</text>
-                    <text textAnchor="middle" y="16" fill="#142d56" fontSize="24" fontWeight="600">{groupScore(item.health_score)}</text>
-                    <text textAnchor="middle" y="56" fill="#243b5c" fontSize="12" fontWeight="600">{item.company_id}</text>
-                    <title>{`${item.company_id} · ${roleLabels[item.role]} · Liquidez: ${groupMoney(item.available_liquidity)}`}</title>
-                  </g>;
-                })}
-              </svg>
-            </div>
-          ) : (
-            <p className={base.emptyState}>No hay sociedades observadas para dibujar una red.</p>
-          )}
-          {!resolved.length && group.members.length > 0 && <p className={base.emptyState}>No hay conexiones dibujables con estos filtros.</p>}
-        </div>
+      <div className={styles.networkLayout} data-has-selection={hasSelection || undefined}>
+        <NetworkCanvas
+          members={group.members}
+          relations={visible}
+          selection={selection}
+          focusMode={focusMode}
+          expanded={!hasSelection}
+          onSelectCompany={selectCompany}
+          onSelectRelation={selectRelation}
+          onClearSelection={clearSelection}
+        />
 
         <aside ref={detailPanel} id="group-network-selection" className={styles.selectionPanel} aria-label="Detalle de la selección" aria-live="polite">
           {member ? (
-            <MemberDetail member={member} group={group} onOpen={onOpen} />
+            <MemberDetail
+              member={member}
+              group={group}
+              onOpen={onOpen}
+              focusMode={focusMode}
+              onShowEgo={() => setFocusMode("ego")}
+              onShowNetwork={() => setFocusMode("network")}
+            />
           ) : relation ? (
             <RelationDetail relation={relation} group={group} onOpen={onOpen} />
           ) : (
             <>
               <span className={base.eyebrow}>Explora</span>
               <h3>{selection ? "Selección no disponible" : "Pulsa un nodo o una flecha"}</h3>
-              <p>{selection ? "Ajusta los filtros o elige otro elemento." : "El detalle aparece aquí: sociedad o transferencia."}</p>
+              <p>{selection ? "Ajusta los filtros o elige otro elemento." : `${numberLabel(group.members.length, 0)} sociedades en el lienzo. Encaja la red o filtra por evidencia.`}</p>
             </>
           )}
         </aside>
