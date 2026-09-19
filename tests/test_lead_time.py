@@ -60,3 +60,26 @@ def test_false_alarm_counts_only_judgeable_alarm_starts():
     fa = r["false_alarms"]
     assert fa["alarm_starts_judgeable"] == 2 and fa["false_alarm_share"] == 0.5
     assert fa["alarm_starts_not_judgeable"] == 1
+
+
+def test_recovery_is_six_clean_months_after_stress_and_is_flagged_by_improvement_labels():
+    from xray.evaluation.lead_time import recoveries
+    t = tx([("A", "2025-02-15", "cuota_impagada"), ("A", "2025-03-15", "descubierto")])
+    f = features(["A"])
+    events = own_stress_months(t)
+    ups = recoveries(events, f[["company_id", "month"]])
+    assert ups.onset.tolist() == [pd.Timestamp("2025-04-01")]          # abril-septiembre sin estrés
+    s = scores({"A": {"2025-02": "emerging_improvement"}})
+    r, _ = lead_time_report(t, f, s)
+    up = r["improvement"]
+    assert up["recoveries"] == 1 and up["detected"] == 1 and up["lead_months"]["median"] == 2
+
+
+def test_company_block_counts_companies_not_events():
+    t = tx([("A", "2025-09-15", "cuota_impagada"), ("B", "2025-09-15", "embargo")])
+    s = scores({"A": {"2025-07": "deteriorating"}, "B": {}, "C": {"2025-03": "emerging_deterioration"}})
+    r, _ = lead_time_report(t, features(["A", "B", "C"]), s)
+    c = r["companies"]
+    assert c["companies"] == 3 and c["with_own_stress"] == 2
+    assert c["warned_before_event"] == 1                                # solo A tenía alarma antes
+    assert c["alarmed_without_event"] == 1                              # C se avisó y no tuvo estrés
