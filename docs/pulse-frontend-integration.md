@@ -21,6 +21,13 @@ etiquetarse como mejora/deterioro económico comparable. La composición
 histórica v1.1 sigue registrada,
 pero reproducirla exactamente requiere el código previo a D32.
 
+El `main` posterior añade D38 (`is_technical_placeholder` en transacciones y
+`is_sentinel_balance` en saldos). Son marcas diagnósticas: D32 mantiene esos
+movimientos en los flujos de caja y el scorer Pulse no usa saldos de liquidez
+reconstruida. Esta integración conserva esas marcas sin introducirlas como
+nuevos gates o features puntuadas; el nuevo `run_id` registra el cambio de
+código aunque los valores de pilares coincidan en la comparación reproducida.
+
 ## Fuente única y flujo
 
 ```text
@@ -38,7 +45,7 @@ El exporter **no calcula, ajusta, redondea ni completa** Health o pilares. Tampo
 - `health_score` y `dimensions` copian valores **nullable** del motor. Los alias `cash_generation ← generation` y `debt ← debt_obligations` sólo cambian nombres.
 - Cada empresa conserva `pulse` y `canonical_cash_truth` completos: features, contribuciones, límites, evidencia, confidence, flags, sensibilidad y trazabilidad originales.
 - V1.0.1 distingue `complete_verified`, `complete_bounded`, `partial` e `insufficient_evidence`; muestra los puntos e intervalos recibidos, sin completar ni recalcular nada. Los snapshots V1.0 conservan sus estados `complete`, `partial` e `insufficient_evidence`. Este último identifica cuatro pilares nulos. Cero no equivale a `null`.
-- La UI actual es una vista **EUR explícita**. Desde D32, el ledger convierte movimientos de moneda conocida a EUR con tipo fijo; los importes sin moneda verificable permanecen no evaluables. La política de conversión es parte de la versión del run; ninguna empresa se excluye por Health nulo.
+- La UI actual es una vista **EUR explícita**. Desde D32, el ledger convierte movimientos de moneda conocida a EUR con tipo fijo (`xray.fx`); cada empresa tiene un único panel EUR. Los importes sin moneda verificable permanecen no evaluables. La política de conversión es parte de la versión del run; ninguna empresa se excluye por Health nulo.
 - No se inventan Health de grupo, histórico, pronósticos, emparejamientos de transferencias, apoyo confirmado ni confianza escalar. Los apartados sin producto de datos quedan vacíos o no evaluables.
 - La columna heredada «Cobertura» consume una confianza escalar que este motor no define: aparece «No evaluable». El objeto `pulse.confidence` sí conserva cobertura histórica, clasificación, incertidumbre, perímetro, moneda y evidencia de deuda; no se confunde una de esas métricas con un índice compuesto.
 
