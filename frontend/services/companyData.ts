@@ -1,6 +1,7 @@
 import path from "node:path";
 import { companyDetailSchema, type CompanyDetail } from "../types/companyDetail";
 import { readGeneratedAnalysis } from "./generatedAnalysis";
+import { readPulseDocument } from "./pulseSnapshot";
 
 export class CompanyDataError extends Error {
   constructor(readonly issues: string[] = []) {
@@ -11,8 +12,11 @@ export class CompanyDataError extends Error {
 
 export async function getCompanyDetail(companyId: string): Promise<CompanyDetail | null> {
   if (!/^COMP_\d{4,10}$/.test(companyId)) return null;
-  const directory = process.env.COMPANY_ANALYSIS_DIR || path.join(process.cwd(), "public", "generated", "companies");
-  const file = await readGeneratedAnalysis(path.join(directory, `${companyId}.json`), () => new CompanyDataError());
+  const fixtureMode = process.env.COMPANY_DATA_MODE === "fixtures";
+  const directory = process.env.COMPANY_ANALYSIS_DIR;
+  const file = fixtureMode && directory
+    ? await readGeneratedAnalysis(path.join(directory, `${companyId}.json`), () => new CompanyDataError())
+    : await readPulseDocument(`companies/${companyId}.json`, () => new CompanyDataError());
   if (!file) return null;
   const parsed = companyDetailSchema.safeParse(file.payload);
   if (!parsed.success) throw new CompanyDataError(parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));

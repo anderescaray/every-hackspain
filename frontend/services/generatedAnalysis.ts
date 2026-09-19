@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { open } from "node:fs/promises";
 
 const MAX_ANALYSIS_BYTES = 2 * 1024 * 1024;
 
-export async function readGeneratedAnalysis(filename: string, invalid: () => Error): Promise<{ payload: unknown } | null> {
+export async function readGeneratedAnalysis(filename: string, invalid: () => Error): Promise<{ payload: unknown; sha256: string } | null> {
   let file;
   try {
     file = await open(filename, "r");
@@ -22,7 +23,7 @@ export async function readGeneratedAnalysis(filename: string, invalid: () => Err
     }
     if (size > MAX_ANALYSIS_BYTES) throw invalid();
     try {
-      return { payload: JSON.parse(buffer.subarray(0, size).toString("utf8")) };
+      return { payload: JSON.parse(buffer.subarray(0, size).toString("utf8")), sha256: createHash("sha256").update(buffer.subarray(0, size)).digest("hex") };
     } catch {
       throw invalid();
     }

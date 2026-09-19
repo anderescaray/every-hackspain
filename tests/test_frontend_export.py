@@ -4,7 +4,7 @@ import json
 import pandas as pd
 import pytest
 
-from xray.product.frontend_export import WEIGHTS, company_detail, group_detail
+from xray.product.legacy_frontend_export import WEIGHTS, company_detail, group_detail
 from xray.product.cash_truth import classify, monthly_buckets
 
 
@@ -136,7 +136,7 @@ def test_missing_evidence_description_is_not_stringified(missing):
 
 
 def test_portfolio_items_map_status_trajectory_and_attention():
-    from xray.product.frontend_export import portfolio_export
+    from xray.product.legacy_frontend_export import portfolio_export
     rows = [
         {"company_id": "COMP_0001", "group_id": "GROUP_0001", "score": 61.4, "delta_vs_prev": -3.26, "trajectory": "deteriorating",
          "score_status": "scored", "score_reason": "ok", "confidence": 88.2, "main_signal": "Margen", "main_signal_delta": -4.26},

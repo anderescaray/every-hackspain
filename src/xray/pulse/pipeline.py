@@ -268,6 +268,9 @@ def run(raw_dir: Path, out_dir: Path, *, as_of: str | pd.Timestamp, data_vintage
             (staged / folder).mkdir()
             for name, frame in sorted(tables.items()):
                 frame.to_parquet(staged / folder / f"{name}.parquet", index=False)
+        # Source frames are already serialized and their digests captured. Do
+        # not retain duplicate full raw/cleaned tables throughout portfolio scoring.
+        del cut, cleaned, tables, frame
         cleaning_log.to_csv(staged / "cleaning_log.csv", index=False)
         ledger.to_parquet(staged / "ledger.parquet", index=False)
         facts.to_parquet(staged / "monthly_facts.parquet", index=False)
@@ -304,6 +307,8 @@ def run(raw_dir: Path, out_dir: Path, *, as_of: str | pd.Timestamp, data_vintage
                              "facts_hash": sha256(previous_dir / "monthly_facts.parquet"),
                              "ledger_ref": "comparisons/previous_month/ledger.parquet",
                              "facts_ref": "comparisons/previous_month/monthly_facts.parquet"}
+            del prior_cut
+        del raw
         # Index once: do not scan millions of transactions again for every
         # company and each leave-one-out/sensitivity scenario.
         ledger_groups = ledger.groupby(["company_id", "currency"]).groups

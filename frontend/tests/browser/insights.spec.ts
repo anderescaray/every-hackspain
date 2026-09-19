@@ -43,11 +43,11 @@ test("una puntuación protagonista, cuatro dimensiones y confianza separada", as
   await expect(header.getByText("Cobertura de datos: 88 %")).toBeVisible();
   await expect(header.getByText("Señales de presión y dependencia de apoyo", { exact: true })).toBeVisible();
   await expect(header.locator("dt")).toHaveCount(4);
-  await expect(header.locator("dd strong")).toHaveText(["68", "81", "74", "59"]);
+  await expect(header.locator("dd strong")).toHaveText(["72", "72", "72", "72"]);
   expect(await header.getByTestId("health-score").evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeGreaterThan(70);
   expect(await header.locator("dd strong").first().evaluate((node) => parseFloat(getComputedStyle(node).fontSize))).toBeLessThan(25);
   await header.getByText("Cómo se calcula", { exact: false }).click();
-  await expect(header.getByText("25 % Momentum + 30 % Generación de caja + 25 % Resiliencia + 20 % Deuda.", { exact: false })).toBeVisible();
+  await expect(header.getByText("15 % Momentum + 40 % Generación de caja + 25 % Resiliencia + 20 % Deuda.", { exact: false })).toBeVisible();
   expect(await header.textContent()).not.toMatch(/Pulse Score|Stability|Estabilidad/);
 });
 

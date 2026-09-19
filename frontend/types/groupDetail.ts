@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { pulseEnvelopeShape, pulseStatusSchema } from "./pulse";
 
 const text = z.string().min(1).max(5000);
 const id = z.string().min(1).max(100);
@@ -18,7 +19,7 @@ const relationKind = z.enum(["support", "transfer", "cash_pooling", "treasury_ci
 const outlookSchema = z.object({ status: z.enum(["available", "insufficient"]), horizon: text, summary: text, funding_need: amount.nonnegative().nullable(), confidence: score.nullable(), evidence_refs: refs });
 const memberSchema = z.object({
   company_id: companyId,
-  health_score: score.int().nullable(),
+  health_score: score.nullable(),
   dimensions: z.object({ momentum: score.nullable(), cash_generation: score.nullable(), resilience: score.nullable(), debt: score.nullable() }),
   trajectory: z.enum(["improving", "stable", "deteriorating"]).nullable(),
   role: z.enum(["provider", "receiver", "both", "none_identified", "unknown"]),
@@ -29,7 +30,9 @@ const memberSchema = z.object({
   internal_received: amount.nonnegative().nullable(),
   internal_provided: amount.nonnegative().nullable(),
   confidence: score.nullable(),
-  attention: severity,
+  attention: z.enum(["high", "medium", "low", "unknown"]),
+  score_status: pulseStatusSchema,
+  missing_components: z.array(text),
   summary: text,
   outlook: outlookSchema,
   evidence_refs: refs,
@@ -76,7 +79,10 @@ const recommendationSchema = z.object({
 });
 
 export const groupDetailSchema = z.object({
-  schema_version: z.literal("1.0"),
+  schema_version: z.literal("2.0"),
+  ...pulseEnvelopeShape,
+  health_score: z.null(),
+  status: z.literal("insufficient_evidence"),
   source: z.enum(["generated", "fixture"]),
   group_id: z.string().regex(/^GROUP_\d{4,10}$/),
   as_of: date,
