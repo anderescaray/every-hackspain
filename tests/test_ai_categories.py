@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
-
-from test_features import build, company, fixture_tables
 from test_clean import row
+from test_features import build, company, fixture_tables
+
 from xray.features import FeatureConfig
 from xray.features.ai_categories import apply_ai_categories, template
 
@@ -55,8 +55,10 @@ def test_features_use_ai_categories_when_configured(tmp_path):
     m.to_parquet(path, index=False)
     base = company(build(tables)).loc["2025-02-01"]
     ai = company(build_ai(tables, path)).loc["2025-02-01"]
-    assert base.tx_uncategorized_amount == 620 and base.tx_ai_categorized_amount == 0
-    assert ai.tx_uncategorized_amount == 0 and ai.tx_ai_categorized_amount == 620 and ai.tx_ai_nonoperating_amount == 500
+    # Canonical SCF is financing (500), not uncertain; wrong-sign collection
+    # (-10) stays uncertain rather than silently disappearing from coverage.
+    assert base.tx_uncategorized_amount == 130 and base.tx_ai_categorized_amount == 0
+    assert ai.tx_uncategorized_amount == 10 and ai.tx_ai_categorized_amount == 620 and ai.tx_ai_nonoperating_amount == 500
     assert ai.tx_inflow == base.tx_inflow + 80 and ai.tx_outflow == base.tx_outflow + 40
     assert ai.tx_cash_inflow == base.tx_cash_inflow  # el efectivo total no cambia, solo su clasificación
 

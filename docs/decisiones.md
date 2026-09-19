@@ -841,9 +841,63 @@ Revisión cruzada tras leer `docs/jev-categorias.md`. Lo implementado en §14/FE
 4. Exclusión D26–D28 por flag y D29 en servicio de deuda.
 5. Consumo de `coverage_state` en momentum de V2 más allá del `provisional` actual (deltas solo entre meses `ok` consecutivos).
 
-> Sección numerada §14 en local; renumerada a §18 al integrar las §14–§17 del remoto (19-09-2026).
+## 18. D31 como default, referencia V2 reajustada y regeneración — 19-09-2026 (cierre)
 
-## 18. Optimización de grupo — `group_treasury_advisor_v1` (19-09-2026, planificación)
+Primer punto del bloque A del plan (`roadmap-tecnico-mvp.md`, «Estado consolidado»). Un solo cambio coordinado para que `processed`, `scores_v2` y `product` sean coherentes entre sí y con la referencia congelada.
+
+### SC21 · Qué se ha hecho
+
+- `scripts/01_build_monthly_features.py` usa por defecto `resources/jev_categories/template_categories.parquet` (`xray.paths.AI_CATEGORIES_PATH`); `--no-ai-categories` recupera el comportamiento anterior y `--ai-categories RUTA` permite otro artefacto. Si el artefacto no existe, falla con mensaje explícito en lugar de degradar en silencio. `FeatureConfig.ai_categories_path` sigue siendo `None` por defecto en la API de Python: `build_features` sin argumentos no cambia y los tests no dependen del artefacto.
+- Regenerados en orden: features (prefijo 2026-02 OK), `scores_v2 fit` (referencia reajustada sobre features D31, prefijo OK), `08_build_product`. El manifiesto de features registra `ai_categories_sha256 = 448d70d1…`.
+
+### SC22 · Resultado sobre datos reales
+
+| Medida | Antes (base) | Ahora (D31 + FE10 + estacional) |
+|---|---:|---:|
+| Agosto 2026 puntuadas / `not_scored` | 922 / 364 | **977 / 309** (281 `scored`, 696 `provisional`) |
+| Filas puntuadas, toda la historia | 14.084 | **14.932** |
+| Motivos `provisional` en agosto | — | optional_components_missing 409, trend_unavailable 125, thin_current_month 72, partial_currency 51, **coverage_account_change 27**, short_history 12 |
+| Filas `coverage_onboarding` / `coverage_account_change` en la historia | — | 357 |
+| Trayectoria agosto | — | stable 620, emerging_deterioration 66, emerging_improvement 61, deteriorating 19, improving 17, mixed 12, insufficient 491 |
+| Mediana de |Δ score mensual| | 3,18 | 3,05 |
+
+Factores estacionales del crecimiento vigentes en agosto 2026 (log-crecimiento, mediana centrada, ≥50 filas por mes del año): **ago −0,29**, ene −0,16, nov −0,11, dic +0,11, jul +0,06, resto |·|<0,07. Coinciden con la exploración (`hallazgos-datos.md` §3). En agosto de 2026 el ajuste suma +0,22 al crecimiento trimestral mediano: sin él, la caída estacional de agosto se leería como deterioro de entradas.
+
+### SC23 · Límites
+
+- La referencia congelada ahora presupone features con D31; `predict` sobre un dataset nuevo debe ejecutarse con el mismo artefacto (o con `--no-ai-categories` **y** una referencia ajustada sin D31). Plantillas no vistas quedan `uncategorized`: sigue pendiente el fallback por signo (A.3).
+- El manifiesto guarda la ruta absoluta del artefacto; el hash es lo que identifica la versión.
+- Las cifras de agosto no son acierto frente al organizador; miden cobertura y estabilidad.
+
+## 19. Integración del frontend: exportador al contrato JSON — 19-09-2026 (noche)
+
+El frontend mergeado (`7822f35`, `frontend/`) **no consume la API ni `product/companies/{id}.json`**: lee ficheros estáticos `frontend/public/generated/{companies,groups}/<id>.json` con su propio contrato Zod (`docs/frontend-data-contract.md`: empresa `2.0`, grupo `1.0`). Se decide **no tocar el frontend** y añadir un exportador en la capa de producto (bloque A.1 del roadmap).
+
+### FE-01 · Qué se ha hecho
+
+- `src/xray/product/frontend_export.py` + `scripts/09_export_frontend.py`: traduce `product/` al contrato con escritura atómica; **no recalcula**. Resultado real: **1.018 empresas** (268 sin ningún score no se exportan: la UI muestra «no disponible») y **250 grupos**, todos válidos con `npm run validate:generated` (y `-- --groups`). `/companies/COMP_0647` y `/groups/GROUP_0250` renderizan con datos reales. Tests: `tests/test_frontend_export.py` (7).
+- Mapeo: `health_score = round(score)`; `history` = meses con score (el último coincide con el actual, `as_of` = fin de mes); `trajectory` colapsa las 7 etiquetas V2 a 3 (`emerging_*` → su dirección; `mixed_signals`/`insufficient_history` → `stable`); `drivers` = términos de «por qué ha cambiado» con `component → dimensión`; `cash_truth` = 6 buckets → 4 categorías (`unpaired_transfer` y `financing_investment` → `uncertain`, neto `null`), `own_account_circulation` = pata de entrada de D04 contada una vez; `evidence` = hasta 10 movimientos por empresa (2 por bucket, luego por importe) con `total_count` real. `time_borrowed` `null`, `alerts []`, `scenarios []` con metodología que explica la ausencia. Textos en español por plantilla.
+- **Dimensiones (decisión provisional a revisar con el autor del frontend):** el contrato exige cuatro números 0–100 y V2 puede no tener `momentum` o cobros/pagos. `cash_generation = level_operations`, `debt = level_debt`, `resilience = media(level_collections, level_payments)`, `momentum = momentum`; una dimensión ausente se exporta con el valor del propio `health_score` (no altera la media) y `health_score_model.provisional = true`. Pesos exportados: los efectivos de V2 traducidos a cuatro dimensiones (momentum 0,20 · cash_generation 0,36 · resilience 0,24 · debt 0,20; `0,8×0,45`, `0,8×0,25`, `0,8×0,30`). Propuesta al frontend: admitir `null` en `dimensions` para no exportar neutros.
+- Grupo mínimo válido: miembros con score/dimensiones/rol (`support_role` de Cash Truth → provider/receiver/both), `internal_received/provided` y `cash_generation_net` de la ventana 6m; liquidez/deuda/obligaciones `null` con explicación; `relations`, `recommendations`, `insights` vacíos; `limitations` explícitas.
+
+### FE-02 · Límites y siguientes pasos
+
+- El frontend no tiene **Portfolio**: la demo arranca en una URL de empresa. Pedir al autor una ruta `/` que lea un `portfolio.json` (podemos exportarlo al contrato que defina).
+- `public/` es público y los JSON están gitignored: en despliegue hay que ejecutar `09_export_frontend.py` en el build o montar `COMPANY_ANALYSIS_DIR`/`GROUP_ANALYSIS_DIR`.
+- Cuando existan alertas (bloque B), Time Borrowed y escenarios, se rellenan los campos ya previstos sin cambiar componentes. `account_flows` (cuentas y transferencias con dos tramos) queda pendiente: requiere enlazar los pares D04/D05 a filas de evidencia.
+- Orden de ejecución completo: `00 → 01 → 05 fit → 08 → 09`, y después `npm run validate:generated` desde `frontend/`.
+
+### FE-03 · Portfolio v1 (19-09, noche)
+
+El frontend no tenía ruta raíz. Se añade **`/`** con la cartera («¿qué empresas necesitan atención?»): KPIs (empresas, con score, atención alta, deteriorándose, mejorando, dependientes de apoyo), filtros por trayectoria / atención / estado / grupo / búsqueda, ordenación (atención, Health Score, Δ mes, cobertura, dependencia, id) con nulos siempre al final, paginación de 100 y enlaces a ficha y grupo. Formulario GET: funciona sin JavaScript y conserva la URL como estado.
+
+- Contrato nuevo `frontend/types/portfolio.ts` (`schema_version 1.0`; una fila por empresa: `health_score` entero nullable, `trajectory` 3 valores + `trajectory_stage` confirmed/emerging, `confidence`, `score_status`, `status_reason` en español, `main_signal` e impacto, `support_dependency_ratio`, `attention`, `has_detail`). Lectura en `services/portfolioData.ts` (`PORTFOLIO_ANALYSIS_FILE` opcional); `npm run validate:generated -- --portfolio`. Tests `tests/portfolio.test.ts` (5).
+- Exportación en `frontend_export.portfolio_export`: **1.286 filas** (218 atención alta, 162 media; 85 deteriorándose, 78 mejorando, 491 sin trayectoria). `attention`: alta = deterioro confirmado o dependencia ≥ 50 %; media = deterioro emergente, dependencia ≥ 30 % o score < 35; baja el resto. Es una prioridad de revisión, no una probabilidad.
+- Las empresas sin ficha (`has_detail = false`, 268 sin ningún score) aparecen en la tabla con su motivo pero sin enlace.
+
+> Sección numerada §14 en local; renumerada a §18 al integrar las §14–§17 del remoto y a §20 al integrar sus §18–§19 (19-09-2026).
+
+## 20. Optimización de grupo — `group_treasury_advisor_v1` (19-09-2026, planificación)
 
 **Estado: especificado y aprobado, no implementado.** Spec en `docs/group-optimization.md`; ejecución por paquetes de trabajo paralelizables en `docs/roadmap-group-advisor.md`. Los agentes que implementen cada WP registran aquí sus desviaciones y resultados con IDs `GA-xx`.
 

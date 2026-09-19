@@ -22,3 +22,6 @@ PROCESSED_DIR = DATA_DIR / "processed"
 EXTRACTION_DATE = pd.Timestamp("2026-09-01")
 # Primer día de la extracción: quien ya tenía datos entonces empieza con un mes completo (D33).
 DATA_START = pd.Timestamp("2024-09-01")
+
+# D31: artefacto estático de categorías AI (una pasada, versionado). Default del CLI de features.
+AI_CATEGORIES_PATH = ROOT / "resources" / "jev_categories" / "template_categories.parquet"

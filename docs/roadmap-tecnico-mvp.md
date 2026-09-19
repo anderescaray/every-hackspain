@@ -6,6 +6,53 @@
 
 ---
 
+## Estado consolidado y plan (19-09-2026, cierre del día)
+
+**Producto:** Embat Pulse — early warning y explicación de tesorería. Responde: cómo está la empresa (Health), hacia dónde va (Momentum/trayectoria, bache vs tendencia), por qué cambia (contribuciones exactas), de dónde viene la caja (Cash Truth) y quién financia a quién (Time Borrowed). Comprador: Embat como tier premium sobre su cartera; usuario: CFO/tesorero.
+
+### Capas y estado
+
+| Capa | Estado | Referencia |
+|---|---|---|
+| Datos: clean + features | Hecho. Anotaciones D25–D30, `coverage_state` FE10, categorías AI D31 (**default del CLI desde este cierre**) | decisiones §14, FE10, §15, §17 |
+| Pulse Score V2 | Hecho. Nivel 6m, momentum normalizado por volatilidad propia, episodio bache/tendencia, ajuste estacional del crecimiento, `provisional` por cobertura | `scoring-v2.md`, decisiones §13 |
+| Explicación + Confidence | Hecho (F1) | decisiones §16 PR-03/04 |
+| Cash Truth + dependencia de apoyo | Hecho (F2) | decisiones §16 PR-05/06 |
+| API FastAPI (solo lectura, `/import` con referencia congelada) | Hecho | `brief-backend-api.md`, `backend/` |
+| Frontend | Company Detail y Grupo (overview/network/recommendations) hechos por Álvaro; **integrado con datos reales** vía `scripts/09_export_frontend.py` (decisiones §19). Falta Portfolio y despliegue | `frontend/`, `frontend-data-contract.md` |
+| Alertas + lead time (bonus del enunciado) | Solo diseño | `alerts-and-monitoring.md` |
+| Time Borrowed | Medido, no implementado (nicho: 4 empresas AR, 130 AP) | `patron-tiempo-prestado.md` |
+| What-if, despliegue público | No existen | — |
+
+### Contra los requisitos del enunciado
+
+| Requisito | Estado |
+|---|---|
+| Predicción sobre test oculto | Mecánica lista (`predict --reference`, `/import`). Falta formato del leaderboard y fallback por signo para plantillas no vistas |
+| Dos direcciones · trayectoria · explicación | Cumplidos (V2 + change_narrative) |
+| Producto encima + comprador | Cash Truth, Confidence, API; Embat |
+| Demo navegable | **No**: frontend parcial, sin URL pública |
+| Anticipación medida (bonus) | No: hay anclas discretas (`event_type`) pero falta `lead_time.json` |
+| Monitor que avisa (bonus) | No |
+
+### Plan por bloques
+
+**A · Imprescindible para presentar**
+1. ~~Integrar Company Detail~~ ~~Portfolio~~ (hechos, §19 FE-01/FE-03) · desplegar con los JSON exportados (Vercel + `COMPANY_ANALYSIS_DIR` o build que ejecute `09`).
+2. D31 default + reajuste de la referencia V2 + regeneración `processed`/`scores_v2`/`product` (decisiones §18).
+3. Fallback por signo residual + `categorized_amount_share` (test oculto con bancos sin plantilla conocida).
+
+**B · Diferencial**
+4. Alertas (F3) sobre `event_type` + Noul + `support_dependency_ratio` + cambio de trayectoria; `lead_time.json` medido contra eventos discretos. Cubre los dos bonus.
+5. `coverage_state` en el momentum de V2 (deltas solo entre meses `ok`).
+
+**C · Si queda tiempo**
+6. Time Borrowed AP como alerta de nicho; what-if; Import UI.
+
+**Deuda técnica conocida:** `stress_events` duplica `event_type`; D26–D28 aún no excluyen `tx_cash_*`; D29 no excluye pasarela de `interest_charge`; Confidence y umbral 0,7 sin calibrar.
+
+---
+
 ## 0. Inventario: propuesta vs. código
 
 | Pieza del MVP (MUST) | Estado | Dónde está / dónde irá |

@@ -1,6 +1,6 @@
 # Advisor — optimización de grupo y sensibilidad de empresa (`treasury_advisor_v1`)
 
-**Estado: implementado el 19-09-2026 en `src/xray/group_advisor/` (WP1–WP5 del [roadmap](./roadmap-group-advisor.md)); ejecutado sobre los datos D32 con `python -X utf8 scripts/08_treasury_advisor.py` → `data/processed/advisor/`.** Resultados, desviaciones y decisiones de implementación en [decisiones.md](./decisiones.md) §18 (GA-00 a GA-07; cifras vigentes en GA-06). Casos reales en §15. Este documento sigue siendo el contrato: fórmulas, palancas, restricciones, objetivo, algoritmos, salidas JSON y reglas de narrativa; donde la implementación se apartó de él, lo dice GA-xx y prevalece el código.
+**Estado: implementado el 19-09-2026 en `src/xray/group_advisor/` (WP1–WP5 del [roadmap](./roadmap-group-advisor.md)); ejecutado sobre los datos D32 con `python -X utf8 scripts/08_treasury_advisor.py` → `data/processed/advisor/`.** Resultados, desviaciones y decisiones de implementación en [decisiones.md](./decisiones.md) §20 (GA-00 a GA-07; cifras vigentes en GA-06). Casos reales en §15. Este documento sigue siendo el contrato: fórmulas, palancas, restricciones, objetivo, algoritmos, salidas JSON y reglas de narrativa; donde la implementación se apartó de él, lo dice GA-xx y prevalece el código.
 
 Nota D32: tras la especificación, el pipeline de features pasó a convertir todas las monedas a EUR con tipo fijo (`src/xray/fx.py`), de modo que el panel primario es 100 % EUR. La restricción de moneda R1 y la tabla FX del advisor (§7) quedan operativas pero sin efecto sobre este dataset (`fx_rate_unavailable` = 0 acciones).
 
@@ -411,7 +411,7 @@ Validaciones: fracciones y rejilla en (0,1] crecientes; `horizon_months == ref["
 ## 14. Relación con el resto del proyecto
 
 - No modifica `src/xray/score_v2/` ni sus artefactos; consume `scores_v2/`, `company_monthly_features`, `company_currency_liquidity_context` y la referencia congelada. `load_inputs` rechaza mezclar unas features con unos scores calculados sobre otras (hash del manifiesto de `scores_v2`): si se regeneran features hay que regenerar `03`/`05` (empresa y `--panel group_currency`) antes de `08`.
-- Resultados sobre los 250 grupos y las 949 empresas puntuadas: `decisiones.md` §18 GA-06. Producto: `embat_pulse_mvp_propuesta_final.md` §12/§18 y `product-and-demo.md`.
+- Resultados sobre los 250 grupos y las 949 empresas puntuadas: `decisiones.md` §20 GA-06. Producto: `embat_pulse_mvp_propuesta_final.md` §12/§18 y `product-and-demo.md`.
 - Ejecución: `python -X utf8 scripts/08_treasury_advisor.py` (≈2,5 min; `load_inputs` ≈45 s); `--group GROUP_xxxx` / `--company COMP_xxxx` imprimen la narrativa sin publicar. Tests: `python -W error -m pytest -q tests/test_group_advisor_*.py` (≈220 tests, ≈3 min con los de datos reales).
 
 ## 15. Casos ilustrativos (agosto 2026, datos D32; cifras de `data/processed/advisor/`)

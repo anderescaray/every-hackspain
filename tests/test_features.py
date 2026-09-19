@@ -56,7 +56,7 @@ def test_calendar_missingness_filters_and_zero_denominator():
 
 
 def test_first_month_of_the_extraction_is_complete_not_partial():
-    rows = [row(i, date=f'2024-{m:02d}-{2 + i:02d}', amount=1000) for m in (9, 10, 11) for i in range(6)]
+    rows = [row(10 * m + i, date=f'2024-{m:02d}-{2 + i:02d}', amount=1000) for m in (9, 10, 11) for i in range(6)]
     panel = company(build_features(fixture_tables(rows), FeatureConfig(start_month='2024-09-01', end_month='2024-11-01')))
     assert panel.loc['2024-09-01', 'coverage_state'] == 'onboarding'
     assert not panel.loc['2024-09-01', 'is_partial_first_month']
@@ -65,7 +65,7 @@ def test_first_month_of_the_extraction_is_complete_not_partial():
 
 def test_partial_first_month_keeps_counts_but_not_amounts():
     rows = [row(i, date=f'2025-01-{15 + i:02d}', amount=1000) for i in range(3)]          # alta a mitad de mes
-    rows += [row(10 + i, date=f'2025-{m:02d}-{10 + i:02d}', amount=1000) for m in (2, 3, 4) for i in range(6)]
+    rows += [row(10 * m + i, date=f'2025-{m:02d}-{10 + i:02d}', amount=1000) for m in (2, 3, 4) for i in range(6)]
     panel = company(build(fixture_tables(rows)))
     assert panel.loc['2025-01-01', 'coverage_state'] == 'onboarding'
     assert panel.loc['2025-01-01', 'is_partial_first_month']

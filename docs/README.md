@@ -15,14 +15,14 @@
 | **Score V2 (candidato)** | `financial_smoothed_v2`: nivel de flujos agregados 6m, momentum trimestre/trimestre estandarizado por volatilidad propia, confirmación bache/tendencia, episodios, explicación aditiva exacta. Mediana de cambio mensual 3,3; extremos a la mitad; 922 empresas puntuadas en agosto | [scoring-v2.md](./scoring-v2.md), decisiones §13 |
 | Comparador V1/V2 | Estabilidad, proxies de estrés (texto y caja negativa), riesgo por etiqueta, anticipación con regla independiente, sensibilidad. Ninguna versión discrimina los proxies; V2 gana en estabilidad sin perder | [validation.md](./validation.md), `src/xray/evaluation/` |
 | Leaderboard y predicción supervisada | Sin resultados oficiales ni acuerdo medido; pendiente formato/feedback | [decisiones.md](./decisiones.md) |
-| **Advisor: plan de grupo + sensibilidad de empresa** | `treasury_advisor_v1`: escenarios mecánicos sobre la función de nivel exacta de V2. Plan de grupo (asunción de servicio de deuda D1, financiación de pago a proveedores P; objetivo cóncavo por tramos; greedy determinista con certificado) y sensibilidad por empresa (pendiente por palanca, siguiente nudo, cuánto para cambiar de tramo). Narrativa por plantillas con validador de anclaje; LLM opcional no conectado. Agosto 2026: 19 grupos con plan / 160 sin palancas / 71 unipersonales; 949 empresas con sensibilidad; 0 fallos de anclaje | [group-optimization.md](./group-optimization.md), [roadmap-group-advisor.md](./roadmap-group-advisor.md), decisiones §18, `src/xray/group_advisor/` |
+| **Advisor: plan de grupo + sensibilidad de empresa** | `treasury_advisor_v1`: escenarios mecánicos sobre la función de nivel exacta de V2. Plan de grupo (asunción de servicio de deuda D1, financiación de pago a proveedores P; objetivo cóncavo por tramos; greedy determinista con certificado) y sensibilidad por empresa (pendiente por palanca, siguiente nudo, cuánto para cambiar de tramo). Narrativa por plantillas con validador de anclaje; LLM opcional no conectado. Agosto 2026: 19 grupos con plan / 160 sin palancas / 71 unipersonales; 949 empresas con sensibilidad; 0 fallos de anclaje | [group-optimization.md](./group-optimization.md), [roadmap-group-advisor.md](./roadmap-group-advisor.md), decisiones §20, `src/xray/group_advisor/` |
 | Alertas, API y demo | Diseños pendientes, sin despliegue ni métricas comprobadas | [alerts-and-monitoring.md](./alerts-and-monitoring.md), [product-and-demo.md](./product-and-demo.md) |
 
 ## Ejecutar lo implementado
 
 ```bash
 python -X utf8 scripts/00_clean_data.py
-python -X utf8 scripts/01_build_monthly_features.py
+python -X utf8 scripts/01_build_monthly_features.py             # D31 por defecto; --no-ai-categories para solo banco
 python -X utf8 scripts/02_validate_features.py
 python -X utf8 scripts/03_compute_scores.py fit                 # V1 control -> data/processed/scores/
 python -X utf8 scripts/04_validate_scores.py
@@ -31,6 +31,8 @@ python -X utf8 scripts/06_validate_scores_v2.py --check-prefix 2026-02-01
 python -X utf8 scripts/07_compare_scores.py                     # -> data/processed/evaluation/
 python -X utf8 scripts/08_treasury_advisor.py                   # planes de grupo + sensibilidad -> data/processed/advisor/
 python -X utf8 scripts/08_treasury_advisor.py --group GROUP_0067    # o --company COMP_0007: imprime la narrativa sin publicar
+python -X utf8 scripts/08_build_product.py                      # -> data/processed/product/
+python -X utf8 scripts/09_export_frontend.py                    # -> frontend/public/generated/ (contrato del frontend)
 python -W error -m pytest -q                                    # suite completa
 ```
 
@@ -71,7 +73,7 @@ Snapshots/contextos y eventos reservados **no** están en la lista de predictore
 
 ## Continuación
 
-1. Producto y demo sobre V2 **y el advisor**: cartera con `trajectory`/`episode`, ficha con contribuciones, relato «nivel 6m · trimestre reciente frente a anterior · mes actual» y bloque «Qué mueve tu nivel» (`company_sensitivity/`); vista de grupo con el plan (`group_plans/`) solo si el grupo tiene ≥2 filiales puntuadas. Ver decisiones §11, §13 (SC13) y §18, y [group-optimization.md](./group-optimization.md) §13.
+1. Producto y demo sobre V2 **y el advisor**: cartera con `trajectory`/`episode`, ficha con contribuciones, relato «nivel 6m · trimestre reciente frente a anterior · mes actual» y bloque «Qué mueve tu nivel» (`company_sensitivity/`); vista de grupo con el plan (`group_plans/`) solo si el grupo tiene ≥2 filiales puntuadas. Ver decisiones §11, §13 (SC13) y §20, y [group-optimization.md](./group-optimization.md) §13.
 2. Confirmar unidad/formato/escala del envío con Embat; `scores_v2/company_latest_scores.csv` es candidato, no submission.
 3. Liquidez como dimensión del nivel y fallback de exportación siguen pendientes (decisiones §12 V2-01/V2-03, §13 SC13).
 4. No restaurar país ni añadir `nueva-proposicion.md` a commits. No hacer commit/push sin petición.

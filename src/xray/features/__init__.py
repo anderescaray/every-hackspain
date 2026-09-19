@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pyarrow
 
-from xray.artifacts import check_output_path, code_manifest, publish_bundle, sha256
+from xray.artifacts import cash_classification_manifest, check_output_path, code_manifest, publish_bundle, sha256
 from xray.features.config import FeatureConfig
 from xray.features.context import debt_snapshot, liquidity_summary, reconstruct_liquidity
 from xray.features.coverage import STATES, add_coverage_state
@@ -166,6 +166,7 @@ def run(cleaned_dir: Path = CLEANED_DIR, out_dir: Path = PROCESSED_DIR,
         if source_manifest.get("outputs_sha256", {}).get(name) != digest:
             raise ValueError(f"{name}: hash ausente o distinto del manifiesto; ejecutar 00_clean_data.py")
     tables = {name: read_cleaned(name, cleaned_dir) for name in INPUTS}
+    classification = cash_classification_manifest(config.ai_categories_path, config.ai_min_confidence)
     artifacts = build_features(tables, config)
     report = quality_report(artifacts)
     out_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -179,13 +180,16 @@ def run(cleaned_dir: Path = CLEANED_DIR, out_dir: Path = PROCESSED_DIR,
             (staged / name).write_text(json.dumps(content, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
         manifest = {"created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     "config": asdict(config), "code": code_manifest(), "inputs_sha256": hashes,
+                    "classification": classification,
                     "cleaning_manifest_sha256": sha256(cleaned_dir / "_manifest.json"),
-                    "ai_categories_sha256": sha256(Path(config.ai_categories_path)) if config.ai_categories_path else None,
+                    "ai_categories_sha256": classification["evidence_hash"],
                     "versions": {"python": platform.python_version(), "pandas": pd.__version__,
                                  "numpy": np.__version__, "pyarrow": pyarrow.__version__},
                     "outputs_sha256": {path.name: sha256(path) for path in sorted(staged.iterdir())}}
         (staged / "_feature_manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
         if (cleaned_dir / ".pipeline.lock").exists() or any(sha256(cleaned_dir / name) != digest for name, digest in hashes.items()):
             raise RuntimeError("La capa cleaned cambió durante el build; no se publica")
+        if classification != cash_classification_manifest(config.ai_categories_path, config.ai_min_confidence):
+            raise RuntimeError("Classification method/evidence changed during features; not published")
         publish_bundle(staged, out_dir, "_feature_manifest.json")
     return report

@@ -1,0 +1,89 @@
+import type { Portfolio, PortfolioAttention, PortfolioItem, PortfolioStatus } from "../types/portfolio";
+import type { Trajectory } from "../types/companyDetail";
+
+export const SORT_KEYS = ["attention", "health_score", "delta_vs_prev", "confidence", "support_dependency_ratio", "company_id"] as const;
+export type SortKey = (typeof SORT_KEYS)[number];
+
+export type PortfolioQuery = {
+  trajectory: Trajectory | "all";
+  attention: PortfolioAttention | "all";
+  status: PortfolioStatus | "all";
+  group: string;
+  q: string;
+  sort: SortKey;
+  order: "asc" | "desc";
+};
+
+export const DEFAULT_QUERY: PortfolioQuery = { trajectory: "all", attention: "all", status: "all", group: "", q: "", sort: "attention", order: "desc" };
+
+const ATTENTION_RANK: Record<PortfolioAttention, number> = { high: 3, medium: 2, low: 1 };
+
+export const attentionLabels: Record<PortfolioAttention, string> = { high: "Alta", medium: "Media", low: "Baja" };
+export const statusLabels: Record<PortfolioStatus, string> = { scored: "Puntuada", provisional: "Provisional", not_scored: "Sin puntuar" };
+export const sortLabels: Record<SortKey, string> = {
+  attention: "Atención", health_score: "Health Score", delta_vs_prev: "Cambio mensual", confidence: "Cobertura",
+  support_dependency_ratio: "Dependencia de apoyo", company_id: "Identificador",
+};
+
+function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
+  return value !== undefined && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+export function parseQuery(params: Record<string, string | string[] | undefined>): PortfolioQuery {
+  const single = (key: string) => { const value = params[key]; return Array.isArray(value) ? value[0] : value; };
+  return {
+    trajectory: pick(single("trajectory"), ["all", "improving", "deteriorating", "stable"] as const, "all"),
+    attention: pick(single("attention"), ["all", "high", "medium", "low"] as const, "all"),
+    status: pick(single("status"), ["all", "scored", "provisional", "not_scored"] as const, "all"),
+    group: (single("group") ?? "").trim().slice(0, 40),
+    q: (single("q") ?? "").trim().slice(0, 40),
+    sort: pick(single("sort"), SORT_KEYS, "attention"),
+    order: pick(single("order"), ["asc", "desc"] as const, "desc"),
+  };
+}
+
+export function filterItems(items: PortfolioItem[], query: PortfolioQuery): PortfolioItem[] {
+  const q = query.q.toUpperCase();
+  const group = query.group.toUpperCase();
+  return items.filter((item) =>
+    (query.trajectory === "all" || item.trajectory === query.trajectory)
+    && (query.attention === "all" || item.attention === query.attention)
+    && (query.status === "all" || item.score_status === query.status)
+    && (!group || (item.group_id ?? "").toUpperCase() === group)
+    && (!q || item.company_id.includes(q) || (item.group_id ?? "").toUpperCase().includes(q)));
+}
+
+function value(item: PortfolioItem, key: SortKey): number | string | null {
+  if (key === "attention") return ATTENTION_RANK[item.attention];
+  if (key === "company_id") return item.company_id;
+  return item[key];
+}
+
+export function sortItems(items: PortfolioItem[], key: SortKey, order: "asc" | "desc"): PortfolioItem[] {
+  const direction = order === "asc" ? 1 : -1;
+  return [...items].sort((a, b) => {
+    const va = value(a, key), vb = value(b, key);
+    if (va === null && vb === null) return a.company_id.localeCompare(b.company_id);
+    if (va === null) return 1;              // los nulos siempre al final, sea cual sea el orden
+    if (vb === null) return -1;
+    if (typeof va === "string" && typeof vb === "string") return direction * va.localeCompare(vb);
+    if (va === vb) {
+      if (key === "attention") return (b.health_score ?? -1) - (a.health_score ?? -1) || a.company_id.localeCompare(b.company_id);
+      return a.company_id.localeCompare(b.company_id);
+    }
+    return direction * ((va as number) - (vb as number));
+  });
+}
+
+export function summarize(portfolio: Portfolio) {
+  const items = portfolio.items;
+  const count = (predicate: (item: PortfolioItem) => boolean) => items.filter(predicate).length;
+  return {
+    total: items.length,
+    scored: count((item) => item.health_score !== null),
+    improving: count((item) => item.trajectory === "improving"),
+    deteriorating: count((item) => item.trajectory === "deteriorating"),
+    highAttention: count((item) => item.attention === "high"),
+    dependent: count((item) => (item.support_dependency_ratio ?? 0) >= 0.3),
+  };
+}

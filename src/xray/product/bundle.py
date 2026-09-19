@@ -24,7 +24,7 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
-from xray.artifacts import check_output_path, code_manifest, sha256
+from xray.artifacts import cash_classification_manifest, check_output_path, code_manifest, sha256
 from xray.paths import CLEANED_DIR, PROCESSED_DIR
 from xray.product.cash_truth import BUCKET_LABELS, compute_cash_truth, evidence
 from xray.product.change_narrative import compute_changes, top_changes
@@ -135,6 +135,51 @@ def _replace_dir(staged: Path, target: Path):
     shutil.move(str(staged), str(target))
 
 
+def cash_truth_classification_config(features_dir: Path, *, cleaned_dir: Path | None = None) -> tuple[dict, dict[str, Path]]:
+    """Replay exactly the feature batch's optional frozen classification evidence.
+
+    An ambient/default cache would create a second interpretation of the same
+    cash. A missing or modified cache is therefore an error, never a fallback.
+    """
+    manifest_path = Path(features_dir) / "_feature_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if "classification" not in manifest:
+        raise ValueError("Pre-canonical feature manifest; rerun features and then product")
+    config = manifest["config"]
+    cache = config.get("ai_categories_path")
+    expected = manifest.get("ai_categories_sha256")
+    inputs = {"feature_manifest": manifest_path}
+    if bool(cache) != bool(expected):
+        raise ValueError("Feature manifest has inconsistent classification evidence")
+    kwargs = {"ai_categories_path": None, "ai_min_confidence": config.get("ai_min_confidence", 0.7),
+              "stop": pd.Timestamp(config["end_month"]) + pd.offsets.MonthBegin(1)}
+    if cache:
+        path = Path(cache)
+        if not path.is_file() or sha256(path) != expected:
+            raise ValueError("Classification evidence differs from the feature manifest; rebuild features")
+        kwargs["ai_categories_path"] = path
+        inputs["ai_categories"] = path
+    actual = cash_classification_manifest(kwargs["ai_categories_path"], kwargs["ai_min_confidence"])
+    if actual != manifest["classification"]:
+        raise ValueError("Canonical classification changed; rerun features and then product")
+    if not manifest.get("outputs_sha256"):
+        raise ValueError("Feature output hashes missing; rerun features and then product")
+    for name, digest in manifest["outputs_sha256"].items():
+        path = Path(features_dir) / name
+        if path.parent.resolve() != Path(features_dir).resolve() or not path.is_file() or sha256(path) != digest:
+            raise ValueError(f"Feature artifact {name} differs from manifest; rerun features and product")
+        inputs[f"feature_artifact:{name}"] = path
+    if cleaned_dir is not None:
+        if not manifest.get("inputs_sha256"):
+            raise ValueError("Cleaned input hashes missing; rerun features and then product")
+        for name, digest in manifest["inputs_sha256"].items():
+            path = Path(cleaned_dir) / name
+            if path.parent.resolve() != Path(cleaned_dir).resolve() or not path.is_file() or sha256(path) != digest:
+                raise ValueError(f"Cleaned input {name} differs from features; rerun features and product")
+            inputs[f"cleaned:{name}"] = path
+    return kwargs, inputs
+
+
 def run(scores_dir=None, features_dir=PROCESSED_DIR, out_dir=None, verbose=True):
     features_dir = Path(features_dir)
     scores_dir = Path(scores_dir) if scores_dir is not None else features_dir / "scores_v2"
@@ -145,6 +190,9 @@ def run(scores_dir=None, features_dir=PROCESSED_DIR, out_dir=None, verbose=True)
               "explanations": scores_dir / "company_score_explanations.parquet",
               "features": features_dir / "company_currency_monthly_features.parquet",
               "transactions": CLEANED_DIR / "transactions.parquet"}
+    classification_config, classification_inputs = cash_truth_classification_config(features_dir, cleaned_dir=CLEANED_DIR)
+    inputs.update(classification_inputs)
+    input_hashes = {key: sha256(path) for key, path in inputs.items()}
     scores = pd.read_parquet(inputs["scores"])
     explanations = pd.read_parquet(inputs["explanations"])
     features = pd.read_parquet(inputs["features"])
@@ -153,7 +201,7 @@ def run(scores_dir=None, features_dir=PROCESSED_DIR, out_dir=None, verbose=True)
 
     changes = compute_changes(scores, explanations)
     confidence = compute_confidence(scores, features)
-    classified, cash_monthly, cash_summary = compute_cash_truth(pd.read_parquet(inputs["transactions"]))
+    classified, cash_monthly, cash_summary = compute_cash_truth(pd.read_parquet(inputs["transactions"]), **classification_config)
     cash_evidence = evidence(classified)
     del classified
     portfolio = build_portfolio(scores, confidence, changes, latest_month, cash_summary)
@@ -182,7 +230,7 @@ def run(scores_dir=None, features_dir=PROCESSED_DIR, out_dir=None, verbose=True)
             (staged / "groups" / f"{group_id}.json").write_text(json.dumps(json_safe(payload), ensure_ascii=False, allow_nan=False), encoding="utf-8")
         manifest = {"created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     "latest_month": json_safe(latest_month),
-                    "inputs_sha256": {k: sha256(p) for k, p in inputs.items()},
+                    "inputs_sha256": input_hashes,
                     "code": code_manifest(),
                     "versions": {"python": platform.python_version(), "pandas": pd.__version__, "numpy": np.__version__},
                     "outputs_sha256": {p.name: sha256(p) for p in sorted(staged.iterdir()) if p.is_file()},
