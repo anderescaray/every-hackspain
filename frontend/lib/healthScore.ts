@@ -14,8 +14,8 @@ export const HEALTH_SCORE_MODEL: HealthScoreModel = {
 };
 
 export const HEALTH_DIMENSIONS: { key: DimensionKey; label: string; explanation: string }[] = [
-  { key: "momentum", label: "Momentum", explanation: "Evolución financiera: crecer más no siempre significa mejorar." },
-  { key: "cash_generation", label: "Generación de caja", explanation: "Capacidad de convertir la actividad en caja operativa." },
-  { key: "resilience", label: "Resiliencia", explanation: "Margen para absorber tensiones de liquidez y financiación." },
-  { key: "debt", label: "Deuda", explanation: "Capacidad de atender compromisos; más puntos no significa más deuda." },
+  { key: "momentum", label: "Momentum", explanation: "Hacia dónde va la caja operativa." },
+  { key: "cash_generation", label: "Generación de caja", explanation: "Cuánta caja genera la actividad." },
+  { key: "resilience", label: "Resiliencia", explanation: "Aguante ante meses con déficit de caja." },
+  { key: "debt", label: "Deuda", explanation: "Presión de los pagos de deuda observados." },
 ];

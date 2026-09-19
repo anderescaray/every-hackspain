@@ -22,7 +22,7 @@ export function TimeBorrowedSection({ timing, onOpen }: { timing: TimeBorrowed; 
   };
 
   return <section className={`${styles.panel} ${styles.featurePanel}`} aria-label="Tiempo financiado">
-    <SectionHeading number="04" title="Tiempo financiado" description="¿Cuánto tiempo financiamos a clientes y cuánto tiempo nos financian los proveedores?"><div className={styles.segmented} role="group" aria-label="Tipo de contraparte"><button aria-pressed={side === "ar"} onClick={() => setSide("ar")}>Clientes · AR</button><button aria-pressed={side === "ap"} onClick={() => setSide("ap")}>Proveedores · AP</button></div></SectionHeading>
+    <SectionHeading number="04" title="Tiempo financiado" description="Plazos de cobro a clientes y pago a proveedores."><div className={styles.segmented} role="group" aria-label="Tipo de contraparte"><button aria-pressed={side === "ar"} onClick={() => setSide("ar")}>Clientes · AR</button><button aria-pressed={side === "ap"} onClick={() => setSide("ap")}>Proveedores · AP</button></div></SectionHeading>
     {!data ? <p className={styles.emptyState}>No identificable con suficiente confianza. No hay evidencia de plazos de {side === "ar" ? "clientes" : "proveedores"} disponible.</p> : <>
       <div className={styles.timingContext}><span className={styles.mono}>{data.counterparty_id}</span><span>{data.before.period} <span aria-hidden="true">→</span> {data.after.period}</span><Confidence value={data.confidence} /></div>
       <div className={styles.clocks}>
@@ -30,7 +30,7 @@ export function TimeBorrowedSection({ timing, onOpen }: { timing: TimeBorrowed; 
         <TimingClock label={side === "ar" ? "Tiempo hasta cobro" : "Tiempo hasta pago"} before={data.before.time_to_cash} after={data.after.time_to_cash} tone={tone("time_to_cash")} definition={side === "ar" ? "Tiempo observado desde la emisión de la factura hasta el cobro." : "Tiempo observado desde la emisión de la factura hasta el pago al proveedor."} />
         <TimingClock label="Retraso" before={data.before.delay} after={data.after.delay} tone={tone("delay")} definition="Días observados de pago después del vencimiento." />
       </div>
-      <div className={styles.timingInsight}><div><span className={styles.eyebrow}>Los tiempos detrás de la cifra</span><h3>{data.headline}</h3><p>{data.explanation}</p></div><EvidenceButton refs={data.evidence_refs} title={side === "ar" ? "Plazos y cobros de clientes" : "Plazos y pagos a proveedores"} onOpen={onOpen} /></div>
+      <div className={styles.timingInsight}><div><span className={styles.eyebrow}>Plazos</span><h3>{data.headline}</h3><p>{data.explanation}</p></div><EvidenceButton refs={data.evidence_refs} title={side === "ar" ? "Plazos y cobros de clientes" : "Plazos y pagos a proveedores"} onOpen={onOpen} /></div>
       <details className={styles.methodology}><summary>Cómo interpretar los tiempos · {data.evidence_count} facturas</summary><p>{data.methodology}</p><p>{side === "ar" ? "Clientes (AR): conceder más plazo significa financiarlos durante más tiempo." : "Proveedores (AP): recibir menos plazo significa necesitar caja antes. Un mayor retraso al pagar no se considera una mejora."} No se presuponen motivos.</p></details>
     </>}
   </section>;

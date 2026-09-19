@@ -14,6 +14,8 @@
     "validate:generated": "tsx scripts/validateGenerated.ts"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
+    "@xyflow/react": "^12.11.6",
     "next": "16.3.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@axe-core/playwright": "4.10.2",
     "@playwright/test": "1.55.1",
+    "@types/dagre": "^0.7.54",
     "@types/node": "22.15.30",
     "@types/react": "19.1.6",
     "@types/react-dom": "19.1.6",

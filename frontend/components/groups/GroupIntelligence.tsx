@@ -13,9 +13,9 @@ import base from "@/components/insights/insights.module.css";
 import styles from "./groups.module.css";
 
 const questions: Record<GroupView, string> = {
-  overview: "¿Cómo está el grupo y dónde debería prestar atención?",
-  network: "¿Cómo están conectadas financieramente las sociedades?",
-  recommendations: "¿Qué debería revisar el equipo de tesorería antes de actuar?",
+  overview: "Resumen del perímetro y sociedades a revisar primero.",
+  network: "Sociedades y transferencias observadas en el grupo.",
+  recommendations: "Revisiones priorizadas antes de mover caja.",
 };
 
 export function GroupIntelligence({ group, view, initialRelation, initialCompany }: { group: GroupDetail; view: GroupView; initialRelation?: string; initialCompany?: string }) {
@@ -29,9 +29,9 @@ export function GroupIntelligence({ group, view, initialRelation, initialCompany
 
   return <main className={`${base.page} ${styles.groupPage}`}>
     <a href="#group-content" className={base.skipLink}>Ir al análisis de grupo</a>
-    <div className={base.contextBar}><span className={base.breadcrumb}>Grupo <span aria-hidden="true">/</span> {tab.label}</span><span className={base.demoBadge}>{group.source === "fixture" ? "Demo · Datos de ejemplo" : "Análisis preparado"}</span></div>
+    <div className={base.contextBar}><span className={base.breadcrumb}>Grupo <span aria-hidden="true">/</span> {group.group_id} <span aria-hidden="true">/</span> {tab.label}</span><span className={base.demoBadge}>{group.source === "fixture" ? "Datos de ejemplo" : "Datos preparados"}</span></div>
     <header className={styles.groupHeader}>
-      <div className={styles.headerTop}><span className={styles.headerEyebrow}>Grupo observado · {group.group_id}</span><span>Datos a {dateLabel(group.as_of)}</span></div>
+      <div className={styles.headerTop}><span className={styles.headerEyebrow}>{group.group_id}</span><span>Datos a {dateLabel(group.as_of)}</span></div>
       <h1>{tab.label}</h1><p className={styles.headerQuestion}>{questions[view]}</p><p className={styles.headerSummary}>{group.summary}</p>
       <div className={styles.groupHeaderMeta}><span><strong>{group.members.length}</strong> sociedades observadas{group.coverage.known_company_count === null ? " · total del grupo no disponible" : ` de ${group.coverage.known_company_count} conocidas`}</span><Confidence value={group.coverage.confidence} /><span>{group.period}</span></div>
       <div className={styles.trajectoryStrip}><span><i className={styles.deterioratingDot} />{deteriorating} deteriorándose</span><span><i className={styles.stableDot} />{stable} estables</span><span><i className={styles.improvingDot} />{improving} mejorando</span>{unknown > 0 && <span>{unknown} sin evaluar</span>}<small>Sociedades, no una puntuación única del grupo</small></div>
@@ -43,7 +43,7 @@ export function GroupIntelligence({ group, view, initialRelation, initialCompany
       {view === "recommendations" && <GroupRecommendations group={group} onOpen={openEvidence} initialRelation={initialRelation} />}
     </div>
     <section className={styles.limits} aria-label="Límites del análisis de grupo"><h2>Antes de decidir</h2><p>La caja no se considera libremente transferible entre sociedades. Ninguna recomendación ejecuta movimientos ni sustituye la revisión del responsable de tesorería.</p><ul>{group.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}</ul></section>
-    <footer className={base.pageFooter}><span>Embat Pulse · Inteligencia de grupo</span><span>{group.source === "fixture" ? "Datos de ejemplo aislados. Sin operaciones reales." : "Análisis precalculado. Sin ejecución de operaciones."}</span></footer>
+    <footer className={base.pageFooter}><span>Embat Pulse</span><span>{group.source === "fixture" ? "Sin operaciones reales." : "Sin ejecución de operaciones."}</span></footer>
     {evidence && <GroupEvidenceDialog title={evidence.title} evidence={group.evidence.filter((item) => evidence.refs.includes(item.id))} isFixture={group.source === "fixture"} onClose={() => setEvidence(null)} />}
   </main>;
 }

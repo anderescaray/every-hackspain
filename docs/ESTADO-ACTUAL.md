@@ -75,6 +75,10 @@ cd frontend && npm run dev -- --port 3111      # http://localhost:3111/
 
 Empresas útiles para la demo: `COMP_0764` (historia larga, simulador), `COMP_0001` (estable), `COMP_0647` (apoyo intragrupo dominante), `COMP_0045` (banco extranjero corregido por D31), `GROUP_0250`.
 
+## 4b. Última integración de frontend
+
+Rama `integracion` de Álvaro mergeada en `main` (red financiera interactiva con React Flow + dagre, rediseño visual de ficha/grupo/portfolio). Sus commits se hicieron sobre el contrato 3.0 de Pulse; al integrar se conservó su UI y se eliminaron las referencias 3.0 (`company.pulse`, `score_version`, `run_id`), manteniendo el contrato 2.0. Dependencias nuevas: `@xyflow/react`, `@dagrejs/dagre` (lockfile sincronizado con `npm install`). 73 tests frontend.
+
 ## 5. Trabajo en curso / sin commitear en la máquina de Camilo
 
 - **What-if factorial (FE-05)**: `whatif.py` pasa de 21 escenarios «una palanca cada vez» a **81** (3 posiciones por palanca) para que cualquier combinación de sliders tenga resultado; `frontend_export._simulation` desglosa combinaciones; etiqueta «del apoyo actual» → «del nivel actual» en `WhatIfSection.tsx`. Tests verdes. `scripts/10_build_whatif.py` estaba ejecutándose (~30 min) y después hay que correr `09` y validar. Cambios staged, pendiente commit + push.

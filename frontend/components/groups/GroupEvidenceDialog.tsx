@@ -17,7 +17,7 @@ export function GroupEvidenceDialog({ title, evidence, isFixture, onClose }: { t
 
   return <dialog ref={dialog} className={base.evidenceDialog} aria-labelledby="group-evidence-title" onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <div className={base.dialogContent}>
-      <header className={base.dialogHeader}><div><span className={base.eyebrow}>{isFixture ? "Evidencia de ejemplo" : "Evidencia suministrada"} · Grupo observado</span><h2 id="group-evidence-title">{title}</h2></div><button autoFocus className={base.iconButton} aria-label="Cerrar evidencia de grupo" onClick={onClose}>×</button></header>
+      <header className={base.dialogHeader}><div><span className={base.eyebrow}>{isFixture ? "Evidencia de ejemplo" : "Evidencia"}</span><h2 id="group-evidence-title">{title}</h2></div><button autoFocus className={base.iconButton} aria-label="Cerrar evidencia de grupo" onClick={onClose}>×</button></header>
       <p className={base.disclaimer}>{isFixture ? "Registros ficticios para probar la interfaz. " : "Registros seleccionados del análisis recibido. "}Las muestras no son una conciliación completa. Una relación candidata no se convierte en identificada por abrir su evidencia.</p>
       {!evidence.length && <p className={base.emptyState}>No hay evidencia suficiente disponible para esta explicación.</p>}
       {evidence.map((group) => {

@@ -1,6 +1,78 @@
-html { color-scheme: light; scroll-behavior: smooth; }
-body { margin: 0; background: #f5f7fb; color: #050b2c; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+/* Embat Pulse — precisión tipo Linear, acento Embat */
+:root {
+  --paper: #f7f8f8;
+  --surface: #ffffff;
+  --ink: #0f1115;
+  --muted: #656b73;
+  --line: #e3e5e8;
+  --line-strong: #d0d3d8;
+  --accent: #0d5c52;
+  --accent-soft: #e8f1ef;
+  --deep: #f4f5f6;
+  --deep-text: #3c4149;
+  --warm: #a34b2f;
+  --warm-soft: #f6ebe6;
+  --amber: #8a6918;
+  --amber-soft: #f3edd8;
+  --positive: #1b6b56;
+  --positive-soft: #e7f2ed;
+  --focus: #0d5c52;
+  --radius: 20px;
+  --radius-capsule: 20px;
+  --font: "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --canvas: var(--paper);
+  --canvas-deep: var(--paper);
+  --surface-raised: var(--surface);
+  --signal: var(--accent);
+  --signal-soft: var(--accent-soft);
+  --signal-deep: var(--accent);
+  --deep-mid: var(--ink);
+  --deep-edge: #d8dbdf;
+  --ink-soft: #3a3f47;
+  --line-soft: var(--line);
+  --radius-sm: 8px;
+  --radius-md: var(--radius-capsule);
+  --radius-lg: 24px;
+  --font-sans: var(--font);
+  --font-display: var(--font);
+  --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
+  --shadow-soft: none;
+}
+
+html {
+  color-scheme: light;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  background: var(--paper);
+  min-height: 100dvh;
+  letter-spacing: -0.01em;
+}
+
 * { box-sizing: border-box; }
-button, input { font: inherit; }
+
+button, input, select { font: inherit; }
+
 a { color: inherit; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+h1, h2, h3 {
+  font-family: var(--font);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

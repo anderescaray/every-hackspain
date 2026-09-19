@@ -24,7 +24,7 @@ export function EvidenceDialog({ title, groups, accounts = [], groupId, isMock, 
     <dialog ref={dialog} className={styles.evidenceDialog} aria-labelledby="evidence-title" onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div className={styles.dialogContent}>
         <header className={styles.dialogHeader}>
-          <div><span className={styles.eyebrow}>Análisis trazable · {isMock ? "Evidencia de ejemplo" : "Evidencia preparada"}</span><h2 id="evidence-title">{title}</h2></div>
+          <div><span className={styles.eyebrow}>{isMock ? "Evidencia de ejemplo" : "Evidencia"}</span><h2 id="evidence-title">{title}</h2></div>
           <button autoFocus className={styles.iconButton} onClick={onClose} aria-label="Cerrar evidencia">×</button>
         </header>
         <p className={styles.disclaimer}>{isMock ? "Registros ilustrativos para la demo, no evidencia financiera verificada." : "Registros representativos del análisis suministrado."} Las muestras no son el conjunto completo ni constituyen una conciliación integral.</p>

@@ -35,8 +35,8 @@ export function PortfolioView({ portfolio, query, page }: { portfolio: Portfolio
   return <main className={`${base.page} ${styles.portfolio}`}>
     <header className={styles.header}>
       <div>
-        <span className={base.eyebrow}>Embat Pulse · Cartera</span>
-        <h1>¿Qué empresas necesitan atención?</h1>
+        <span className={base.eyebrow}>Cartera</span>
+        <h1>Empresas</h1>
         <p>{portfolio.summary}</p>
       </div>
       <span className={base.periodBadge}>Corte {portfolio.as_of} · {portfolio.period}</span>
@@ -83,7 +83,7 @@ export function PortfolioView({ portfolio, query, page }: { portfolio: Portfolio
           </tbody>
         </table>
       </div>
-      {pages > 1 ? <nav className={styles.pagination} aria-label="Paginación">{current > 1 ? <Link href={pageHref(current - 1)}>← Anterior</Link> : <span />}{current < pages ? <Link href={pageHref(current + 1)}>Siguiente →</Link> : <span />}</nav> : null}
+      {pages > 1 ? <nav className={styles.pagination} aria-label="Paginación">{current > 1 ? <Link href={pageHref(current - 1)}>Anterior</Link> : <span />}{current < pages ? <Link href={pageHref(current + 1)}>Siguiente</Link> : <span />}</nav> : null}
     </section>
     <footer className={styles.footer}><small>Health Score, trayectoria y cobertura los calcula el pipeline de datos; esta vista solo filtra y ordena. La atención combina trayectoria y dependencia de apoyo observadas; no es una probabilidad de impago.</small></footer>
   </main>;
