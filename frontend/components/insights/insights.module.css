@@ -53,6 +53,11 @@
 .healthValue strong { font-size: 96px; font-weight: 500; letter-spacing: -5px; line-height: 1.12; }
 .healthValue > span { color: #bfceec; font-size: 19px; }
 .healthHero .assessment { font-size: 20px; line-height: 1.4; letter-spacing: -.4px; max-width: 350px; margin-bottom: 18px; }
+.healthSecondary { width: 100%; max-width: 350px; margin: 0 0 20px; border-top: 1px solid #516990; }
+.healthSecondary > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 10px 0; border-bottom: 1px solid #516990; }
+.healthSecondary dt { color: #d6e4ff; font-size: 12px; }
+.healthSecondary dd { margin: 0; text-align: right; font-size: 16px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.healthEvidenceNote { max-width: 350px; color: #d6e4ff; font-size: 11px; line-height: 1.6; margin: -6px 0 20px; }
 .healthHero .trajectoryBadge { margin-top: 0; font-size: 12px; padding: 6px 10px; border-radius: 5px; }
 .analysisConfidence { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #34456a; padding-top: 20px; margin-top: 26px; font-size: 12px; color: #d6e4ff; width: 100%; }
 .analysisConfidence .confidence { color: #c3d1ec; font-size: 11px; }

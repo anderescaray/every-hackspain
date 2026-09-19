@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { canonicalCashTruthSchema, pulseEnvelopeShape, pulseSchema, pulseStatusSchema } from "./pulse";
+import { canonicalCashTruthSchema, compositionFields, operatingValuesSchema, operatingWeightsSchema, pulseEnvelopeShape, pulsePillarSchema, pulseSchema, pulseStatusSchema } from "./pulse";
 
 const text = z.string().min(1).max(5000);
 const score = z.number().finite().min(0).max(100);
@@ -101,6 +101,9 @@ export const companyDetailSchema = z.object({
   as_of: date,
   currency: z.literal("EUR"),
   health_score: score.nullable(),
+  ...compositionFields,
+  operating_contributions: operatingValuesSchema.optional(), operating_weights: operatingWeightsSchema.optional(),
+  debt_obligations: pulsePillarSchema.optional(),
   dimensions: dimensionsSchema,
   health_score_model: modelSchema,
   assessment: text,
@@ -130,7 +133,16 @@ export const companyDetailSchema = z.object({
   }
   const expectedStatus = Object.values(source.pillars).every((pillar) => pillar.score === null) ? "insufficient_evidence" : source.status;
   if (company.status !== expectedStatus) issue("Estado de identificación incoherente", ["status"]);
-  if (company.health_score !== source.health || company.health_score_model.version !== source.score_version) issue("Health debe copiar el resultado Pulse", ["health_score"]);
+  if (company.health_score !== source.health || company.health_score_model.version !== source.score_version) issue("El alias histórico Health debe copiar Extended Health de Pulse", ["health_score"]);
+  if (company.score_version === "PulseFourPillars-v1.1") {
+    for (const key of ["composition_version", "operating_health", "extended_health", "health_level"] as const) {
+      if (company[key] !== source[key]) issue("Composición distinta del resultado Pulse", [key]);
+    }
+    for (const key of ["insights_available", "missing_modules", "operating_contributions", "operating_weights"] as const) {
+      if (JSON.stringify(company[key]) !== JSON.stringify(source[key])) issue("Detalle de composición distinto del resultado Pulse", [key]);
+    }
+    if (!company.debt_obligations || JSON.stringify(company.debt_obligations) !== JSON.stringify(source.pillars.debt_obligations)) issue("Módulo Debt distinto del resultado Pulse", ["debt_obligations"]);
+  }
   const aliases = { cash_generation: "generation", momentum: "momentum", resilience: "resilience", debt: "debt_obligations" } as const;
   for (const key of Object.keys(aliases) as (keyof typeof aliases)[]) {
     const pillar = source.pillars[aliases[key]];

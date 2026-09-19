@@ -6,7 +6,7 @@ import { dateLabel, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { SectionHeading } from "./InsightPrimitives";
 import styles from "./insights.module.css";
 
-export function TrajectoryChart({ history: observations, trajectory }: { history: HistoryPoint[]; trajectory: Trajectory | null }) {
+export function TrajectoryChart({ history: observations, trajectory, scoreLabel = "Health Score" }: { history: HistoryPoint[]; trajectory: Trajectory | null; scoreLabel?: string }) {
   const history = observations.filter((point): point is HistoryPoint & { health_score: number } => point.health_score !== null);
   const direction = trajectory ? trajectoryLabels[trajectory] : "Trayectoria no evaluable";
   const [activeIndex, setActiveIndex] = useState(Math.max(0, history.length - 1));
@@ -20,23 +20,23 @@ export function TrajectoryChart({ history: observations, trajectory }: { history
 
   return (
     <section className={styles.panel} aria-label="Trayectoria">
-      <SectionHeading number="01" title="Trayectoria" description="No solo cómo está la empresa. Hacia dónde va."><span className={styles.periodBadge}>{history.length} meses</span></SectionHeading>
-      {!current || !first || !last ? <p className={styles.emptyState}>No hay Health Score identificado en el histórico publicado. Los valores ausentes no se dibujan como cero.</p> : <>
+      <SectionHeading number="01" title="Trayectoria" description={scoreLabel === "Extended Health" ? "Histórico Extended suministrado; no es una serie Operating ni un pronóstico." : "No solo cómo está la empresa. Hacia dónde va."}><span className={styles.periodBadge}>{history.length} meses</span></SectionHeading>
+      {!current || !first || !last ? <p className={styles.emptyState}>No hay {scoreLabel} identificado en el histórico publicado. Los valores ausentes no se dibujan como cero.</p> : <>
         <div className={styles.chartSummary}><div><strong>{first.health_score} <span aria-hidden="true">→</span> {last.health_score}</strong><span className={trajectory === "improving" ? styles.positiveText : trajectory === "deteriorating" ? styles.negativeText : styles.muted}>{history.length > 1 ? `${signedNumber(last.health_score - first.health_score)} puntos · ` : "Una observación · "}{direction}</span></div></div>
-        <div className={styles.chartLegend}><span><i className={styles.scoreDot} />Health Score</span><span className={styles.chartReadout}>{dateLabel(current.month, true)} · {current.health_score} / 100</span></div>
+        <div className={styles.chartLegend}><span><i className={styles.scoreDot} />{scoreLabel}</span><span className={styles.chartReadout}>{dateLabel(current.month, true)} · {current.health_score} / 100</span></div>
         <svg viewBox="0 0 760 266" className={styles.chart} role="img" aria-labelledby={`${chartId}-title ${chartId}-description`}>
-          <title id={`${chartId}-title`}>{`Trayectoria del Health Score: de ${first.health_score} a ${last.health_score}`}</title>
+          <title id={`${chartId}-title`}>{`Trayectoria de ${scoreLabel}: de ${first.health_score} a ${last.health_score}`}</title>
           <desc id={`${chartId}-description`}>{`${history.length} observaciones mensuales de ${dateLabel(first.month, true)} a ${dateLabel(last.month, true)}. ${direction}. Usa el selector de mes o la tabla para consultar cada valor.`}</desc>
           <defs><linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3878f6" stopOpacity="0.15" /><stop offset="100%" stopColor="#3878f6" stopOpacity="0" /></linearGradient></defs>
           {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1="44" x2="724" y1={y(value)} y2={y(value)} stroke="#e4e8f0" strokeDasharray={value === 0 ? undefined : "3 5"} /><text x="30" y={y(value) + 4} textAnchor="end" fill="#5c6478" fontSize="11">{value}</text></g>)}
           <polygon points={`${x(0)},224 ${points} ${x(history.length - 1)},224`} fill={`url(#${chartId}-fill)`} />
           <polyline points={points} fill="none" stroke="#326ce0" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
           <line x1={x(activeIndex)} x2={x(activeIndex)} y1="24" y2="224" stroke="#9babd0" strokeDasharray="4 4" />
-          {history.map((point, index) => <circle key={point.month} cx={x(index)} cy={y(point.health_score)} r={index === activeIndex ? 5 : 3} fill={index === activeIndex ? "#326ce0" : "white"} stroke="#326ce0" strokeWidth="2" onMouseEnter={() => setActiveIndex(index)}><title>{`${dateLabel(point.month, true)}: Health Score ${point.health_score}`}</title></circle>)}
+          {history.map((point, index) => <circle key={point.month} cx={x(index)} cy={y(point.health_score)} r={index === activeIndex ? 5 : 3} fill={index === activeIndex ? "#326ce0" : "white"} stroke="#326ce0" strokeWidth="2" onMouseEnter={() => setActiveIndex(index)}><title>{`${dateLabel(point.month, true)}: ${scoreLabel} ${point.health_score}`}</title></circle>)}
           {history.filter((_, index) => index === 0 || index === history.length - 1 || index % 6 === 0).map((point) => <text key={point.month} x={x(history.indexOf(point))} y="253" textAnchor="middle" fill="#5c6478" fontSize="11">{dateLabel(point.month, true)}</text>)}
         </svg>
-        <label className={styles.chartSlider}>Explorar mes <input type="range" min="0" max={history.length - 1} value={activeIndex} onChange={(event) => setActiveIndex(Number(event.target.value))} aria-valuetext={`${dateLabel(current.month, true)}: Health Score ${current.health_score}`} /></label>
-        <details className={styles.methodology}><summary>Ver valores mensuales</summary><div className={styles.tableScroll}><table><caption>Histórico mensual del Health Score</caption><thead><tr><th scope="col">Mes</th><th scope="col">Health Score</th></tr></thead><tbody>{history.map((point) => <tr key={point.month}><td>{dateLabel(point.month, true)}</td><td>{point.health_score}</td></tr>)}</tbody></table></div></details>
+        <label className={styles.chartSlider}>Explorar mes <input type="range" min="0" max={history.length - 1} value={activeIndex} onChange={(event) => setActiveIndex(Number(event.target.value))} aria-valuetext={`${dateLabel(current.month, true)}: ${scoreLabel} ${current.health_score}`} /></label>
+        <details className={styles.methodology}><summary>Ver valores mensuales</summary><div className={styles.tableScroll}><table><caption>Histórico mensual de {scoreLabel}</caption><thead><tr><th scope="col">Mes</th><th scope="col">{scoreLabel}</th></tr></thead><tbody>{history.map((point) => <tr key={point.month}><td>{dateLabel(point.month, true)}</td><td>{point.health_score}</td></tr>)}</tbody></table></div></details>
       </>}
     </section>
   );

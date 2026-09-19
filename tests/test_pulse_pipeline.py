@@ -205,7 +205,9 @@ def test_company_without_observed_months_has_missing_not_zero_health(tmp_path):
     manifest = _run(raw, out)
     score = _score(out, manifest)
     assert score["health"] is None
-    assert score["status"] == "partial"
+    assert score["status"] == "insufficient_evidence"
+    assert score["operating_health"] is score["extended_health"] is None
+    assert score["health_level"] is None
     assert score["known_weight"] == 0
     assert score["health_min"] == 0 and score["health_max"] == 100
     assert len(score["missing_components"]) == 4

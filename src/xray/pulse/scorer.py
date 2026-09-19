@@ -63,6 +63,32 @@ def score_core(window: FeatureWindow, *, company_id: str, currency: str, as_of,
                 lower, upper = identified_range["min"], identified_range["max"]
     if health is not None and not math.isfinite(health):
         raise ValueError("Health must be finite")
+    composition_fields: dict[str, Any] = {}
+    composition = policy.get("health_composition")
+    if composition is not None:
+        operating_weights = composition["operating_weights"]
+        operating_contributions = {
+            name: operating_weights[name] * pillars[name]["score"] if pillars[name]["score"] is not None else None
+            for name in PILLARS[:3]
+        }
+        operating_valid = all(value is not None for value in operating_contributions.values())
+        operating_health = sum(value for value in operating_contributions.values() if value is not None) if operating_valid else None
+        extended_health = health
+        debt_status = pillars["debt_obligations"]["evidence_status"]
+        health_level = ("extended_bounded" if debt_status == "bounded" else "extended_verified") if extended_health is not None else (
+            "operating_only" if operating_health is not None else None)
+        insights_available = [name for name in PILLARS if pillars[name]["score"] is not None]
+        insights_available += (["operating_health"] if operating_health is not None else [])
+        insights_available += (["extended_health"] if extended_health is not None else [])
+        missing_modules = [*missing, *([] if operating_health is not None else ["operating_health"]),
+                           *([] if extended_health is not None else ["extended_health"])]
+        if extended_health is not None and extended_health != sum(value for value in contributions.values() if value is not None):
+            raise ValueError("Extended Health must reconcile exactly to four contributions")
+        composition_fields = {"composition_version": composition["version"],
+                              "operating_health": operating_health, "extended_health": extended_health,
+                              "health_level": health_level, "insights_available": insights_available,
+                              "missing_modules": missing_modules, "operating_weights": operating_weights,
+                              "operating_contributions": operating_contributions}
     momentum = pillars["momentum"]["score"]
     direction = "unknown" if momentum is None else "improving" if momentum > 50 else "deteriorating" if momentum < 50 else "stable"
     versions = window.frame.get("classification_version", pd.Series(dtype=str)).dropna().unique()
@@ -91,7 +117,8 @@ def score_core(window: FeatureWindow, *, company_id: str, currency: str, as_of,
                             contributions=contributions, economic_facts=window.sums, evidence=window.evidence,
                             flags=window.flags, config_version=policy["config_version"],
                             facts_version=facts_version,
-                            health_evidence=health_evidence, identified_range=identified_range)
+                            health_evidence=health_evidence, identified_range=identified_range,
+                            **composition_fields)
 
 
 def score_company(facts: pd.DataFrame, *, company_id: str, currency: str, as_of,

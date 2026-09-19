@@ -6,6 +6,18 @@ const text = z.string().min(1);
 export const pulseStatusSchema = z.enum(["complete", "complete_verified", "complete_bounded", "partial", "insufficient_evidence"]);
 export const isCompleteStatus = (status: z.infer<typeof pulseStatusSchema>) => ["complete", "complete_verified", "complete_bounded"].includes(status);
 export const healthEvidenceSchema = z.enum(["verified", "bounded", "partial", "unknown"]);
+export const healthLevelSchema = z.enum(["operating_only", "extended_verified", "extended_bounded"]);
+const operatingKeys = ["generation", "momentum", "resilience"] as const;
+export const operatingValuesSchema = z.object({ generation: score.nullable(), momentum: score.nullable(), resilience: score.nullable() }).strict();
+export const operatingWeightsSchema = z.object({ generation: z.literal(0.5), momentum: z.literal(0.1875), resilience: z.literal(0.3125) }).strict();
+export const compositionFields = {
+  composition_version: z.literal("operating-extended-health-v1").optional(),
+  operating_health: score.nullable().optional(),
+  extended_health: score.nullable().optional(),
+  health_level: healthLevelSchema.nullable().optional(),
+  insights_available: z.array(text).optional(),
+  missing_modules: z.array(text).optional(),
+};
 export const identifiedRangeSchema = z.object({ min: score, max: score, kind: z.literal("identification_bounds_not_confidence_interval") }).strict().refine((range) => range.min <= range.max, "Rango de identificación invertido");
 export const identificationFields = { identified_range: identifiedRangeSchema.nullable().optional(), health_evidence: healthEvidenceSchema.optional() };
 export function identificationIssue(method: string, item: {
@@ -23,7 +35,7 @@ export function identificationIssue(method: string, item: {
 export const pulseEnvelopeShape = {
   snapshot_id: z.string().regex(/^web-[a-f0-9]{64}$/),
   run_id: text,
-  score_version: z.enum(["PulseFourPillars-v1.0", "PulseFourPillars-v1.0.1"]),
+  score_version: z.enum(["PulseFourPillars-v1.0", "PulseFourPillars-v1.0.1", "PulseFourPillars-v1.1"]),
   classification_version: text,
   cleaning_version: text,
   facts_version: text,
@@ -49,7 +61,7 @@ const debtFields = {
   uncertainty: z.object({ debt_possible_uncertain_outflows: finite.nonnegative().nullable(), debt_impossible_uncertain_outflows: finite.nonnegative().nullable(), debt_unresolved_uncertain_outflows: finite.nonnegative().nullable(), potentially_financial_uncertain_outflows: finite.nonnegative().nullable(), version: z.literal("debt-uncertainty-v1") }).passthrough(),
 };
 const debtContract = z.object(debtFields).passthrough();
-const pillar = z.object({ score: score.nullable(), weight: finite.min(0).max(1), health_contribution: finite.nullable(), features: z.record(feature), ...z.object(debtFields).partial().shape }).passthrough();
+export const pulsePillarSchema = z.object({ score: score.nullable(), weight: finite.min(0).max(1), health_contribution: finite.nullable(), features: z.record(feature), ...z.object(debtFields).partial().shape }).passthrough();
 export const pulsePillarKeys = ["generation", "momentum", "resilience", "debt_obligations"] as const;
 export const pulseSchema = z.object({
   schema_version: z.literal("1.0"),
@@ -58,7 +70,9 @@ export const pulseSchema = z.object({
   company_id: text, currency: z.literal("EUR"), as_of: pulseEnvelopeShape.as_of,
   status: pulseStatusSchema, health: score.nullable(),
   ...identificationFields,
-  pillars: z.object({ generation: pillar, momentum: pillar, resilience: pillar, debt_obligations: pillar }).strict(),
+  ...compositionFields,
+  operating_contributions: operatingValuesSchema.optional(), operating_weights: operatingWeightsSchema.optional(),
+  pillars: z.object({ generation: pulsePillarSchema, momentum: pulsePillarSchema, resilience: pulsePillarSchema, debt_obligations: pulsePillarSchema }).strict(),
   known_weight: finite.min(0).max(1), health_min: score, health_max: score,
   bounds_kind: z.literal("identification_bounds_not_confidence_interval"),
   missing_components: z.array(z.enum(pulsePillarKeys)),
@@ -71,8 +85,10 @@ export const pulseSchema = z.object({
 }).passthrough().superRefine((pulse, ctx) => {
   const add = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   if (isCompleteStatus(pulse.status) !== (pulse.health !== null)) add("Health solo está identificado en un resultado completo");
-  const patch = pulse.score_version === "PulseFourPillars-v1.0.1";
-  if (pulse.config_version !== (patch ? "pulse-config-v1.0.1" : "pulse-config-v1")) add("Versión de configuración distinta del método");
+  const patch = pulse.score_version !== "PulseFourPillars-v1.0";
+  const operatingComposition = pulse.score_version === "PulseFourPillars-v1.1";
+  const configVersion = operatingComposition ? "pulse-config-v1.1" : patch ? "pulse-config-v1.0.1" : "pulse-config-v1";
+  if (pulse.config_version !== configVersion) add("Versión de configuración distinta del método");
   if (patch ? pulse.status === "complete" : !["complete", "partial"].includes(pulse.status)) add("Estado incompatible con la versión del motor");
   if (pulse.health_min > pulse.health_max) add("Límites de identificación inválidos");
   const missing = pulsePillarKeys.filter((key) => pulse.pillars[key].score === null);
@@ -80,6 +96,18 @@ export const pulseSchema = z.object({
   for (const key of pulsePillarKeys) {
     if (pulse.pillars[key].health_contribution !== pulse.contributions[key]) add("Contribuciones incoherentes con el resultado original");
     if (pulse.pillars[key].score === null && pulse.contributions[key] !== null) add("Un pilar ausente no tiene contribución");
+  }
+  if (operatingComposition) {
+    if (pulse.composition_version !== "operating-extended-health-v1" || pulse.operating_health === undefined || pulse.extended_health === undefined || pulse.health_level === undefined || pulse.operating_contributions === undefined || pulse.operating_weights === undefined || pulse.insights_available === undefined || pulse.missing_modules === undefined) add("Falta la composición Operating/Extended v1");
+    const operatingValid = operatingKeys.every((key) => pulse.pillars[key].score !== null);
+    const debtStatus = pulse.pillars.debt_obligations.evidence_status;
+    const expectedLevel = !operatingValid ? null : pulse.pillars.debt_obligations.score === null ? "operating_only" : debtStatus === "bounded" ? "extended_bounded" : "extended_verified";
+    if ((pulse.operating_health !== null) !== operatingValid || pulse.health_level !== expectedLevel) add("Operating Health no coincide con la disponibilidad de G/M/R");
+    if (pulse.extended_health !== pulse.health || (pulse.extended_health !== null) !== (expectedLevel === "extended_verified" || expectedLevel === "extended_bounded")) add("Extended Health debe copiar únicamente el Health de cuatro pilares");
+    for (const key of operatingKeys) {
+      const contributionMissing = pulse.operating_contributions?.[key] === null;
+      if (contributionMissing !== (pulse.pillars[key].score === null)) add("Contribución operativa incoherente");
+    }
   }
   if (!patch && pulse.pillars.debt_obligations.evidence_status === "bounded") add("v1.0 no admite evidencia acotada");
   if (patch) {

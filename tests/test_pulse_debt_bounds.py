@@ -11,6 +11,7 @@ from xray.pulse.debt import UNCERTAINTY_COLUMNS
 from xray.pulse.features import extract_features
 
 OLD_CONFIG = Path(__file__).parents[1] / "src/xray/pulse/configs/pulse_four_pillars_v1.json"
+V101_CONFIG = Path(__file__).parents[1] / "src/xray/pulse/configs/pulse_four_pillars_v1_0_1.json"
 
 
 def facts(*, uncertain=0., principal=2., interest=1., fees=0., inflows=110., outflows=100.):
@@ -31,6 +32,8 @@ def facts(*, uncertain=0., principal=2., interest=1., fees=0., inflows=110., out
 
 
 def score(frame=None, **kwargs):
+    # Freeze the historical Debt v1.0.1 tests when the default composition advances.
+    kwargs.setdefault("config", load_config(V101_CONFIG))
     return score_company(facts() if frame is None else frame, company_id="COMP_1084", currency="EUR",
                          as_of="2026-08-31", **kwargs)
 

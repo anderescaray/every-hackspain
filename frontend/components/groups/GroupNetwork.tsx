@@ -11,9 +11,10 @@ import styles from "./groups.module.css";
 
 function MemberDetail({ member, group, onOpen }: { member: GroupMember; group: GroupDetail; onOpen: OpenEvidence }) {
   const alerts = group.alerts.filter((alert) => alert.company_refs.includes(member.company_id));
+  const dualHealth = group.score_version === "PulseFourPillars-v1.1";
   return <>
     <span className={base.eyebrow}>Sociedad seleccionada</span><h3>{member.company_id}</h3><span className={styles.roleBadge}>{roleLabels[member.role]}</span>
-    <dl className={styles.selectionMetrics}><div><dt>Health Score</dt><dd>{groupScore(member.health_score)}</dd></div><div><dt>Momentum</dt><dd>{groupScore(member.dimensions.momentum)}</dd></div><div><dt>Resiliencia</dt><dd>{groupScore(member.dimensions.resilience)}</dd></div><div><dt>Trayectoria</dt><dd>{member.trajectory ? trajectoryLabels[member.trajectory] : "Sin evaluar"}</dd></div><div><dt>Liquidez disponible</dt><dd>{groupMoney(member.available_liquidity)}</dd></div><div><dt>Obligaciones próximas</dt><dd>{groupMoney(member.obligations_due)}</dd></div></dl>
+    <dl className={styles.selectionMetrics}><div><dt>{dualHealth ? "Operating Health" : "Extended Health histórico"}</dt><dd>{groupScore(dualHealth ? member.operating_health ?? null : member.health_score)}</dd></div>{dualHealth && <><div><dt>Debt &amp; Obligations</dt><dd>{groupScore(member.dimensions.debt)}</dd></div><div><dt>Extended Health</dt><dd>{groupScore(member.extended_health ?? null)}</dd></div></>}<div><dt>Momentum</dt><dd>{groupScore(member.dimensions.momentum)}</dd></div><div><dt>Resiliencia</dt><dd>{groupScore(member.dimensions.resilience)}</dd></div><div><dt>Trayectoria</dt><dd>{member.trajectory ? trajectoryLabels[member.trajectory] : "Sin evaluar"}</dd></div><div><dt>Liquidez disponible</dt><dd>{groupMoney(member.available_liquidity)}</dd></div><div><dt>Obligaciones próximas</dt><dd>{groupMoney(member.obligations_due)}</dd></div></dl>
     <p>{member.summary}</p><Confidence value={member.confidence} />
     <div className={styles.selectionOutlook}><h4>Perspectiva suministrada · {member.outlook.horizon}</h4><p>{member.outlook.summary}</p><small>{member.outlook.status === "insufficient" ? "Evidencia insuficiente para determinar necesidades." : `Necesidad orientativa: ${groupMoney(member.outlook.funding_need)}. Escenario, no predicción.`}</small><div className={base.evidenceMeta}><Confidence value={member.outlook.confidence} />{member.outlook.evidence_refs.length > 0 && <EvidenceButton refs={member.outlook.evidence_refs} title={`Perspectiva de ${member.company_id}`} onOpen={onOpen} />}</div></div>
     <h4>Alertas de esta sociedad</h4>{alerts.length ? <ul className={styles.simpleList}>{alerts.map((alert) => <li key={alert.id}><span className={`${base.severity} ${base[alert.severity]}`}>{severityLabels[alert.severity]}</span><strong>{alert.title}</strong></li>)}</ul> : <p>No hay alertas suministradas para esta sociedad. No garantiza ausencia de riesgo.</p>}
@@ -34,6 +35,7 @@ function RelationDetail({ relation, group, onOpen }: { relation: GroupRelation; 
 }
 
 export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }: { group: GroupDetail; onOpen: OpenEvidence; initialRelation?: string; initialCompany?: string }) {
+  const dualHealth = group.score_version === "PulseFourPillars-v1.1";
   const [selection, setSelection] = useState<{ kind: "company" | "relation"; id: string } | null>(initialRelation ? { kind: "relation", id: initialRelation } : initialCompany ? { kind: "company", id: initialCompany } : null);
   const [status, setStatus] = useState("all");
   const [kind, setKind] = useState("all");
@@ -91,9 +93,10 @@ export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }:
               })}
               {group.members.map((item) => {
                 const position = positions.get(item.company_id)!;
-                return <g key={item.company_id} role="button" tabIndex={0} aria-label={`Seleccionar sociedad ${item.company_id}: Health Score ${groupScore(item.health_score)}, Momentum ${groupScore(item.dimensions.momentum)}, Resiliencia ${groupScore(item.dimensions.resilience)}`} aria-pressed={member?.company_id === item.company_id} transform={`translate(${position.x}, ${position.y})`} className={styles.graphNode} onClick={() => selectItem("company", item.company_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectItem("company", item.company_id); } }}>
+                const primaryScore = dualHealth ? item.operating_health ?? null : item.health_score;
+                return <g key={item.company_id} role="button" tabIndex={0} aria-label={`Seleccionar sociedad ${item.company_id}: ${dualHealth ? "Operating Health" : "Extended Health histórico"} ${groupScore(primaryScore)}, Momentum ${groupScore(item.dimensions.momentum)}, Resiliencia ${groupScore(item.dimensions.resilience)}`} aria-pressed={member?.company_id === item.company_id} transform={`translate(${position.x}, ${position.y})`} className={styles.graphNode} onClick={() => selectItem("company", item.company_id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectItem("company", item.company_id); } }}>
                   <circle r="35" fill={member?.company_id === item.company_id ? "#e7efff" : "white"} stroke={item.attention === "high" ? "#a76539" : "#7694c7"} strokeWidth={member?.company_id === item.company_id ? 3 : 2} />
-                  <text textAnchor="middle" y="-7" fill="#52647d" fontSize="9">Health Score</text><text textAnchor="middle" y="16" fill="#142d56" fontSize="23" fontWeight="600">{groupScore(item.health_score)}</text>
+                  <text textAnchor="middle" y="-7" fill="#52647d" fontSize="9">{dualHealth ? "Operating" : "Extended"}</text><text textAnchor="middle" y="16" fill="#142d56" fontSize="23" fontWeight="600">{groupScore(primaryScore)}</text>
                   <text textAnchor="middle" y="54" fill="#243b5c" fontSize="12" fontWeight="600">{item.company_id}</text>
                   <title>{`${item.company_id} · ${roleLabels[item.role]} · Liquidez: ${groupMoney(item.available_liquidity)}`}</title>
                 </g>;

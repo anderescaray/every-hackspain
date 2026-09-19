@@ -22,6 +22,7 @@ function Insights({ items, group, onOpen }: { items: GroupInsight[]; group: Grou
 }
 
 export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: OpenEvidence }) {
+  const dualHealth = group.score_version === "PulseFourPillars-v1.1";
   const [query, setQuery] = useState("");
   const [trajectory, setTrajectory] = useState("all");
   const members = [...group.members].filter((member) => member.company_id.toLowerCase().includes(query.toLowerCase()) && (trajectory === "all" || (member.trajectory ?? "unknown") === trajectory)).sort((a, b) => priorityOrder[a.attention] - priorityOrder[b.attention]);
@@ -33,7 +34,7 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
       <Metric label={`Obligaciones · ${group.obligations.horizon}`} metric={group.obligations} group={group} onOpen={onOpen} />
     </section>
     <section className={base.panel} aria-label="Sociedades del grupo observado">
-      <div className={styles.panelHeading}><div><span className={base.eyebrow}>Salud financiera, sociedad a sociedad</span><h2>Dónde prestar atención</h2><p>Sin promediar el Health Score del grupo. Las cuatro dimensiones se muestran en escala 0–100.</p></div><span className={base.periodBadge}>{group.members.length} sociedades observadas</span></div>
+      <div className={styles.panelHeading}><div><span className={base.eyebrow}>Salud financiera, sociedad a sociedad</span><h2>Dónde prestar atención</h2><p>Sin puntuación agregada del grupo. Las cuatro dimensiones se muestran en escala 0–100.</p></div><span className={base.periodBadge}>{group.members.length} sociedades observadas</span></div>
       <div className={styles.filters}>
         <label>Buscar sociedad<input type="search" aria-label="Buscar sociedad" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="COMP_…" /></label>
         <label>Trayectoria<select aria-label="Trayectoria" value={trajectory} onChange={(event) => setTrajectory(event.target.value)}><option value="all">Todas las trayectorias</option><option value="deteriorating">Deteriorándose</option><option value="stable">Estable</option><option value="improving">Mejorando</option><option value="unknown">Sin evaluar</option></select></label>
@@ -41,10 +42,10 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
       </div>
       {members.length ? <div className={base.tableScroll} tabIndex={0} role="region" aria-label="Tabla de sociedades"><table className={styles.memberTable}>
         <caption>Datos a {dateLabel(group.as_of)}. Obligaciones: {group.obligations.horizon}. Un guion significa que falta el dato, no cero.</caption>
-        <thead><tr><th scope="col">Sociedad / trayectoria</th><th scope="col">Health Score</th><th scope="col">Generación de caja</th><th scope="col">Momentum</th><th scope="col">Resiliencia</th><th scope="col">Deuda y obligaciones</th><th scope="col">Liquidez disponible</th><th scope="col">Deuda identificada</th><th scope="col">Obligaciones próximas</th><th scope="col">Detalle</th></tr></thead>
+        <thead><tr><th scope="col">Sociedad / trayectoria</th><th scope="col">{dualHealth ? "Operating Health" : "Extended Health histórico"}</th>{dualHealth && <th scope="col">Extended Health</th>}<th scope="col">Generación de caja</th><th scope="col">Momentum</th><th scope="col">Resiliencia</th><th scope="col">Deuda y obligaciones</th><th scope="col">Liquidez disponible</th><th scope="col">Deuda identificada</th><th scope="col">Obligaciones próximas</th><th scope="col">Detalle</th></tr></thead>
         <tbody>{members.map((member) => <tr key={member.company_id}>
           <th scope="row"><Link href={`/companies/${member.company_id}`} className={styles.companyLink}>{member.company_id}</Link><small>{member.trajectory ? trajectoryLabels[member.trajectory] : "Sin evaluar"}</small><small>{roleLabels[member.role]}</small></th>
-          <td><strong className={styles.memberHealth}>{groupScore(member.health_score)}</strong></td><td>{groupScore(member.dimensions.cash_generation)}</td><td>{groupScore(member.dimensions.momentum)}</td><td>{groupScore(member.dimensions.resilience)}</td><td>{groupScore(member.dimensions.debt)}</td>
+          <td><strong className={styles.memberHealth}>{groupScore(dualHealth ? member.operating_health ?? null : member.health_score)}</strong></td>{dualHealth && <td>{groupScore(member.extended_health ?? null)}</td>}<td>{groupScore(member.dimensions.cash_generation)}</td><td>{groupScore(member.dimensions.momentum)}</td><td>{groupScore(member.dimensions.resilience)}</td><td>{groupScore(member.dimensions.debt)}</td>
           <td className={base.numeric}>{groupMoney(member.available_liquidity)}</td><td className={base.numeric}>{groupMoney(member.identified_debt)}</td><td className={base.numeric}>{groupMoney(member.obligations_due)}</td>
           <td><Link className={base.evidenceButton} href={`/groups/${group.group_id}/network?company=${member.company_id}`}>Ver en la red</Link><EvidenceButton refs={member.evidence_refs} title={`Sociedad ${member.company_id}`} onOpen={onOpen} /></td>
         </tr>)}</tbody>

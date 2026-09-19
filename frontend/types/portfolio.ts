@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue } from "./pulse";
+import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue, compositionFields } from "./pulse";
 
 const text = z.string().min(1).max(2000);
 const score = z.number().finite().min(0).max(100);
@@ -13,6 +13,7 @@ const itemSchema = z.object({
   company_id: z.string().regex(/^COMP_\d{4,10}$/),
   group_id: text.nullable(),
   health_score: score.nullable(),
+  ...compositionFields,
   delta_vs_prev: amount.nullable(),
   trajectory: trajectorySchema.nullable(),
   trajectory_stage: z.enum(["confirmed", "emerging"]).nullable(),
@@ -34,6 +35,7 @@ const itemSchema = z.object({
 export const portfolioSchema = z.object({
   schema_version: z.literal("2.0"),
   ...pulseEnvelopeShape,
+  composition_version: z.literal("operating-extended-health-v1").optional(),
   source: z.enum(["generated", "fixture"]),
   as_of: date,
   period: text,
@@ -41,11 +43,18 @@ export const portfolioSchema = z.object({
   summary: text,
   items: z.array(itemSchema).max(5000),
 }).strict().superRefine((portfolio, ctx) => {
+  if (portfolio.score_version === "PulseFourPillars-v1.1" && portfolio.composition_version !== "operating-extended-health-v1") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Falta versión de composición", path: ["composition_version"] });
   const ids = portfolio.items.map((item) => item.company_id);
   if (new Set(ids).size !== ids.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Identificadores duplicados", path: ["items"] });
   portfolio.items.forEach((item, index) => {
     const invalid = identificationIssue(portfolio.score_version, item);
     if (invalid) ctx.addIssue({ code: z.ZodIssueCode.custom, message: invalid, path: ["items", index] });
+    if (portfolio.score_version === "PulseFourPillars-v1.1") {
+      const operatingValid = [item.dimensions.cash_generation, item.dimensions.momentum, item.dimensions.resilience].every((value) => value !== null);
+      const expectedLevel = !operatingValid ? null : item.dimensions.debt === null ? "operating_only" : item.health_evidence === "bounded" ? "extended_bounded" : "extended_verified";
+      if (portfolio.composition_version !== "operating-extended-health-v1" || item.composition_version !== portfolio.composition_version || item.operating_health === undefined || item.extended_health === undefined || item.health_level === undefined || item.insights_available === undefined || item.missing_modules === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Falta composición Operating/Extended", path: ["items", index] });
+      if ((item.operating_health !== null) !== operatingValid || item.extended_health !== item.health_score || item.health_level !== expectedLevel) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Disponibilidad Operating/Extended incoherente", path: ["items", index] });
+    }
     if (item.run_id !== portfolio.run_id) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Cartera con runs mezclados", path: ["items", index] });
     if (item.trajectory === null && item.trajectory_stage !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Sin trayectoria no hay fase", path: ["items", index] });
   });

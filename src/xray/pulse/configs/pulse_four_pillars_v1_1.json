@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "config_version": "pulse-config-v1.1",
+  "score_version": "PulseFourPillars-v1.1",
+  "classification_version": "cash-truth-v1",
+  "window_months": 6,
+  "weights": {
+    "generation": 0.4,
+    "momentum": 0.15,
+    "resilience": 0.25,
+    "debt_obligations": 0.2
+  },
+  "formulas": {
+    "generation": "generation-net-over-outflows-v1",
+    "momentum": "theil-sen-six-month-net-v1",
+    "resilience": "observed-operating-downside-v1",
+    "debt_obligations": "observed-debt-service-pressure-v1"
+  },
+  "anchors": {
+    "generation": [
+      [
+        -0.25,
+        0
+      ],
+      [
+        0,
+        50
+      ],
+      [
+        0.25,
+        100
+      ]
+    ],
+    "momentum": [
+      [
+        -0.25,
+        0
+      ],
+      [
+        0,
+        50
+      ],
+      [
+        0.25,
+        100
+      ]
+    ],
+    "resilience": [
+      [
+        0,
+        100
+      ],
+      [
+        0.25,
+        0
+      ]
+    ],
+    "debt_obligations": [
+      [
+        0,
+        100
+      ],
+      [
+        0.1,
+        50
+      ],
+      [
+        0.3,
+        0
+      ]
+    ]
+  },
+  "diagnostics": {
+    "material_deficit_share": 0.01
+  },
+  "critical": {
+    "version": "critical-loo-v1",
+    "max_candidates": 36,
+    "max_results": 10,
+    "minimum_score_impact": 1.0
+  },
+  "robustness": {
+    "version": "deterministic-assumptions-v1",
+    "material_uncertain_share": 0.01,
+    "max_stable_health_range": 5.0
+  },
+  "debt_evidence_policy": "bounded-identified-service-six-covered-months-v1",
+  "missing_policy": "fixed-weight-identification-bounds-v1",
+  "weights_status": "initial_policy_not_scientifically_calibrated",
+  "facts_version": "monthly-facts-v1.1",
+  "debt_uncertainty_version": "debt-uncertainty-v1",
+  "debt_bounds": {
+    "max_score_width": 5.0,
+    "point_estimator": "midpoint",
+    "range_kind": "identification_bounds_not_confidence_interval"
+  },
+  "health_composition": {
+    "version": "operating-extended-health-v1",
+    "operating_weights": {
+      "generation": 0.5,
+      "momentum": 0.1875,
+      "resilience": 0.3125
+    },
+    "extended_weights": {
+      "generation": 0.4,
+      "momentum": 0.15,
+      "resilience": 0.25,
+      "debt_obligations": 0.2
+    },
+    "missing_policy": "all_required_no_dynamic_renormalization"
+  }
+}

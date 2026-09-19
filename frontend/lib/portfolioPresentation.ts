@@ -22,9 +22,14 @@ const ATTENTION_RANK: Record<PortfolioAttention, number> = { high: 3, medium: 2,
 export const attentionLabels: Record<PortfolioAttention, string> = { high: "Alta", medium: "Media", low: "Baja", unknown: "Sin evaluar" };
 export const statusLabels: Record<PortfolioStatus, string> = { complete: "Identificada", complete_verified: "Identificada · verificada", complete_bounded: "Identificada · acotada", partial: "No plenamente identificada", insufficient_evidence: "Evidencia insuficiente" };
 export const sortLabels: Record<SortKey, string> = {
-  attention: "Atención", health_score: "Health Score", delta_vs_prev: "Cambio mensual", confidence: "Cobertura",
+  attention: "Atención", health_score: "Puntuación principal", delta_vs_prev: "Cambio Extended", confidence: "Cobertura",
   support_dependency_ratio: "Dependencia de apoyo", company_id: "Identificador",
 };
+
+// v1.0.1 is a reproducible historical snapshot; v1.1 never falls back from Operating to Extended.
+export function primaryPortfolioScore(item: PortfolioItem): number | null {
+  return item.operating_health === undefined ? item.health_score : item.operating_health;
+}
 
 function pick<T extends string>(value: string | undefined, allowed: readonly T[], fallback: T): T {
   return value !== undefined && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
@@ -57,6 +62,7 @@ export function filterItems(items: PortfolioItem[], query: PortfolioQuery): Port
 function value(item: PortfolioItem, key: SortKey): number | string | null {
   if (key === "attention") return ATTENTION_RANK[item.attention];
   if (key === "company_id") return item.company_id;
+  if (key === "health_score") return primaryPortfolioScore(item);
   return item[key];
 }
 
@@ -69,7 +75,7 @@ export function sortItems(items: PortfolioItem[], key: SortKey, order: "asc" | "
     if (vb === null) return -1;
     if (typeof va === "string" && typeof vb === "string") return direction * va.localeCompare(vb);
     if (va === vb) {
-      if (key === "attention") return (b.health_score ?? -1) - (a.health_score ?? -1) || a.company_id.localeCompare(b.company_id);
+      if (key === "attention") return (primaryPortfolioScore(b) ?? -1) - (primaryPortfolioScore(a) ?? -1) || a.company_id.localeCompare(b.company_id);
       return a.company_id.localeCompare(b.company_id);
     }
     return direction * ((va as number) - (vb as number));
@@ -81,7 +87,7 @@ export function summarize(portfolio: Portfolio) {
   const count = (predicate: (item: PortfolioItem) => boolean) => items.filter(predicate).length;
   return {
     total: items.length,
-    scored: count((item) => item.health_score !== null),
+    scored: count((item) => primaryPortfolioScore(item) !== null),
     improving: count((item) => item.trajectory === "improving"),
     deteriorating: count((item) => item.trajectory === "deteriorating"),
     highAttention: count((item) => item.attention === "high"),

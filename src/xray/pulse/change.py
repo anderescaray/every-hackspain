@@ -14,8 +14,13 @@ def _debt_evidence_structure(value: dict[str, Any]) -> dict[str, Any]:
 
 def attribute_change(current: PulseScoreResult, previous: PulseScoreResult | dict | None) -> dict[str, Any]:
     if previous is None:
-        return {"previous_health": None, "delta": None, "comparable_to_previous": False,
-                "interpretation": "no_previous_result", "attribution": {"economic": {}, "evidence": {}, "methodology": {}}}
+        result: dict[str, Any] = {"previous_health": None, "delta": None, "comparable_to_previous": False,
+                  "interpretation": "no_previous_result", "attribution": {"economic": {}, "evidence": {}, "methodology": {}}}
+        if current.composition_version is not None:
+            result.update(previous_operating_health=None, operating_health_delta=None,
+                          previous_extended_health=None, extended_health_delta=None,
+                          health_level_transition=None)
+        return result
     before = previous.to_dict() if isinstance(previous, PulseScoreResult) else previous
     if before.get("company_id") != current.company_id or before.get("currency") != current.currency:
         raise ValueError("Previous result must refer to the same company and currency")
@@ -52,7 +57,8 @@ def attribute_change(current: PulseScoreResult, previous: PulseScoreResult | dic
     for key in ("history_coverage", "classification_coverage", "uncertain_amount_share", "perimeter_consistency", "currency_consistency", "debt_evidence"):
         old, new = before.get("confidence", {}).get(key), current.confidence.get(key)
         old_comparison, new_comparison = old, new
-        if (key == "debt_evidence" and before.get("score_version") == current.score_version == "PulseFourPillars-v1.0.1"
+        if (key == "debt_evidence" and before.get("score_version") == current.score_version
+                and current.score_version in ("PulseFourPillars-v1.0.1", "PulseFourPillars-v1.1")
                 and isinstance(old, dict) and isinstance(new, dict)):
             old_comparison, new_comparison = _debt_evidence_structure(old), _debt_evidence_structure(new)
         if old_comparison != new_comparison:
@@ -65,6 +71,9 @@ def attribute_change(current: PulseScoreResult, previous: PulseScoreResult | dic
     old_missing = before.get("missing_components", [])
     if old_missing != current.missing_components:
         evidence["missing_components"] = {"before": old_missing, "after": current.missing_components}
+    if current.composition_version is not None and before.get("health_level") != current.health_level:
+        evidence["health_level"] = {"before": before.get("health_level"), "after": current.health_level,
+                                    "interpretation": "identification_level_change_not_economic_performance"}
     economic = {}
     for name in ("operating_inflows", "operating_outflows", "operating_net_cash", "debt_service_paid"):
         old, new = before.get("economic_facts", {}).get(name), current.economic_facts.get(name)
@@ -77,7 +86,19 @@ def attribute_change(current: PulseScoreResult, previous: PulseScoreResult | dic
     interpretation = "methodology_change" if method else "evidence_change" if evidence else "observed_economic_change"
     if comparable and delta is not None:
         interpretation = "economic_improvement" if delta > 0 else "economic_deterioration" if delta < 0 else "unchanged_health"
-    return {"previous_health": old_health, "delta": delta, "comparable_to_previous": comparable,
+    result = {"previous_health": old_health, "delta": delta, "comparable_to_previous": comparable,
             "economic_health_delta": delta if comparable else None, "interpretation": interpretation,
             "attribution": {"economic": {"facts": economic, "identified_as_economic": comparable},
                             "evidence": evidence, "methodology": method}}
+    if current.composition_version is not None:
+        old_operating: float | None = before.get("operating_health")
+        old_extended: float | None = before.get("extended_health")
+        result.update(previous_operating_health=old_operating,
+                      operating_health_delta=(current.operating_health - old_operating
+                                              if old_operating is not None and current.operating_health is not None else None),
+                      previous_extended_health=old_extended,
+                      extended_health_delta=(current.extended_health - old_extended
+                                             if old_extended is not None and current.extended_health is not None else None),
+                      health_level_transition=({"before": before.get("health_level"), "after": current.health_level}
+                                               if before.get("health_level") != current.health_level else None))
+    return result

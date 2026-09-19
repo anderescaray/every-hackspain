@@ -4,7 +4,7 @@ import { AnalysisNavigationProvider } from "@/components/navigation/AnalysisNavi
 
 export const metadata: Metadata = {
   title: "Empresa y grupo | Embat Pulse",
-  description: "Health Score, tendencia, origen de la caja, tiempo financiado e inteligencia de grupo a partir de análisis preparados.",
+  description: "Operating Health, Extended Health, origen de la caja e inteligencia de grupo a partir de análisis preparados.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

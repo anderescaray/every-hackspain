@@ -21,7 +21,7 @@ from xray.pulse import score_company
 from xray.pulse.config import load_config
 
 
-def _source(debt=3.0, observed=True, *, patch=False, uncertainty=0.0):
+def _source(debt=3.0, observed=True, *, patch=False, composition=False, uncertainty=0.0):
     rows = []
     for month in pd.date_range("2026-03-01", periods=6, freq="MS"):
         rows.append({"company_id": "COMP_1084", "currency": "EUR", "month": month,
@@ -40,7 +40,9 @@ def _source(debt=3.0, observed=True, *, patch=False, uncertainty=0.0):
     score = score_company(pd.DataFrame(rows), company_id="COMP_1084", currency="EUR",
                           as_of="2026-08-31", run_id="pulse-contract-fixture",
                           config=load_config(Path(__file__).parents[1] / "src/xray/pulse/configs" /
-                                             ("pulse_four_pillars_v1_0_1.json" if patch else "pulse_four_pillars_v1.json"))).to_dict()
+                                             ("pulse_four_pillars_v1_1.json" if composition else
+                                              "pulse_four_pillars_v1_0_1.json" if patch else
+                                              "pulse_four_pillars_v1.json"))).to_dict()
     cash = {"schema_version": "1.0", "company_id": "COMP_1084", "currency": "EUR", "as_of": score["as_of"],
             "classification_version": score["classification_version"], "facts_version": score["facts_version"],
             "summary": {"net_operating_cash": 60.7407, "eligible_net_cash": 60.7407 - 6 * debt},
@@ -214,3 +216,63 @@ def test_patch_no_service_and_missing_history_remain_null():
         assert detail["dimensions"]["debt"] is None
         assert detail["pulse"]["identified_range"] is None
         assert detail["pulse"]["pillars"]["debt_obligations"]["service_absence_verified"] is False
+
+
+def test_historical_v101_export_does_not_invent_dual_health():
+    score, cash, envelope = _source(patch=True)
+    detail = company_detail(score, cash, None, envelope)
+    item = portfolio_export({"COMP_1084": detail}, envelope)["items"][0]
+    for projection in (detail, item):
+        assert "operating_health" not in projection
+        assert "extended_health" not in projection
+        assert "health_level" not in projection
+        assert projection["health_score"] == score["health"]
+
+
+@pytest.mark.parametrize("debt,uncertainty,expected_level", [
+    (0.0, 0.0, "operating_only"), (3.0, 0.0, "extended_verified"),
+    (3.0, 0.5, "extended_bounded"),
+])
+def test_v11_projects_dual_health_without_recalculation(debt, uncertainty, expected_level):
+    score, cash, envelope = _source(debt=debt, uncertainty=uncertainty, composition=True)
+    detail = company_detail(score, cash, "GROUP_0001", envelope)
+    item = portfolio_export({"COMP_1084": detail}, envelope)["items"][0]
+    member = group_detail("GROUP_0001", [detail], envelope)["members"][0]
+    for projection in (detail, item, member):
+        for field in ("composition_version", "operating_health", "extended_health", "health_level",
+                      "insights_available", "missing_modules"):
+            assert projection[field] == score[field]
+        assert projection["health_score"] == score["extended_health"]
+        assert projection["dimensions"]["debt"] == score["pillars"]["debt_obligations"]["score"]
+    assert detail["health_level"] == expected_level
+    assert detail["operating_contributions"] == score["operating_contributions"]
+    assert detail["operating_weights"] == score["operating_weights"]
+    assert detail["debt_obligations"] == score["pillars"]["debt_obligations"]
+    assert detail["pulse"] == score
+    if expected_level == "operating_only":
+        assert detail["operating_health"] is not None and detail["extended_health"] is None
+        assert detail["history"][0]["health_score"] is None
+        assert "extended_health" in item["missing_modules"]
+    else:
+        assert detail["operating_health"] is not None and detail["extended_health"] is not None
+        assert score["health"] == score["extended_health"]
+        if expected_level == "extended_bounded":
+            assert item["identified_range"] == score["identified_range"]
+            assert detail["debt_obligations"]["score_range"] == score["pillars"]["debt_obligations"]["score_range"]
+
+
+def test_v11_missing_operating_pillar_keeps_both_healths_null():
+    score, cash, envelope = _source(observed=False, composition=True)
+    detail = company_detail(score, cash, None, envelope)
+    assert detail["health_level"] is None
+    assert detail["operating_health"] is None and detail["extended_health"] is None
+    assert "operating_health" in detail["missing_modules"]
+    assert "extended_health" in detail["missing_modules"]
+
+
+@pytest.mark.parametrize("field", ["operating_health", "extended_health", "health_level", "missing_modules"])
+def test_v11_rejects_tampered_composition_not_recomputed(field):
+    score, cash, envelope = _source(composition=True)
+    score[field] = ["debt_obligations"] if field == "missing_modules" else "tampered"
+    with pytest.raises((ValueError, TypeError)):
+        company_detail(score, cash, None, envelope)

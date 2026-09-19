@@ -1,5 +1,5 @@
 export const companySections = [
-  { id: "health-score", label: "Health Score", icon: "health" },
+  { id: "health-score", label: "Diagnóstico", icon: "health" },
   { id: "trajectory", label: "Tendencia", icon: "trend" },
   { id: "cash-truth", label: "Origen de la caja", icon: "cash" },
   { id: "time-borrowed", label: "Tiempo financiado", icon: "time" },

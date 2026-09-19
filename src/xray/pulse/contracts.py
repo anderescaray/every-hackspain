@@ -66,11 +66,23 @@ class PulseScoreResult:
     robustness: dict[str, Any] = field(default_factory=dict)
     health_evidence: str | None = None
     identified_range: dict[str, Any] | None = None
+    composition_version: str | None = None
+    operating_health: float | None = None
+    extended_health: float | None = None
+    health_level: str | None = None
+    insights_available: list[str] = field(default_factory=list)
+    missing_modules: list[str] = field(default_factory=list)
+    operating_weights: dict[str, float] = field(default_factory=dict)
+    operating_contributions: dict[str, float | None] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         result = json_safe(asdict(self))
         if self.health_evidence is None:
             result.pop("health_evidence")
             result.pop("identified_range")
+        if self.composition_version is None:
+            for key in ("composition_version", "operating_health", "extended_health", "health_level",
+                        "insights_available", "missing_modules", "operating_weights", "operating_contributions"):
+                result.pop(key)
         json.dumps(result, allow_nan=False)
         return result

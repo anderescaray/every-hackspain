@@ -171,11 +171,15 @@ def _previous_scores(previous_run: Path | None, requested_as_of: pd.Timestamp) -
 
 
 def _score_flat(payload: dict) -> dict:
-    return {"company_id": payload["company_id"], "currency": payload["currency"], "as_of": payload["as_of"],
+    result = {"company_id": payload["company_id"], "currency": payload["currency"], "as_of": payload["as_of"],
             "score_version": payload["score_version"], "status": payload["status"], "health": payload["health"],
             "known_weight": payload["known_weight"], "health_min": payload["health_min"], "health_max": payload["health_max"],
             **{key: pillar["score"] for key, pillar in payload["pillars"].items()},
             "result_json": _json(payload)}
+    if "composition_version" in payload:
+        result.update({key: payload.get(key) for key in ("composition_version", "operating_health",
+                                                       "extended_health", "health_level")})
+    return result
 
 
 def _features_flat(payload: dict) -> list[dict]:
@@ -203,6 +207,10 @@ def _portfolio_row(payload: dict) -> dict:
             "alert_count": 0}
     if "health_evidence" in payload:
         row.update(health_evidence=payload["health_evidence"], identified_range=payload["identified_range"])
+    if "composition_version" in payload:
+        row.update({key: payload.get(key) for key in ("composition_version", "operating_health",
+                                                     "extended_health", "health_level", "insights_available",
+                                                     "missing_modules")})
     return row
 
 
