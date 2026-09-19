@@ -11,7 +11,7 @@ for (const view of [
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(`/groups/GROUP_0042${view.route}`);
     await expect(page.getByRole("heading", { name: view.title, exact: true })).toBeVisible();
-    await expect(page.getByText("Demo · Datos de ejemplo")).toBeVisible();
+    await expect(page.getByText("Datos de ejemplo")).toBeVisible();
     const menuButton = page.getByRole("button", { name: "Abrir navegación", exact: true });
     if (await menuButton.isVisible()) await menuButton.click();
     await expect(page.getByRole("navigation", { name: "Vistas de inteligencia de grupo" }).locator('[aria-current="page"]')).toHaveCount(1);
@@ -72,6 +72,7 @@ test("la red selecciona nodos por teclado y abre la ficha de sociedad", async ({
   await expect(detail.getByRole("heading", { name: "COMP_0412", exact: true })).toBeVisible();
   await expect(detail.getByTestId("selection-health-score")).toHaveText("42");
   await expect(detail.getByText("Receptora", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Zoom de la red", { exact: true })).toHaveText("100 %");
   await page.getByRole("button", { name: "Reducir zoom de la red" }).click();
   await expect(page.getByLabel("Zoom de la red", { exact: true })).toHaveText("80 %");
   await detail.getByRole("link", { name: "Abrir ficha de COMP_0412", exact: true }).click();
@@ -127,7 +128,7 @@ test("de la relación al plan de revisión, sin ejecución de transferencias", a
 test("sin JSON, con JSON inválido o perímetro vacío no se inventa inteligencia", async ({ page }) => {
   for (const route of ["", "/network", "/recommendations"]) {
     await page.goto(`http://127.0.0.1:3108/groups/GROUP_0042${route}`);
-    await expect(page.getByRole("heading", { name: "Datos de análisis del grupo todavía no disponibles." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Datos del grupo no disponibles." })).toBeVisible();
     await expect(page.getByRole("group", { name: "Grafo interactivo de sociedades y relaciones" })).toHaveCount(0);
   }
   await page.goto("/groups/GROUP_9998");

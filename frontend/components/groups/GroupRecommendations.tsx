@@ -22,7 +22,7 @@ export function GroupRecommendations({ group, onOpen, initialRelation }: { group
     <section className={base.panel} aria-label="Revisiones propuestas de tesorería">
       <div className={styles.panelHeading}>
         <div>
-          <span className={base.eyebrow}>Plan de revisión</span>
+          <span className={base.eyebrow}>Revisiones</span>
           <h2>Qué revisar ahora</h2>
           <p>Priorizadas para el vídeo: mira el título, abre el detalle si hace falta.</p>
         </div>

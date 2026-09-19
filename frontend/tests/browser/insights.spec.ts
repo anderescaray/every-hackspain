@@ -27,8 +27,8 @@ for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
     const response = await page.goto(`/companies/${id}`);
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: id, exact: true })).toBeVisible();
-    await expect(page.getByText("Demo · Datos de ejemplo")).toBeVisible();
-    for (const name of ["Tendencia", "Origen de la caja", "Tiempo financiado", "Simulador de escenarios"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    await expect(page.getByText("Datos de ejemplo")).toBeVisible();
+    for (const name of ["Tendencia", "Origen de la caja", "Tiempo financiado", "Escenarios"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
@@ -86,7 +86,7 @@ test("origen de liquidez separado de movimientos de tesorería", async ({ page }
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(trigger).toBeFocused();
-  await cash.getByRole("link", { name: "Explorar COMP_0655" }).click();
+  await cash.getByRole("link", { name: "Ver COMP_0655" }).click();
   await expect(page.getByRole("heading", { name: "COMP_0655", exact: true })).toBeVisible();
   const missingTreasury = page.getByRole("region", { name: "Movimientos de tesorería", exact: true });
   await expect(missingTreasury.getByText("No disponible", { exact: true })).toBeVisible();
@@ -151,7 +151,7 @@ test("crecimiento bajo presión afecta dimensiones, no añade otro score", async
 
 test("simulador: solo resultados precalculados, sin interpolación y con reset", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
-  const scenario = page.getByRole("region", { name: "Simulador de escenarios", exact: true });
+  const scenario = page.getByRole("region", { name: "Escenarios", exact: true });
   await expect(scenario.getByTestId("scenario-health-score")).toHaveText("72");
   await expect(scenario.getByRole("button", { name: "Restablecer escenario" })).toBeDisabled();
   await scenario.getByRole("button", { name: "Probar ejemplo" }).click();
@@ -178,7 +178,7 @@ test("sin JSON: estado limpio incluso para los casos conocidos, nunca datos fals
     await page.goto(`http://127.0.0.1:3108/companies/${id}`);
     await expect(page.getByRole("heading", { name: "Datos de análisis todavía no disponibles." })).toBeVisible();
     await expect(page.getByTestId("health-score")).toHaveCount(0);
-    await expect(page.getByText("Demo · Datos de ejemplo")).toHaveCount(0);
+    await expect(page.getByText("Datos de ejemplo")).toHaveCount(0);
   }
 });
 

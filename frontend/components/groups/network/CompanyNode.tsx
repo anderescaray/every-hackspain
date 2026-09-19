@@ -17,7 +17,7 @@ function healthTone(score: number | null): "unknown" | "low" | "mid" | "high" {
 }
 
 function CompanyNodeComponent({ data }: NodeProps<CompanyFlowNodeType>) {
-  const { member, dimmed, selected, related, onSelect } = data;
+  const { member, dimmed, selected, related, isolated, onSelect } = data;
   const tone = healthTone(member.health_score);
   const activate = () => onSelect?.(member.company_id);
   return (
@@ -26,11 +26,12 @@ function CompanyNodeComponent({ data }: NodeProps<CompanyFlowNodeType>) {
       data-selected={selected || undefined}
       data-related={related || undefined}
       data-dimmed={dimmed || undefined}
+      data-isolated={isolated || undefined}
       role="button"
       tabIndex={0}
-      aria-label={`Seleccionar sociedad ${member.company_id}: Health Score ${groupScore(member.health_score)}, Momentum ${groupScore(member.dimensions.momentum)}, Resiliencia ${groupScore(member.dimensions.resilience)}`}
+      aria-label={`Seleccionar sociedad ${member.company_id}: Health Score ${groupScore(member.health_score)}${isolated ? ", sin relaciones visibles" : ""}`}
       aria-pressed={selected}
-      title={`${member.company_id} · ${roleLabels[member.role]}`}
+      title={`${member.company_id} · ${roleLabels[member.role]}${isolated ? " · Sin relaciones visibles" : ""}`}
       onClick={(event) => {
         event.stopPropagation();
         activate();
@@ -46,7 +47,7 @@ function CompanyNodeComponent({ data }: NodeProps<CompanyFlowNodeType>) {
       <Handle type="target" position={Position.Left} className={styles.handle} isConnectable={false} />
       <span className={styles.nodeScore}>{groupScore(member.health_score)}</span>
       <span className={styles.nodeId}>{member.company_id}</span>
-      <span className={styles.nodeMeta}>Health Score</span>
+      {isolated ? <span className={styles.nodeIsolated}>Sin relaciones visibles</span> : null}
       <Handle type="source" position={Position.Right} className={styles.handle} isConnectable={false} />
     </div>
   );

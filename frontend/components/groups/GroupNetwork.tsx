@@ -3,26 +3,28 @@
 import { AnalysisLink as Link } from "@/components/navigation/AnalysisLink";
 import { useCallback, useRef, useState } from "react";
 import type { GroupDetail, GroupMember, GroupRelation } from "@/types/groupDetail";
-import { numberLabel, severityLabels, trajectoryLabels } from "@/lib/companyFormat";
+import { severityLabels, trajectoryLabels } from "@/lib/companyFormat";
 import { groupMoney, groupScore, relationChangeLabels, relationKindLabels, relationName, relationStatusLabels, roleLabels } from "@/lib/groupPresentation";
 import { Confidence, EvidenceButton, type OpenEvidence } from "@/components/insights/InsightPrimitives";
 import base from "@/components/insights/insights.module.css";
 import styles from "./groups.module.css";
 import { NetworkCanvas, type FocusMode } from "./network/NetworkCanvas";
 
-function MemberDetail({ member, group, onOpen, onShowEgo, onShowNetwork, focusMode }: {
+function MemberDetail({ member, group, onOpen, onShowEgo, onShowNetwork, focusMode, hasVisibleRelations }: {
   member: GroupMember;
   group: GroupDetail;
   onOpen: OpenEvidence;
   onShowEgo: () => void;
   onShowNetwork: () => void;
   focusMode: FocusMode;
+  hasVisibleRelations: boolean;
 }) {
   const alerts = group.alerts.filter((alert) => alert.company_refs.includes(member.company_id));
   return <>
     <span className={base.eyebrow}>Sociedad</span>
     <h3>{member.company_id}</h3>
     <span className={styles.roleBadge}>{roleLabels[member.role]}</span>
+    {!hasVisibleRelations && <p className={base.smallText}>Sin relaciones visibles con los filtros actuales.</p>}
     <dl className={styles.selectionMetrics}>
       <div><dt>Health Score</dt><dd data-testid="selection-health-score">{groupScore(member.health_score)}</dd></div>
       <div><dt>Momentum</dt><dd>{groupScore(member.dimensions.momentum)}</dd></div>
@@ -40,7 +42,7 @@ function MemberDetail({ member, group, onOpen, onShowEgo, onShowNetwork, focusMo
       {focusMode === "ego" ? (
         <button type="button" className={base.secondaryButton} onClick={onShowNetwork}>Ver toda la red</button>
       ) : (
-        <button type="button" className={base.secondaryButton} onClick={onShowEgo}>Ver relaciones de esta sociedad</button>
+        <button type="button" className={base.secondaryButton} onClick={onShowEgo} disabled={!hasVisibleRelations}>Ver relaciones de esta sociedad</button>
       )}
     </div>
     <EvidenceButton refs={member.evidence_refs} title={`Sociedad ${member.company_id}`} onOpen={onOpen} />
@@ -66,7 +68,7 @@ function RelationDetail({ relation, group, onOpen }: { relation: GroupRelation; 
     <EvidenceButton refs={relation.evidence_refs} title={`Relación ${relationName(relation)}`} onOpen={onOpen} />
     <div className={styles.contextLinks}>
       {[relation.from_company_id, relation.to_company_id].filter((id): id is string => id !== null).map((id) => <Link key={id} href={`/companies/${id}`}>Ver {id} ↗</Link>)}
-      <Link href={`/groups/${group.group_id}/recommendations?relation=${encodeURIComponent(relation.id)}`}>Revisiones relacionadas →</Link>
+      <Link href={`/groups/${group.group_id}/recommendations?relation=${encodeURIComponent(relation.id)}`}>Revisiones relacionadas</Link>
     </div>
   </>;
 }
@@ -81,6 +83,9 @@ export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }:
   const member = selection?.kind === "company" ? group.members.find((item) => item.company_id === selection.id) : undefined;
   const relation = selection?.kind === "relation" ? visible.find((item) => item.id === selection.id) ?? group.relations.find((item) => item.id === selection.id) : undefined;
   const hasSelection = Boolean(member || relation);
+  const memberHasVisibleRelations = Boolean(
+    member && visible.some((edge) => edge.from_company_id === member.company_id || edge.to_company_id === member.company_id),
+  );
 
   const selectItem = useCallback((kind: "company" | "relation", id: string) => {
     setSelection({ kind, id });
@@ -102,11 +107,11 @@ export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }:
   };
 
   return <>
-    <section className={`${base.panel} ${styles.networkHero}`} aria-label="Explorar la red del grupo">
+    <section className={`${base.panel} ${styles.networkHero}`} aria-label="Red del grupo">
       <div className={styles.panelHeading}>
         <div>
           <h2>Grafo del grupo</h2>
-          <p>Pan, zoom y selección sobre la red. Las flechas son transferencias; los nodos, sociedades.</p>
+          <p>Sociedades y transferencias del perímetro observado.</p>
         </div>
         <div className={styles.networkLegend}>
           {Object.entries(relationStatusLabels).map(([key, label]) => <span key={key}><i className={styles[key]} />{label}</span>)}
@@ -138,18 +143,13 @@ export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }:
               group={group}
               onOpen={onOpen}
               focusMode={focusMode}
+              hasVisibleRelations={memberHasVisibleRelations}
               onShowEgo={() => setFocusMode("ego")}
               onShowNetwork={() => setFocusMode("network")}
             />
           ) : relation ? (
             <RelationDetail relation={relation} group={group} onOpen={onOpen} />
-          ) : (
-            <>
-              <span className={base.eyebrow}>Explora</span>
-              <h3>{selection ? "Selección no disponible" : "Pulsa un nodo o una flecha"}</h3>
-              <p>{selection ? "Ajusta los filtros o elige otro elemento." : `${numberLabel(group.members.length, 0)} sociedades en el lienzo. Encaja la red o filtra por evidencia.`}</p>
-            </>
-          )}
+          ) : null}
         </aside>
       </div>
 

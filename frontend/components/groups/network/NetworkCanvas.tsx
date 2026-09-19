@@ -2,7 +2,6 @@
 
 import {
   Background,
-  Controls,
   MarkerType,
   MiniMap,
   ReactFlow,
@@ -18,6 +17,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GroupMember, GroupRelation } from "@/types/groupDetail";
 import { numberLabel } from "@/lib/companyFormat";
 import {
+  NODE_HEIGHT,
+  NODE_WIDTH,
   connectedIds,
   drawableRelations,
   layoutNetwork,
@@ -51,9 +52,9 @@ const nodeTypes = { company: CompanyNode };
 const edgeTypes = { relation: RelationEdge };
 
 const STATUS_COLOR = {
-  identified: "#0c7a6c",
-  candidate: "#9a6b1f",
-  unknown: "#677488",
+  identified: "#0d5c52",
+  candidate: "#8a6918",
+  unknown: "#5a6570",
 } as const;
 
 function buildGraph(
@@ -61,9 +62,9 @@ function buildGraph(
   relations: GroupRelation[],
   selection: Selection,
   focusMode: FocusMode,
+  hoveredEdge: string | null,
   onSelectCompany: (id: string) => void,
   onSelectRelation: (id: string) => void,
-  reduceMotion: boolean,
 ): { nodes: FlowNode[]; edges: FlowEdge[]; layoutKey: string; drawn: GroupRelation[] } {
   const drawn = drawableRelations(relations);
   const layoutKey = `${members.map((member) => member.company_id).join(",")}|${drawn.map((relation) => relation.id).join(",")}`;
@@ -107,6 +108,7 @@ function buildGraph(
 
   const edges: FlowEdge[] = laidOutEdges.map((edge) => {
     const selected = selection?.kind === "relation" && selection.id === edge.id;
+    const hovered = hoveredEdge === edge.id;
     const touchesFocus = Boolean(focusCompany && (edge.source === focusCompany || edge.target === focusCompany));
     const dimmed = Boolean(
       (focusMode === "ego" && focusCompany && !touchesFocus)
@@ -116,23 +118,25 @@ function buildGraph(
     return {
       ...edge,
       type: "relation",
-      animated: selected && !reduceMotion,
-      zIndex: selected ? 8 : dimmed ? 0 : 1,
+      animated: false,
+      zIndex: selected || hovered ? 8 : dimmed ? 0 : 1,
       markerEnd: {
         type: MarkerType.ArrowClosed,
-        width: selected ? 18 : 16,
-        height: selected ? 18 : 16,
+        width: selected ? 20 : 17,
+        height: selected ? 20 : 17,
         color: STATUS_COLOR[edge.data!.relation.status],
       },
       data: {
         ...edge.data!,
         selected,
+        hovered,
         dimmed,
         showLabel: shouldShowEdgeLabel(
           edge.data!.relation,
           edgeCount,
           selected,
           focusMode === "ego" || selection?.kind === "company" ? focusCompany ?? selection?.id ?? null : null,
+          hovered,
         ),
         onSelect: onSelectRelation,
       },
@@ -154,18 +158,23 @@ function NetworkCanvasInner({
 }: CanvasProps) {
   const { fitView, setViewport, getViewport, setCenter, getNode } = useReactFlow();
   const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
   const graph = useMemo(
-    () => buildGraph(members, relations, selection, focusMode, onSelectCompany, onSelectRelation, reduceMotion),
-    [members, relations, selection, focusMode, onSelectCompany, onSelectRelation, reduceMotion],
+    () => buildGraph(members, relations, selection, focusMode, hoveredEdge, onSelectCompany, onSelectRelation),
+    [members, relations, selection, focusMode, hoveredEdge, onSelectCompany, onSelectRelation],
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([]);
-  const [zoomState, setZoomState] = useState({ key: graph.layoutKey, pct: 100 });
-  const zoomPct = zoomState.key === graph.layoutKey ? zoomState.pct : 100;
-  const setZoomPct = (pct: number) => setZoomState({ key: graph.layoutKey, pct });
+  const [zoomPct, setZoomPct] = useState(100);
   const selectionKey = selection ? `${selection.kind}:${selection.id}` : "";
   const centeredSelection = useRef("");
+  const zoomLockUntil = useRef(0);
+
+  const reportZoom = (pct: number, lockMs = 0) => {
+    if (lockMs > 0) zoomLockUntil.current = Date.now() + lockMs;
+    setZoomPct(pct);
+  };
 
   useEffect(() => {
     const sync = () => {
@@ -178,48 +187,57 @@ function NetworkCanvasInner({
 
   useEffect(() => {
     let cancelled = false;
-    const run = () => {
-      if (cancelled) return;
-      fitView({ padding: 0.22, duration: reduceMotion ? 0 : 280, minZoom: 0.45, maxZoom: 1.2 });
-    };
     const frame = requestAnimationFrame(() => {
-      run();
-      window.setTimeout(run, 100);
+      if (cancelled) return;
+      fitView({ padding: 0.18, duration: reduceMotion ? 0 : 260, minZoom: 0.4, maxZoom: 1.15 });
+      window.setTimeout(() => {
+        if (!cancelled && Date.now() >= zoomLockUntil.current) {
+          setZoomPct(Math.round(getViewport().zoom * 100));
+        }
+      }, reduceMotion ? 40 : 300);
     });
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
     };
-  }, [graph.layoutKey, fitView, reduceMotion]);
+  }, [graph.layoutKey, fitView, getViewport, reduceMotion]);
 
   useEffect(() => {
     if (!selection || centeredSelection.current === selectionKey) return;
     centeredSelection.current = selectionKey;
-    const duration = reduceMotion ? 0 : 320;
+    const duration = reduceMotion ? 0 : 200;
     const timer = window.setTimeout(() => {
       if (selection.kind === "company") {
         const node = getNode(selection.id);
         if (!node) return;
-        setCenter(node.position.x + 84, node.position.y + 46, { zoom: Math.max(getViewport().zoom, 0.95), duration });
+        setCenter(node.position.x + NODE_WIDTH / 2, node.position.y + NODE_HEIGHT / 2, {
+          zoom: 1,
+          duration,
+        });
+        reportZoom(100, duration + 120);
       } else {
         const relation = graph.drawn.find((item) => item.id === selection.id);
         if (!relation?.from_company_id || !relation.to_company_id) return;
         fitView({
           nodes: [{ id: relation.from_company_id }, { id: relation.to_company_id }],
-          padding: 0.4,
+          padding: 0.35,
           duration,
+          maxZoom: 1.1,
         });
+        window.setTimeout(() => {
+          reportZoom(Math.round(getViewport().zoom * 100), 80);
+        }, duration + 30);
       }
     }, 40);
     return () => window.clearTimeout(timer);
   }, [selection, selectionKey, fitView, getNode, getViewport, setCenter, reduceMotion, graph.drawn]);
 
-  const nudgeZoom = (delta: number) => {
+  const nudgeZoom = (direction: -1 | 1) => {
+    const snapped = Math.round(zoomPct / 20) * 20;
+    const nextPct = Math.min(180, Math.max(40, snapped + direction * 20));
     const viewport = getViewport();
-    const nextZoom = Math.min(1.8, Math.max(0.4, Number((viewport.zoom + delta).toFixed(2))));
-    const nextPct = Math.min(180, Math.max(40, zoomPct + Math.round(delta * 100)));
-    setViewport({ ...viewport, zoom: nextZoom }, { duration: reduceMotion ? 0 : 160 });
-    setZoomPct(nextPct);
+    setViewport({ ...viewport, zoom: nextPct / 100 }, { duration: reduceMotion ? 0 : 160 });
+    reportZoom(nextPct, 200);
   };
 
   if (!members.length) {
@@ -232,27 +250,26 @@ function NetworkCanvasInner({
         <span role="status">
           {relations.length} transferencias · {graph.drawn.length} en el grafo
           {focusMode === "ego" && selection?.kind === "company" ? ` · foco ${selection.id}` : ""}
+          {!selection ? " · selecciona una sociedad o transferencia" : ""}
         </span>
         <div className={styles.toolbarActions}>
-          <button type="button" aria-label="Reducir zoom de la red" disabled={zoomPct <= 40} onClick={() => nudgeZoom(-0.2)}>−</button>
+          <button type="button" aria-label="Reducir zoom de la red" disabled={zoomPct <= 40} onClick={() => nudgeZoom(-1)}>−</button>
           <output aria-label="Zoom de la red">{numberLabel(zoomPct, 0)} %</output>
-          <button type="button" aria-label="Ampliar zoom de la red" disabled={zoomPct >= 180} onClick={() => nudgeZoom(0.2)}>+</button>
-          <button type="button" className={styles.toolButton} onClick={() => fitView({ padding: 0.22, duration: reduceMotion ? 0 : 320 })}>
+          <button type="button" aria-label="Ampliar zoom de la red" disabled={zoomPct >= 180} onClick={() => nudgeZoom(1)}>+</button>
+          <button
+            type="button"
+            className={styles.toolButton}
+            onClick={() => {
+              fitView({ padding: 0.18, duration: reduceMotion ? 0 : 260 });
+              window.setTimeout(() => {
+                if (Date.now() >= zoomLockUntil.current) {
+                  setZoomPct(Math.round(getViewport().zoom * 100));
+                }
+              }, reduceMotion ? 0 : 280);
+            }}
+          >
             Encajar red
           </button>
-          {selection?.kind === "company" ? (
-            <button
-              type="button"
-              className={styles.toolButton}
-              onClick={() => {
-                const node = getNode(selection.id);
-                if (!node) return;
-                setCenter(node.position.x + 84, node.position.y + 46, { zoom: Math.max(getViewport().zoom, 1), duration: reduceMotion ? 0 : 280 });
-              }}
-            >
-              Centrar selección
-            </button>
-          ) : null}
         </div>
       </div>
       <div className={styles.flowHost} role="group" aria-label="Grafo interactivo de sociedades y relaciones">
@@ -266,10 +283,19 @@ function NetworkCanvasInner({
           onPaneClick={onClearSelection}
           onNodeClick={(_, node) => onSelectCompany(node.id)}
           onEdgeClick={(_, edge) => onSelectRelation(edge.id)}
-          onInit={(instance) => instance.fitView({ padding: 0.22, minZoom: 0.45, maxZoom: 1.2 })}
+          onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.id)}
+          onEdgeMouseLeave={() => setHoveredEdge(null)}
+          onInit={(instance) => {
+            instance.fitView({ padding: 0.18, minZoom: 0.4, maxZoom: 1.15 });
+            setZoomPct(Math.round(instance.getViewport().zoom * 100));
+          }}
+          onMoveEnd={(_, viewport) => {
+            if (Date.now() < zoomLockUntil.current) return;
+            setZoomPct(Math.round(viewport.zoom * 100));
+          }}
           fitView
-          fitViewOptions={{ padding: 0.22, minZoom: 0.45, maxZoom: 1.2 }}
-          minZoom={0.35}
+          fitViewOptions={{ padding: 0.18, minZoom: 0.4, maxZoom: 1.15 }}
+          minZoom={0.3}
           maxZoom={1.8}
           nodesDraggable={false}
           nodesConnectable={false}
@@ -278,10 +304,10 @@ function NetworkCanvasInner({
           zoomOnScroll
           zoomOnPinch
           proOptions={{ hideAttribution: true }}
+          defaultEdgeOptions={{ type: "relation" }}
         >
-          <Background gap={22} size={1} color="#c5d4cc" />
-          <Controls showInteractive={false} position="bottom-left" />
-          {members.length > 10 ? <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ width: 120, height: 80 }} /> : null}
+          <Background gap={32} size={0.45} color="#e4e7e4" />
+          {members.length > 18 ? <MiniMap pannable zoomable nodeStrokeWidth={2} style={{ width: 112, height: 72 }} /> : null}
         </ReactFlow>
       </div>
       {!graph.drawn.length ? <p className={`${base.emptyState} ${styles.emptyCanvas}`}>No hay conexiones dibujables con estos filtros.</p> : null}

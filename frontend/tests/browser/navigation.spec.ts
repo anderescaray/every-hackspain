@@ -49,7 +49,7 @@ test("los accesos desplazan a la sección elegida sin quitar alertas o escenario
     }
   }
   await expect(page.getByRole("region", { name: "Alertas priorizadas", exact: true })).toHaveCount(1);
-  await expect(page.getByRole("heading", { name: "Simulador de escenarios", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Escenarios", exact: true })).toHaveCount(1);
 });
 
 test("empresa seleccionada se conserva al recorrer grupo y regresar a caja", async ({ page }) => {
@@ -70,8 +70,11 @@ test("empresa seleccionada se conserva al recorrer grupo y regresar a caja", asy
 
 test("los enlaces de relaciones conservan contexto sin pisar el filtro de sociedad", async ({ page }) => {
   await page.goto("/groups/GROUP_0042?entity=COMP_0356");
-  const row = page.getByRole("region", { name: "Tabla de sociedades", exact: true }).getByRole("row").filter({ has: page.getByRole("link", { name: "COMP_0412", exact: true }) });
-  await row.getByRole("link", { name: "Ver en la red", exact: true }).click();
+  const list = page.getByRole("list", { name: "Tabla de sociedades", exact: true });
+  await page.getByRole("button", { name: /Todas/ }).click();
+  await page.getByLabel("Buscar sociedad", { exact: true }).fill("COMP_0412");
+  await list.getByRole("listitem").locator("summary").click();
+  await list.getByRole("link", { name: "Ver en la red", exact: true }).click();
   await expect(page).toHaveURL(/\/groups\/GROUP_0042\/network\?/);
   const url = new URL(page.url());
   expect(url.searchParams.get("company")).toBe("COMP_0412");
@@ -89,7 +92,7 @@ test("sin grupo se oculta el bloque; con JSON de grupo ausente se conserva el re
   await expect(page.getByRole("navigation", { name: "Secciones de empresa", exact: true }).getByRole("link")).toHaveCount(4);
   await closeMenu(page);
   await page.goto("/groups/GROUP_0087?entity=COMP_0655");
-  await expect(page.getByRole("heading", { name: "Datos de análisis del grupo todavía no disponibles.", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Datos del grupo no disponibles.", exact: true })).toBeVisible();
   await openMenu(page);
   await expect(page.getByRole("navigation", { name: "Secciones de empresa", exact: true }).getByRole("link", { name: "Health Score", exact: true })).toHaveAttribute("href", "/companies/COMP_0655#health-score");
   await closeMenu(page);

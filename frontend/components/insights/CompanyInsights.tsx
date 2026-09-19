@@ -24,8 +24,8 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
   return <main className={styles.page} id="company-insights">
     <a href="#cash-truth" className={styles.skipLink}>Ir al origen de la caja</a>
     <div className={styles.contextBar}>
-      <span className={styles.breadcrumb}>Empresa <span aria-hidden="true">/</span> Análisis individual</span>
-      <span className={styles.demoBadge}>{isMock ? "Demo · Datos de ejemplo" : "Datos preparados"}</span>
+      <span className={styles.breadcrumb}>Empresa <span aria-hidden="true">/</span> {company.company_id}</span>
+      <span className={styles.demoBadge}>{isMock ? "Datos de ejemplo" : "Datos preparados"}</span>
     </div>
     <header id="health-score" data-company-section="health-score" className={styles.companyHeader}>
       <div className={styles.headerIdentity}>
@@ -64,7 +64,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     <div id="trajectory" data-company-section="trajectory" className={styles.overviewGrid}>
       <TrajectoryChart history={company.history} trajectory={company.trajectory} />
       <section className={styles.panel} aria-label="Factores del Health Score">
-        <SectionHeading number="02" title="¿Por qué cambia el Health Score?" />
+        <SectionHeading number="02" title="Factores del Health Score" />
         <div className={styles.drivers}>{company.drivers.map((driver) => <article className={styles.driver} key={driver.id}>
           <div className={styles.inlineHeading}><h3>{driver.driver}</h3><strong className={driver.direction === "positive" ? styles.positiveText : driver.direction === "negative" ? styles.negativeText : styles.muted}>{signedNumber(driver.impact)} <small>puntos</small></strong></div>
           <p>{driver.explanation}</p>
@@ -80,7 +80,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     <div id="cash-truth" data-company-section="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>
     <div id="time-borrowed" data-company-section="time-borrowed"><TimeBorrowedSection timing={company.time_borrowed} onOpen={openEvidence} /></div>
     <section className={styles.panel} aria-label="Alertas priorizadas">
-      <SectionHeading number="05" title="Alertas" description="Qué merece atención."><span className={styles.periodBadge}>{alerts.length} alertas</span></SectionHeading>
+      <SectionHeading number="05" title="Alertas" description="Prioridades de revisión."><span className={styles.periodBadge}>{alerts.length} alertas</span></SectionHeading>
       <div className={styles.alerts}>{alerts.map((alert, index) => <details className={styles.alert} key={alert.id}>
         <summary><span className={styles.alertRank}>{String(index + 1).padStart(2, "0")}</span><span className={styles.alertTitle}><span className={`${styles.severity} ${styles[alert.severity]}`}>Prioridad {severityLabels[alert.severity].toLowerCase()}</span><strong>{alert.title}</strong><small>{alert.period}</small></span><span className={styles.expandIcon} aria-hidden="true">+</span></summary>
         <div className={styles.alertDetail}><p>{alert.explanation}</p><EvidenceButton refs={alert.evidence_refs} title={alert.title} onOpen={openEvidence} /></div>
@@ -88,7 +88,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
       {!alerts.length && <p className={styles.emptyState}>No hay alertas priorizadas en este análisis. Esto no garantiza la salud financiera.</p>}
     </section>
     <WhatIfSection currentHealthScore={company.health_score} simulation={company.simulation} />
-    <footer className={styles.pageFooter}><span>Embat Pulse · HackSpain 2026 / Embat X-Ray</span><span>{isMock ? "Datos de ejemplo. Sin procesamiento financiero en tiempo real." : "Datos precalculados. Sin procesamiento financiero en tiempo real."}</span></footer>
+    <footer className={styles.pageFooter}><span>Embat Pulse</span><span>{isMock ? "Sin procesamiento financiero en tiempo real." : "Datos precalculados. Sin procesamiento financiero en tiempo real."}</span></footer>
     {evidence && <EvidenceDialog groupId={company.group_id} title={evidence.title} groups={company.evidence.filter((group) => evidence.refs.includes(group.id)).map((group) => evidence.records ? { ...group, rows: group.rows.filter((row) => evidence.records?.some((record) => record.evidence_id === group.id && record.transaction_id === row.id)) } : group)} accounts={company.cash_truth.account_flows?.accounts ?? []} isMock={isMock} onClose={() => setEvidence(null)} />}
   </main>;
 }

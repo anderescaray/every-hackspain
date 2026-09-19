@@ -5,7 +5,7 @@ export type OpenEvidence = (refs: EvidenceRef[], title: string, records?: Transa
 
 export function EvidenceButton({ refs, title, records, onOpen }: { refs: EvidenceRef[]; title: string; records?: TransactionEvidenceRef[]; onOpen: OpenEvidence }) {
   if (!refs.length) return <span className={styles.unavailable}>Sin evidencia enlazada</span>;
-  return <button type="button" className={styles.evidenceButton} onClick={() => onOpen(refs, title, records)} aria-label={`Ver evidencia: ${title}`}>Ver evidencia <span aria-hidden="true">↗</span></button>;
+  return <button type="button" className={styles.evidenceButton} onClick={() => onOpen(refs, title, records)} aria-label={`Ver evidencia: ${title}`}>Ver evidencia</button>;
 }
 
 export function Confidence({ value }: { value: number | null }) {

@@ -26,7 +26,7 @@ function NavigationIcon({ name }: { name: string }) {
     close: "m6 6 12 12M18 6 6 18",
     collapse: "M4 4h16v16H4zM9 4v16m7-12-4 4 4 4",
   };
-  return <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.overview} /></svg>;
+  return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.overview} /></svg>;
 }
 
 function SidebarContents({ companyId, groupId, view, activeSection, onSection, mobile = false, close }: Omit<ShellProps, "children"> & { activeSection: string; onSection: (id: string) => void; mobile?: boolean; close?: () => void }) {
@@ -54,7 +54,7 @@ function SidebarContents({ companyId, groupId, view, activeSection, onSection, m
         <nav id={groupIdRef} hidden={!navigation.groupExpanded} aria-label="Vistas de inteligencia de grupo" className={styles.menuLinks}>{groupTabs.map((tab) => <Link key={tab.key} href={withCompanyContext(`/groups/${groupId}${tab.suffix}`, companyId)} aria-label={tab.label} title={collapsed ? tab.label : undefined} aria-current={view === tab.key ? "page" : undefined} onClick={close}><NavigationIcon name={tab.key} /><span className={styles.linkText}>{tab.label}</span></Link>)}</nav>
       </> : <p className={styles.noGroup}>{groupId === null ? "Empresa sin grupo asociado" : "Grupo pendiente de datos"}</p>}
     </div>
-    <div className={styles.sidebarFooter}><span className={styles.footerDot} /><span className={styles.footerText}>Análisis trazable<br /><small>Empresa y grupo, conectados</small></span></div>
+    <div className={styles.sidebarFooter}><span className={styles.footerDot} /><span className={styles.footerText}>Datos preparados</span></div>
   </div>;
 }
 
@@ -113,7 +113,7 @@ export function AnalysisShell({ companyId, groupId, view, children }: ShellProps
     <div className={styles.shell} data-collapsed={collapsed} data-testid="analysis-shell">
       <aside className={styles.desktopSidebar} aria-label="Menú lateral"><SidebarContents companyId={companyId} groupId={groupId} view={view} activeSection={activeSection} onSection={selectSection} /></aside>
       <div className={styles.content}>
-        <div className={styles.mobileBar}><button className={styles.mobileMenuButton} aria-label="Abrir navegación" aria-expanded={mobileOpen} aria-haspopup="dialog" onClick={() => setMobileOpen(true)}><NavigationIcon name="menu" /><span>Menú</span></button><div><strong>Pulse</strong><span>{companyId ?? groupId ?? "Análisis financiero"}</span></div></div>
+        <div className={styles.mobileBar}><button className={styles.mobileMenuButton} aria-label="Abrir navegación" aria-expanded={mobileOpen} aria-haspopup="dialog" onClick={() => setMobileOpen(true)}><NavigationIcon name="menu" /><span>Menú</span></button><div><strong>Pulse</strong><span>{companyId ?? groupId ?? "Cartera"}</span></div></div>
         {children}
       </div>
       <dialog ref={dialog} className={styles.mobileDrawer} aria-labelledby={dialogTitle} onCancel={() => setMobileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setMobileOpen(false); }}><h2 id={dialogTitle} className={styles.srOnly}>Navegación de empresa y grupo</h2>{mobileOpen && <SidebarContents companyId={companyId} groupId={groupId} view={view} activeSection={activeSection} onSection={selectSection} mobile close={() => setMobileOpen(false)} />}</dialog>

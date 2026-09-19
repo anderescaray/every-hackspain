@@ -53,7 +53,7 @@ function relation(id: string, from: string, to: string, volume = 420_000): Group
 }
 
 test("compactEdgeMoney usa formato corto legible", () => {
-  assert.equal(compactEdgeMoney(420_000), "420 k €");
+  assert.equal(compactEdgeMoney(420_000), "420 k€");
   assert.equal(compactEdgeMoney(1_300_000), "1,3 M€");
   assert.equal(compactEdgeMoney(null), null);
 });
@@ -81,6 +81,17 @@ test("layoutNetwork coloca nodos sin solaparse en grupos pequeños", () => {
   }
 });
 
+test("layoutNetwork coloca sociedades aisladas fuera del componente conectado", () => {
+  const members = [member("COMP_0001", 85), member("COMP_0002", 42), member("COMP_9999", 60)];
+  const relations = [relation("r1", "COMP_0001", "COMP_0002")];
+  const { nodes } = layoutNetwork(members, relations);
+  const linked = nodes.filter((node) => node.id !== "COMP_9999");
+  const isolated = nodes.find((node) => node.id === "COMP_9999")!;
+  const maxLinkedY = Math.max(...linked.map((node) => node.position.y));
+  assert.ok(isolated.position.y > maxLinkedY + 40);
+  assert.equal(isolated.data?.isolated, true);
+});
+
 test("layoutNetwork escala a muchas sociedades sin coordenadas manuales", () => {
   const size = 36;
   const members = Array.from({ length: size }, (_, index) => member(`COMP_${String(index + 1).padStart(4, "0")}` as `COMP_${string}`, 55 + (index % 40)));
@@ -98,4 +109,24 @@ test("layoutNetwork escala a muchas sociedades sin coordenadas manuales", () => 
   assert.equal(ids.size, size);
   assert.equal(shouldShowEdgeLabel(relations[0], edges.length, false, null), false);
   assert.equal(shouldShowEdgeLabel(relations[0], 4, false, null), true);
+});
+
+test("layoutNetwork mantiene composición compacta en 5/15/30/50 nodos", () => {
+  for (const size of [5, 15, 30, 50]) {
+    const members = Array.from({ length: size }, (_, index) => member(`COMP_${String(index + 1).padStart(4, "0")}` as `COMP_${string}`, 40 + (index % 50)));
+    const relations = Array.from({ length: Math.max(size - 2, 1) }, (_, index) =>
+      relation(`e-${size}-${index}`, members[index % Math.max(size - 1, 1)].company_id, members[(index + 1) % size].company_id, 250_000 * (index + 1)),
+    );
+    // deja 1 aislada en tamaños grandes
+    const linkedRelations = size >= 15 ? relations.slice(0, -1) : relations;
+    const { nodes, edges } = layoutNetwork(members, linkedRelations);
+    assert.equal(nodes.length, size);
+    assert.equal(edges.length, linkedRelations.length);
+    const isolated = nodes.filter((node) => node.data?.isolated);
+    if (size >= 15) assert.ok(isolated.length >= 1);
+    const boxW = Math.max(...nodes.map((node) => node.position.x)) - Math.min(...nodes.map((node) => node.position.x));
+    const boxH = Math.max(...nodes.map((node) => node.position.y)) - Math.min(...nodes.map((node) => node.position.y));
+    assert.ok(boxW + boxH > size * 8, `bbox demasiado compacto para ${size}`);
+    assert.equal(shouldShowEdgeLabel(linkedRelations[0], edges.length, false, null), edges.length <= 8);
+  }
 });

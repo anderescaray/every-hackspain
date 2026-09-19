@@ -63,7 +63,7 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
     <section className={base.panel} aria-label="Sociedades del grupo observado">
       <div className={styles.panelHeading}>
         <div>
-          <span className={base.eyebrow}>Sociedad a sociedad</span>
+          <span className={base.eyebrow}>Sociedades</span>
           <h2>Dónde mirar primero</h2>
           <p>Sin Health Score de grupo. Empieza por las sociedades en prioridad alta.</p>
         </div>
@@ -164,8 +164,7 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
     )}
 
     <Link className={styles.nextStep} href={`/groups/${group.group_id}/network`}>
-      <span><small>Siguiente</small><strong>Ver cómo circula el dinero en el grupo</strong></span>
-      <span aria-hidden="true">→</span>
+      <span><small>Siguiente</small><strong>Red financiera del grupo</strong></span>
     </Link>
   </>;
 }

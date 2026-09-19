@@ -22,7 +22,7 @@ export function CashTruthSection({ cash, companyId, groupId, onOpen }: { cash: C
 
   return (
     <section className={`${styles.panel} ${styles.featurePanel}`} aria-label="Origen de la caja">
-      <SectionHeading number="03" title="Origen de la caja" description="¿De dónde viene realmente la liquidez?"><span className={styles.featureBadge}>{cash.period}</span></SectionHeading>
+      <SectionHeading number="03" title="Origen de la caja" description="De dónde viene la liquidez observada."><span className={styles.featureBadge}>{cash.period}</span></SectionHeading>
       <aside className={styles.cashConclusion} aria-label="Conclusión del origen de la caja">
         <span className={styles.eyebrow}>Conclusión</span>
         <h3>{cash.headline}</h3>
@@ -111,7 +111,7 @@ export function CashTruthSection({ cash, companyId, groupId, onOpen }: { cash: C
         {treasuryState !== "none" && <details className={styles.accountDisclosure}><summary>Ver cuentas y transferencias</summary><AccountTransfers data={cash.account_flows} companyId={companyId} groupId={groupId} onOpen={onOpen} /></details>}
       </section>
       {comparison && <div className={styles.comparison}>
-        <div className={styles.inlineHeading}><div><span className={styles.eyebrow}>Comparación</span><h3>Misma posición aparente de caja. Distinta realidad financiera.</h3></div><Link className={styles.evidenceButton} href={`/companies/${comparison.company_id}`}>Explorar {comparison.company_id} <span aria-hidden="true">↗</span></Link></div>
+        <div className={styles.inlineHeading}><div><span className={styles.eyebrow}>Comparación</span><h3>Misma posición aparente, distinta realidad.</h3></div><Link className={styles.evidenceButton} href={`/companies/${comparison.company_id}`}>Ver {comparison.company_id}</Link></div>
         <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Comparación del origen de la caja"><table><caption>{cash.period}</caption><thead><tr><th scope="col">Empresa</th><th scope="col" className={styles.numeric}>Neto aparente</th><th scope="col" className={styles.numeric}>Neto operativo</th><th scope="col" className={styles.numeric}>Apoyo neto</th><th scope="col" className={styles.numeric}>Circulación bruta</th></tr></thead><tbody>
           <tr><th scope="row">{companyId} <small>Empresa actual</small></th><td className={styles.numeric}>{cash.apparent_net === null ? "No identificado" : money(cash.apparent_net, true)}</td><td className={styles.numeric}>{operating?.net_amount != null ? money(operating.net_amount, true) : "No identificado"}</td><td className={styles.numeric}>{support?.net_amount != null ? money(support.net_amount, true) : "No identificado"}</td><td className={styles.numeric}>{circulation ? money(circulation.gross_movement) : "No identificado"}</td></tr>
           <tr><th scope="row">{comparison.company_id}</th><td className={styles.numeric}>{money(comparison.apparent_net, true)}</td><td className={styles.numeric}>{money(comparison.operating_net, true)}</td><td className={styles.numeric}>{money(comparison.support_net, true)}</td><td className={styles.numeric}>{money(comparison.circulation_gross)}</td></tr>
