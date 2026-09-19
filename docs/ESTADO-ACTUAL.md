@@ -3,6 +3,8 @@
 **Fecha:** 19-09-2026, noche. **Rama:** `main` (`987c5c3` + cambios locales del what-if factorial pendientes de commit, ver §5).
 Léelo entero antes de tocar nada: hoy han trabajado cuatro personas en paralelo sobre `main` y la mitad del tiempo se ha ido en reconciliar.
 
+**Pre-deploy:** checklist rellenado en [`checklist-entrega.md`](./checklist-entrega.md) — gate **LISTO para iniciar deploy Vercel** (demo local verificada; E8/E9 y URL pública pendientes).
+
 ## 1. Qué es el producto
 
 **Embat Pulse**: early warning y explicación de tesorería para CFOs y para Embat sobre su cartera (reto HackSpain X-Ray, `enunciado-embat.md`). Responde cinco preguntas: cómo está la empresa (Health Score), hacia dónde va (trayectoria, bache vs tendencia), por qué cambia (contribuciones exactas), de dónde viene su caja (Cash Truth) y qué pasaría bajo otras condiciones (simulador). Comprador: Embat como tier premium; usuario: CFO/tesorero.
@@ -95,6 +97,7 @@ Empresas útiles para la demo: `COMP_0764` (historia larga, simulador), `COMP_00
 
 | Documento | Para qué |
 |---|---|
+| **`checklist-entrega.md`** | **Checklist pre-deploy:** enunciado E1–E9, UI, pipeline, paseo demo y gate Vercel. Rellenar antes de desplegar |
 | `decisiones.md` | Registro central. §1–§9 datos y limpieza; §10 V1; §13 V2; §14 anotaciones D25–D30; FE10 cobertura; §15 D31 Jev; §16 producto/API; §17 encaje D25–D31; §18 D31 default; §19 frontend (FE-01…FE-05); §20 advisor de grupo (Ander); **§21 motor canónico V2 + ledger** |
 | `hallazgos-datos.md` | Análisis de datos que justifica todo lo anterior (onboarding, ruido blanco, estacionalidad, taxonomía 2025-01, 39 % sin categoría, pólizas, overdue como higiene ERP) |
 | `roadmap-tecnico-mvp.md` | Estado consolidado y plan A/B/C |
