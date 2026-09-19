@@ -29,7 +29,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     </div>
     <header className={styles.companyHeader}>
       <div className={styles.headerIdentity}>
-        <div><div className={styles.companyMeta}><span className={styles.eyebrow}>Empresa · Grupo {company.group_id}</span><span>Datos a {dateLabel(company.as_of)}</span></div><h1>{company.company_id}</h1><p>{company.summary}</p></div>
+        <div><div className={styles.companyMeta}><span className={styles.eyebrow}>Empresa · {company.group_id === null ? "Sin grupo" : `Grupo ${company.group_id}`}</span><span>Datos a {dateLabel(company.as_of)}</span></div><h1>{company.company_id}</h1><p>{company.summary}</p></div>
         <span className={styles.periodBadge}>Análisis financiero</span>
       </div>
       <div className={styles.healthOverview}>
@@ -77,7 +77,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
         <p className={styles.disclaimer}>{isMock ? "Contribuciones ilustrativas. " : "Contribuciones seleccionadas. "}No tienen por qué sumar la variación completa del Health Score.</p>
       </section>
     </div>
-    <div id="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} onOpen={openEvidence} /></div>
+    <div id="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>
     <TimeBorrowedSection timing={company.time_borrowed} onOpen={openEvidence} />
     <section className={styles.panel} aria-label="Alertas priorizadas">
       <SectionHeading number="05" title="Alertas" description="Qué merece atención."><span className={styles.periodBadge}>{alerts.length} alertas</span></SectionHeading>
@@ -89,6 +89,6 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     </section>
     <WhatIfSection currentHealthScore={company.health_score} simulation={company.simulation} />
     <footer className={styles.pageFooter}><span>Embat Pulse · HackSpain 2026 / Embat X-Ray</span><span>{isMock ? "Datos de ejemplo. Sin procesamiento financiero en tiempo real." : "Datos precalculados. Sin procesamiento financiero en tiempo real."}</span></footer>
-    {evidence && <EvidenceDialog title={evidence.title} groups={company.evidence.filter((group) => evidence.refs.includes(group.id)).map((group) => evidence.records ? { ...group, rows: group.rows.filter((row) => evidence.records?.some((record) => record.evidence_id === group.id && record.transaction_id === row.id)) } : group)} accounts={company.cash_truth.account_flows?.accounts ?? []} isMock={isMock} onClose={() => setEvidence(null)} />}
+    {evidence && <EvidenceDialog groupId={company.group_id} title={evidence.title} groups={company.evidence.filter((group) => evidence.refs.includes(group.id)).map((group) => evidence.records ? { ...group, rows: group.rows.filter((row) => evidence.records?.some((record) => record.evidence_id === group.id && record.transaction_id === row.id)) } : group)} accounts={company.cash_truth.account_flows?.accounts ?? []} isMock={isMock} onClose={() => setEvidence(null)} />}
   </main>;
 }

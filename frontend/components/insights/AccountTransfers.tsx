@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import type { AccountFlows, AccountTransfer } from "@/types/companyDetail";
-import { cashCategoryLabels, dateLabel, exactMoney, money } from "@/lib/companyFormat";
+import { cashCategoryLabel, dateLabel, exactMoney, money } from "@/lib/companyFormat";
 import { transferEvidenceRecords, transferEvidenceRefs, transferKindLabels, transferMatchLabels } from "@/lib/accountPresentation";
 import { AccountIdentity } from "./AccountIdentity";
 import { Confidence, EvidenceButton, type OpenEvidence } from "./InsightPrimitives";
 import styles from "./insights.module.css";
 
-export function AccountTransfers({ data, companyId, onOpen }: { data?: AccountFlows | null; companyId: string; onOpen: OpenEvidence }) {
+export function AccountTransfers({ data, companyId, groupId, onOpen }: { data?: AccountFlows | null; companyId: string; groupId: string | null; onOpen: OpenEvidence }) {
   const [filter, setFilter] = useState<AccountTransfer["kind"] | "all">("all");
   const transfers = data?.transfers.filter((transfer) => filter === "all" || transfer.kind === filter) ?? [];
 
@@ -41,7 +41,7 @@ export function AccountTransfers({ data, companyId, onOpen }: { data?: AccountFl
         </dl>
         <p className={styles.transferExplanation}>{transfer.explanation}</p>
         <div className={styles.transferEvidence}>
-          <span className={`${styles.category} ${styles[transfer.category]}`}>{cashCategoryLabels[transfer.category]}</span>
+          <span className={`${styles.category} ${styles[transfer.category]}`}>{cashCategoryLabel(transfer.category, transfer.kind === "external_transfer" ? null : groupId)}</span>
           <span className={styles.matchStatus}>{transferMatchLabels[transfer.match_status]}</span>
           <Confidence value={transfer.confidence} />
           <EvidenceButton records={transferEvidenceRecords(transfer)} refs={transferEvidenceRefs(transfer)} title={`Transferencia: ${transferKindLabels[transfer.kind]}`} onOpen={onOpen} />

@@ -352,3 +352,53 @@ export const fixtureCompanies: Record<string, CompanyDetail> = {
     simulation: simulation(punctualAr, mainAp, 66, 60),
   },
 };
+
+function standaloneFixture(companyId: string, hasSupport: boolean): CompanyDetail {
+  const company = structuredClone(fixtureCompanies.COMP_0655);
+  company.company_id = companyId;
+  company.group_id = null;
+  company.assessment = hasSupport ? "Operación positiva con financiación externa" : "Operación positiva, sin apoyo identificado";
+  company.summary = hasSupport ? "La empresa no pertenece a un grupo. Parte de su liquidez procede de financiación externa identificada, separada de la actividad ordinaria." : "No se identifica financiación o apoyo en el periodo analizado. La operación aporta caja y quedan movimientos sin clasificar.";
+  company.cash_truth = {
+    ...company.cash_truth,
+    total_gross_movement: hasSupport ? 5865600 : 5550000,
+    apparent_net: hasSupport ? 4165600 : 3850000,
+    headline: hasSupport ? "Actividad operativa y financiación externa, por separado." : "Sin apoyo identificado en este periodo.",
+    explanation: hasSupport ? "La operación aporta 3,85 M€ netos y se identifican 315,6 mil € de financiación externa. No son ingresos de la actividad ordinaria. La empresa no pertenece a un grupo." : "La operación aporta 3,85 M€ netos. No se han identificado movimientos de financiación o apoyo; esto no demuestra autosuficiencia futura ni ausencia de deuda.",
+    evidence_summary: hasSupport ? ["2 aportes externos identificados", "Sin traslados entre cuentas propias detectados"] : ["Sin financiación o apoyo identificado", "Sin traslados entre cuentas propias detectados"],
+    components: [
+      { category: "operating", label: "Generado por la operación", gross_movement: 5450000, net_amount: 3850000, explanation: "Cobros operativos identificados menos pagos operativos.", confidence: 92, evidence_refs: ["cash-movements"] },
+      { category: "circulation", label: "Circulación de tesorería", gross_movement: 0, net_amount: 0, explanation: "No se han identificado traslados entre cuentas propias en los datos analizados.", confidence: 90, evidence_refs: [] },
+      { category: "support", label: "Financiación o apoyo externo", gross_movement: hasSupport ? 315600 : 0, net_amount: hasSupport ? 315600 : 0, explanation: hasSupport ? "Financiación externa identificada, no ingresos de actividad." : "No se han detectado movimientos de financiación o apoyo en este periodo.", confidence: 90, evidence_refs: hasSupport ? ["cash-movements"] : [] },
+      { category: "uncertain", label: "Origen no identificado", gross_movement: 100000, net_amount: null, explanation: "No identificable con suficiente confianza.", confidence: null, evidence_refs: [] },
+    ],
+    own_account_circulation: { transferred_amount: 0, transfer_count: 0, explanation: "No se han identificado traslados emparejados entre cuentas propias en el conjunto analizado de este periodo.", confidence: 90, evidence_refs: [] },
+    account_flows: null,
+    correction: null,
+    comparison: null,
+  };
+  company.drivers = company.drivers.filter((driver) => driver.id !== "support");
+  company.alerts = [
+    { id: "coverage", severity: "medium", title: "Quedan movimientos por identificar", explanation: "Hay 100 mil € de movimientos brutos cuya finalidad no puede determinarse con suficiente confianza.", period: cashPeriod, evidence_refs: ["cash-movements"] },
+    { id: "collections", severity: "low", title: "Revisar el retraso residual de cobro", explanation: "Se siguen observando 4 días de retraso en el conjunto de facturas analizado. No se infiere el motivo.", period: afterPeriod, evidence_refs: ["ar-timing"] },
+  ];
+  const transactions: TransactionEvidence[] = [
+    { kind: "transaction", id: "DEMO-S-TX-001", transaction_date: "2026-08-01", amount: 2500000, category: "operating", description: "Cobros de actividad identificados" },
+    { kind: "transaction", id: "DEMO-S-TX-002", transaction_date: "2026-08-03", amount: 1500000, category: "operating", description: "Cobros de clientes identificados" },
+    { kind: "transaction", id: "DEMO-S-TX-003", transaction_date: "2026-08-06", amount: -500000, category: "operating", description: "Pagos operativos identificados" },
+    { kind: "transaction", id: "DEMO-S-TX-004", transaction_date: "2026-08-12", amount: hasSupport ? 150600 : -300000, category: hasSupport ? "support" : "operating", description: hasSupport ? "Financiación externa identificada" : "Pagos a proveedores identificados" },
+    { kind: "transaction", id: "DEMO-S-TX-005", transaction_date: "2026-08-18", amount: 100000, category: "uncertain", description: "Finalidad sin clasificar" },
+  ];
+  company.evidence = [cashEvidence(company.cash_truth, transactions), ...timingEvidence(comparisonAr, comparisonAp)];
+  company.simulation = {
+    ...company.simulation,
+    inputs: company.simulation.inputs.map((input) => input.key === "internal_support" ? { ...input, label: "Financiación o apoyo externo", min: hasSupport ? -50 : 0, max: hasSupport ? 50 : 0, explanation: hasSupport ? "Cambio relativo de la financiación o apoyo externo identificado." : "Sin financiación o apoyo identificado que ajustar." } : input),
+    scenarios: [],
+    example_id: null,
+    methodology: "Todavía no se han suministrado escenarios precalculados para esta empresa independiente.",
+  };
+  return company;
+}
+
+fixtureCompanies.COMP_9001 = standaloneFixture("COMP_9001", true);
+fixtureCompanies.COMP_9002 = standaloneFixture("COMP_9002", false);

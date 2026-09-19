@@ -58,7 +58,7 @@ const ownAccountCirculationSchema = z.object({
   explanation: text,
   confidence: score.nullable(),
   evidence_refs: refs,
-}).strict();
+}).strict().refine((summary) => (summary.transferred_amount === 0) === (summary.transfer_count === 0), "Importe y recuento deben ser ambos cero o ambos positivos");
 const cashTruthSchema = z.object({
   period: text,
   total_gross_movement: amount.nonnegative(),
@@ -92,7 +92,7 @@ export const companyDetailSchema = z.object({
   schema_version: z.literal("2.0"),
   source: z.enum(["generated", "fixture"]),
   company_id: z.string().regex(/^COMP_\d{4,10}$/),
-  group_id: text,
+  group_id: text.nullable(),
   as_of: date,
   currency: z.literal("EUR"),
   health_score: score.int(),
@@ -131,7 +131,10 @@ export const companyDetailSchema = z.object({
     if (group.rows.length > group.total_count) issue("La muestra supera el conjunto declarado", ["evidence", index]);
     if (group.rows.some((row) => row.kind === "invoice" && (row.due_date < row.issue_date || (row.payment_date !== null && row.payment_date < row.issue_date)))) issue("Fechas de factura incoherentes", ["evidence", index]);
   });
+  const support = company.cash_truth.components.find((component) => component.category === "support");
+  if (support?.gross_movement === 0 && support.net_amount !== null && support.net_amount !== 0) issue("Sin movimientos brutos no puede existir apoyo neto", ["cash_truth", "components"]);
   const flows = company.cash_truth.account_flows;
+  if (company.cash_truth.own_account_circulation?.transfer_count === 0 && flows?.transfers.some((transfer) => transfer.kind === "own_transfer" && transfer.match_status === "matched")) issue("El agregado sin traslados contradice una transferencia propia emparejada", ["cash_truth", "own_account_circulation"]);
   if (flows) {
     const root = ["cash_truth", "account_flows"];
     unique(flows.accounts.map((account) => account.account_id), [...root, "accounts"]);
@@ -142,10 +145,10 @@ export const companyDetailSchema = z.object({
       if (account.ownership === "unknown") {
         if (account.owner_company_id !== null || account.owner_group_id !== null) issue("Titularidad no confirmada: no atribuir empresa ni grupo", location);
       } else {
-        if (!account.owner_company_id || !account.owner_group_id || !account.ownership_source) issue("La titularidad identificada necesita empresa, grupo y fuente", location);
+        if (!account.owner_company_id || !account.ownership_source) issue("La titularidad identificada necesita empresa y fuente; el grupo puede ser null", location);
         if (account.ownership === "company" && (account.owner_company_id !== company.company_id || account.owner_group_id !== company.group_id)) issue("La cuenta propia debe pertenecer a la empresa analizada", location);
-        if (account.ownership === "group_company" && (account.owner_company_id === company.company_id || account.owner_group_id !== company.group_id)) issue("Otra sociedad del grupo debe ser una empresa distinta del mismo grupo", location);
-        if (account.ownership === "external" && (account.owner_company_id === company.company_id || account.owner_group_id === company.group_id)) issue("Un tercero no puede ser la empresa ni otra sociedad del grupo", location);
+        if (account.ownership === "group_company" && (company.group_id === null || account.owner_company_id === company.company_id || account.owner_group_id !== company.group_id)) issue("Otra sociedad del grupo debe ser una empresa distinta del mismo grupo", location);
+        if (account.ownership === "external" && (account.owner_company_id === company.company_id || (company.group_id !== null && account.owner_group_id === company.group_id))) issue("Un tercero no puede ser la empresa ni otra sociedad del grupo", location);
       }
     });
     company.evidence.forEach((group, index) => {

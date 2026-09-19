@@ -9,9 +9,13 @@ export const trajectoryLabels: Record<Trajectory, string> = {
 export const cashCategoryLabels: Record<CashCategory, string> = {
   operating: "Generación operativa",
   circulation: "Circulación de tesorería",
-  support: "Apoyo intragrupo",
+  support: "Financiación o apoyo",
   uncertain: "No identificado",
 };
+
+export function cashCategoryLabel(category: CashCategory, groupId: string | null): string {
+  return category === "support" ? groupId === null ? "Financiación o apoyo externo" : "Apoyo intragrupo" : cashCategoryLabels[category];
+}
 
 export const severityLabels: Record<CompanyAlert["severity"], string> = {
   high: "Alta",

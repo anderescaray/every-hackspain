@@ -32,6 +32,7 @@ test("cero transferido es un dato válido, distinto de no disponer de datos", ()
   company.cash_truth.own_account_circulation.transferred_amount = 0;
   company.cash_truth.own_account_circulation.transfer_count = 0;
   company.cash_truth.own_account_circulation.evidence_refs = [];
+  company.cash_truth.account_flows = null;
   assert.equal(companyDetailSchema.parse(company).cash_truth.own_account_circulation?.transferred_amount, 0);
 });
 
@@ -39,6 +40,12 @@ test("el agregado de cuentas propias rechaza importes, recuentos y referencias i
   for (const mutate of [
     (company: ReturnType<typeof example>) => { company.cash_truth.own_account_circulation!.transferred_amount = -1; },
     (company: ReturnType<typeof example>) => { company.cash_truth.own_account_circulation!.transfer_count = 1.5; },
+    (company: ReturnType<typeof example>) => { company.cash_truth.own_account_circulation!.transfer_count = 0; },
+    (company: ReturnType<typeof example>) => { company.cash_truth.own_account_circulation!.transferred_amount = 0; },
+    (company: ReturnType<typeof example>) => {
+      company.cash_truth.own_account_circulation!.transferred_amount = 0;
+      company.cash_truth.own_account_circulation!.transfer_count = 0;
+    },
     (company: ReturnType<typeof example>) => { company.cash_truth.own_account_circulation!.evidence_refs = ["inexistente"]; },
   ]) {
     const company = example();

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { CashAccount, EvidenceGroup, ObservationEvidence } from "@/types/companyDetail";
-import { cashCategoryLabels, dateLabel, exactMoney, numberLabel } from "@/lib/companyFormat";
+import { cashCategoryLabel, dateLabel, exactMoney, numberLabel } from "@/lib/companyFormat";
 import { Confidence } from "./InsightPrimitives";
 import { AccountIdentity } from "./AccountIdentity";
 import styles from "./insights.module.css";
@@ -11,7 +11,7 @@ function observationValue(value: number, unit: ObservationEvidence["unit"]) {
   return unit === "EUR" ? exactMoney(value) : `${numberLabel(value)} ${unit === "days" ? "días" : "%"}`;
 }
 
-export function EvidenceDialog({ title, groups, accounts = [], isMock, onClose }: { title: string; groups: EvidenceGroup[]; accounts?: CashAccount[]; isMock: boolean; onClose: () => void }) {
+export function EvidenceDialog({ title, groups, accounts = [], groupId, isMock, onClose }: { title: string; groups: EvidenceGroup[]; accounts?: CashAccount[]; groupId: string | null; isMock: boolean; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export function EvidenceDialog({ title, groups, accounts = [], isMock, onClose }
               <div className={styles.inlineHeading}><h3>{group.title}</h3><Confidence value={group.confidence} /></div>
               <p className={styles.smallText}>{group.period} · {group.rows.length} registros representativos de {group.total_count} en el conjunto{isMock ? " de ejemplo" : ""}</p>
               <p>{group.explanation}</p>
-              {transactions.length > 0 && <div className={styles.tableScroll} tabIndex={0} role="region" aria-label={`${group.title}: movimientos`}><table><caption>Movimientos representativos · EUR</caption><thead><tr><th scope="col">Movimiento / fecha</th><th scope="col">Cuenta y titular</th><th scope="col">Categoría</th><th scope="col">Descripción</th><th scope="col" className={styles.numeric}>Importe</th></tr></thead><tbody>{transactions.map((row) => <tr key={row.id}><td><span className={styles.mono}>{row.id}</span><small>{dateLabel(row.transaction_date)}</small></td><td><AccountIdentity account={accounts.find((account) => account.account_id === row.account_id)} accountId={row.account_id} /></td><td><span className={`${styles.category} ${styles[row.category]}`}>{cashCategoryLabels[row.category]}</span></td><td>{row.description}</td><td className={styles.numeric}>{exactMoney(row.amount)}</td></tr>)}</tbody></table></div>}
+              {transactions.length > 0 && <div className={styles.tableScroll} tabIndex={0} role="region" aria-label={`${group.title}: movimientos`}><table><caption>Movimientos representativos · EUR</caption><thead><tr><th scope="col">Movimiento / fecha</th><th scope="col">Cuenta y titular</th><th scope="col">Categoría</th><th scope="col">Descripción</th><th scope="col" className={styles.numeric}>Importe</th></tr></thead><tbody>{transactions.map((row) => <tr key={row.id}><td><span className={styles.mono}>{row.id}</span><small>{dateLabel(row.transaction_date)}</small></td><td><AccountIdentity account={accounts.find((account) => account.account_id === row.account_id)} accountId={row.account_id} /></td><td><span className={`${styles.category} ${styles[row.category]}`}>{cashCategoryLabel(row.category, groupId)}</span></td><td>{row.description}</td><td className={styles.numeric}>{exactMoney(row.amount)}</td></tr>)}</tbody></table></div>}
               {invoices.length > 0 && <div className={styles.tableScroll} tabIndex={0} role="region" aria-label={`${group.title}: facturas`}><table><caption>Facturas representativas · EUR</caption><thead><tr><th scope="col">Factura</th><th scope="col">Emisión</th><th scope="col">Vencimiento</th><th scope="col">Fecha de pago</th><th scope="col" className={styles.numeric}>Importe</th></tr></thead><tbody>{invoices.map((row) => <tr key={row.id}><td className={styles.mono}>{row.invoice}<small>{row.side === "ar" ? "Cliente" : "Proveedor"} · {row.counterparty_id}</small></td><td>{dateLabel(row.issue_date)}</td><td>{dateLabel(row.due_date)}</td><td>{row.payment_date ? dateLabel(row.payment_date) : "No observado"}</td><td className={styles.numeric}>{exactMoney(row.amount)}</td></tr>)}</tbody></table></div>}
               {observations.length > 0 && <div className={styles.tableScroll} tabIndex={0} role="region" aria-label={`${group.title}: indicadores`}><table><caption>Indicadores agregados{isMock ? " de ejemplo" : ""} · {group.period}</caption><thead><tr><th scope="col">Indicador</th><th scope="col" className={styles.numeric}>Antes</th><th scope="col" className={styles.numeric}>Ahora</th></tr></thead><tbody>{observations.map((row) => <tr key={row.id}><th scope="row">{row.metric}</th><td className={styles.numeric}>{observationValue(row.before, row.unit)}</td><td className={styles.numeric}>{observationValue(row.after, row.unit)}</td></tr>)}</tbody></table></div>}
               {!group.rows.length && <p className={styles.emptyState}>No hay registros representativos disponibles para esta explicación.</p>}

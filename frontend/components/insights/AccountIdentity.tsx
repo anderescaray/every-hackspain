@@ -9,6 +9,6 @@ export function AccountIdentity({ account, accountId }: { account?: CashAccount;
     {(account?.account_id || accountId) && <span className={styles.mono}>{account?.account_id ?? accountId}</span>}
     <span>{account?.bank_name ?? "Banco no identificado"}{account ? ` · ${account.currency}` : ""}</span>
     <span>Titular: <b>{account?.owner_company_id ?? "No identificado"}</b></span>
-    {account?.owner_group_id && <small>Grupo: {account.owner_group_id}</small>}
+    {account?.owner_company_id && <small>{account.owner_group_id ? `Grupo: ${account.owner_group_id}` : "Sin grupo"}</small>}
   </div>;
 }
