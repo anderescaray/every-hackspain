@@ -7,7 +7,7 @@ export const defaultScenarioInputs: ScenarioInputs = {
   internal_support: 0,
 };
 
-export function selectScenario(currentHealthScore: number | null, simulation: Simulation, requested: ScenarioInputs) {
+export function selectScenario(currentHealthScore: number, simulation: Simulation, requested: ScenarioInputs) {
   const inputs = { ...defaultScenarioInputs };
   for (const input of simulation.inputs) {
     const value = Number.isFinite(requested[input.key]) ? requested[input.key] : 0;

@@ -35,9 +35,9 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
       <div className={styles.healthOverview}>
         <section className={styles.healthHero} aria-label="Estado financiero global">
           <h2>Health Score</h2>
-          <div className={styles.healthValue}><strong data-testid="health-score">{company.health_score === null ? "—" : numberLabel(company.health_score, 2)}</strong>{company.health_score !== null && <span>/ 100</span>}</div>
-          <p className={styles.assessment}>{company.health_score === null ? "Salud no plenamente identificada. " : ""}{company.assessment}</p>
-          <span className={`${styles.trajectoryBadge} ${company.trajectory ? styles[company.trajectory] : styles.muted}`}>{company.trajectory ? trajectoryLabels[company.trajectory] : "Trayectoria no evaluable"} <span aria-hidden="true">{company.trajectory ? trajectorySymbol : ""}</span></span>
+          <div className={styles.healthValue}><strong data-testid="health-score">{company.health_score}</strong><span>/ 100</span></div>
+          <p className={styles.assessment}>{company.assessment}</p>
+          <span className={`${styles.trajectoryBadge} ${styles[company.trajectory]}`}>{trajectoryLabels[company.trajectory]} <span aria-hidden="true">{trajectorySymbol}</span></span>
           <div className={styles.analysisConfidence}>
             <span>Confianza del análisis: <strong>{confidenceLabel(company.confidence)}</strong></span>
             <Confidence value={company.confidence} />
@@ -50,16 +50,14 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
           <p>Cuatro dimensiones, una única visión de la empresa.</p>
           <dl className={styles.dimensionList}>
             {HEALTH_DIMENSIONS.map((dimension) => <div key={dimension.key}>
-              <dt><span>{dimension.label}</span><small>{dimension.explanation}</small>{company.dimensions[dimension.key] !== null && <span className={styles.dimensionTrack} aria-hidden="true"><i style={{ width: `${company.dimensions[dimension.key]}%` }} /></span>}</dt>
-              <dd><strong>{company.dimensions[dimension.key] === null ? "No evaluable" : numberLabel(company.dimensions[dimension.key]!, 2)}</strong><span>{numberLabel(company.health_score_model.weights[dimension.key] * 100)} % del total</span></dd>
+              <dt><span>{dimension.label}</span><small>{dimension.explanation}</small><span className={styles.dimensionTrack} aria-hidden="true"><i style={{ width: `${company.dimensions[dimension.key]}%` }} /></span></dt>
+              <dd><strong>{company.dimensions[dimension.key]}</strong><span>{numberLabel(company.health_score_model.weights[dimension.key] * 100)} % del total</span></dd>
             </div>)}
           </dl>
           <details className={styles.methodology}>
-            <summary>Cómo se calcula · {company.health_score_model.provisional ? "evidencia parcial" : "PulseFourPillars"}</summary>
-            <p>{HEALTH_DIMENSIONS.map(({ key, label }) => `${numberLabel(company.health_score_model.weights[key] * 100)} % ${label}`).join(" + ")}. Valores suministrados por el motor, sin recalcular ni completar componentes ausentes.</p>
-            <p>Pesos iniciales no calibrados científicamente. Diagnóstico de tesorería y alerta temprana, no probabilidad de impago. Momentum describe la trayectoria observada, no un pronóstico; deuda mide presión del servicio observado, no solvencia ni deuda contractual total.</p>
-            {company.health_score === null && <p>Límites de identificación: {numberLabel(company.pulse.health_min, 2)}–{numberLabel(company.pulse.health_max, 2)}. No son intervalos de confianza. Componentes ausentes: {company.pulse.missing_components.join(", ")}.</p>}
-            <p>Método: {company.score_version} · Clasificación: {company.classification_version} · Run: {company.run_id}</p>
+            <summary>Cómo se calcula · {company.health_score_model.provisional ? "pesos provisionales" : "modelo suministrado"}</summary>
+            <p>{HEALTH_DIMENSIONS.map(({ key, label }) => `${numberLabel(company.health_score_model.weights[key] * 100)} % ${label}`).join(" + ")}. Resultado redondeado a un entero entre 0 y 100.</p>
+            <p>{company.health_score_model.provisional ? "Pesos provisionales, pendientes de ajuste por el equipo de datos. El Health Score y las dimensiones se reciben ya calculados." : "Puntuación y pesos suministrados por el equipo de datos."} Un valor mayor representa una mejor situación en cada dimensión, no más crecimiento ni más deuda.</p>
           </details>
         </section>
       </div>

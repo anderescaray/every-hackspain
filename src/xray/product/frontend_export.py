@@ -1,357 +1,436 @@
-"""Pulse-only presentation export: immutable source → one atomic web snapshot.
+"""Exporta los artefactos de `xray.product` al contrato del frontend (docs/frontend-data-contract.md).
 
-No score is calculated, rounded, substituted or fitted here. Legacy V2 export
-is available only in ``legacy_frontend_export`` for explicit research use.
+Empresa: `schema_version 2.0` -> frontend/public/generated/companies/<company_id>.json
+Grupo:   `schema_version 1.0` -> frontend/public/generated/groups/<group_id>.json
+Cartera: `schema_version 1.0` -> frontend/public/generated/portfolio.json (frontend/types/portfolio.ts)
+
+Solo traduce y redondea: no recalcula scores. Donde el contrato exige un número y V2 no tiene
+dato, se exporta un valor neutro documentado y `health_score_model.provisional = true`
+(decisión FE-01 en decisiones.md). Lo que no existe todavía (Time Borrowed, alertas,
+escenarios) se exporta como `null` / `[]`, que el contrato admite y la UI muestra como ausente.
 """
-from __future__ import annotations
-
-import fcntl
-import hashlib
 import json
 import math
 import os
-import re
 import tempfile
-from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
-from uuid import uuid4
 
+import numpy as np
 import pandas as pd
 
-from xray.artifacts import check_output_path, recursive_hashes, sha256, verify_run
-from xray.paths import ROOT
-from xray.pulse.contracts import PILLARS
+from xray.paths import PROCESSED_DIR, ROOT
 
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
-METHOD = "PulseFourPillars-v1.0"
-EXPORTER_VERSION = "pulse-frontend-v1"
-ALIASES = {"momentum": "momentum", "cash_generation": "generation",
-           "resilience": "resilience", "debt": "debt_obligations"}
-VERSIONS = ("score_version", "classification_version", "cleaning_version", "facts_version", "config_version")
+MODEL_VERSION = "financial_smoothed_v2+frontend-export-1"
+# Pesos efectivos de V2 traducidos a las cuatro dimensiones del contrato (suman 1):
+# score = level + 0.2·(momentum−50); level = 0.45 operación + 0.25 deuda + 0.15 cobros + 0.15 pagos.
+WEIGHTS = {"momentum": 0.20, "cash_generation": 0.36, "resilience": 0.24, "debt": 0.20}
+COMPONENT_DIMENSION = {"operations": "cash_generation", "debt": "debt", "collections": "resilience",
+                       "payments": "resilience", "momentum": "momentum"}
+TRAJECTORY = {"improving": "improving", "emerging_improvement": "improving",
+              "deteriorating": "deteriorating", "emerging_deterioration": "deteriorating"}
+BUCKET_CATEGORY = {"operations": "operating", "own_circulation": "circulation", "group_support": "support",
+                   "uncertain": "uncertain", "unpaired_transfer": "uncertain", "financing_investment": "uncertain"}
+CATEGORY_LABEL = {"operating": "Generado por la operación", "circulation": "Circulación de tesorería",
+                  "support": "Apoyo interno / intragrupo", "uncertain": "Origen no identificado"}
+MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+EVIDENCE_ROWS = 10
+CASH_EVIDENCE_ID = "cash-movements"
 
 
-def _json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+def _month_label(ts):
+    ts = pd.Timestamp(ts)
+    return f"{MONTHS_ES[ts.month - 1]} {ts.year}"
 
 
-def _load(path: Path) -> dict[str, Any]:
-    def invalid(value: str) -> None:
-        raise ValueError(f"Nonfinite JSON number: {value}")
-    value = json.loads(path.read_text(encoding="utf-8"), parse_constant=invalid)
-    if not isinstance(value, dict):
-        raise ValueError(f"Expected JSON object: {path}")
-    return value
+def _period(months):
+    months = [pd.Timestamp(m) for m in months]
+    return f"{_month_label(min(months))} – {_month_label(max(months))}" if months else "sin periodo"
 
 
-def _write(path: Path, value: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_json(value) + "\n", encoding="utf-8")
+def _num(value, default=None):
+    if value is None:
+        return default
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if not math.isfinite(value) else value
 
 
-def _identifier(value: str, kind: str) -> str:
-    if not re.fullmatch(rf"{kind}_\d{{4,10}}", value):
-        raise ValueError(f"Invalid {kind} identifier: {value!r}")
-    return value
+def _score(value):
+    value = _num(value)
+    return None if value is None else int(round(min(100.0, max(0.0, value))))
 
 
-@dataclass(frozen=True)
-class WebEnvelope:
-    run_id: str
-    snapshot_id: str
-    score_version: str
-    classification_version: str
-    cleaning_version: str
-    facts_version: str
-    config_version: str
-    as_of: str
-    currency: str
-
-    def to_dict(self) -> dict[str, str]:
-        return asdict(self)
+def _round(value, digits=2):
+    value = _num(value)
+    return None if value is None else round(value, digits)
 
 
-def _validate_score(score: dict[str, Any], cash: dict[str, Any], envelope: WebEnvelope) -> None:
-    """Integrity assertions only; never manufacture or replace engine values."""
-    if score.get("score_version") != METHOD or score.get("schema_version") != "1.0":
-        raise ValueError("Only the PulseFourPillars-v1.0 score contract is supported; no legacy fallback")
-    for key, expected in envelope.to_dict().items():
-        if key != "snapshot_id" and score.get(key) != expected:
-            raise ValueError(f"Mixed score provenance: {key}")
-    for key in ("company_id", "currency", "as_of", "classification_version", "facts_version"):
-        if cash.get(key) != score.get(key):
-            raise ValueError(f"Cash Truth and score disagree: {key}")
-    if cash.get("schema_version") != "1.0":
-        raise ValueError("Unsupported canonical Cash Truth schema")
-    if set(score.get("pillars", {})) != set(PILLARS):
-        raise ValueError("Pulse requires exactly four pillar results")
-    missing = []
-    contributions = []
-    for name in PILLARS:
-        pillar = score["pillars"][name]
-        value, weight, contribution = pillar["score"], pillar["weight"], pillar["health_contribution"]
-        if not isinstance(weight, (int, float)) or not math.isfinite(weight) or not 0 <= weight <= 1:
-            raise ValueError("Invalid source weight")
-        if score["contributions"].get(name) != contribution:
-            raise ValueError("Source contribution breakdown disagrees")
-        if value is None:
-            missing.append(name)
-            if contribution is not None:
-                raise ValueError("Missing pillar must have a null contribution")
-        else:
-            if not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 100:
-                raise ValueError("Invalid source score")
-            if contribution is None or not math.isclose(value * weight, contribution, rel_tol=0, abs_tol=1e-10):
-                raise ValueError("Source weighted contribution does not reconcile")
-            contributions.append(contribution)
-    if set(missing) != set(score["missing_components"]):
-        raise ValueError("Missing component metadata disagrees")
-    health = score["health"]
-    if missing:
-        if health is not None or score["status"] != "partial":
-            raise ValueError("Incomplete Pulse evidence cannot supply Health")
-    elif health is None or score["status"] != "complete" or not math.isclose(
-        math.fsum(contributions), health, rel_tol=0, abs_tol=1e-10
-    ):
-        raise ValueError("Complete source Health does not reconcile")
-    # Check every nested value, including features and robustness, is finite JSON.
-    _json(score)
-    _json(cash)
+def _text(value, fallback):
+    value = "" if value is None else str(value).strip()
+    return (value or fallback)[:5000]
 
 
-def _status(score: dict[str, Any]) -> str:
-    if all(score["pillars"][name]["score"] is None for name in PILLARS):
-        return "insufficient_evidence"
-    return score["status"]
+def assessment_text(trajectory, status, reason, dependency):
+    parts = {"improving": "Trayectoria de mejora", "deteriorating": "Señales de deterioro", "stable": "Situación estable"}[trajectory]
+    if status == "provisional":
+        parts += " · evidencia parcial"
+    if dependency is not None and dependency >= 0.3:
+        parts += " · dependencia de apoyo"
+    return parts
 
 
-def _dimensions(score: dict[str, Any]) -> dict[str, float | None]:
-    return {alias: score["pillars"][name]["score"] for alias, name in ALIASES.items()}
+def summary_text(row, trajectory, dependency, reason):
+    score = _score(row.get("score"))
+    base = {"improving": "Las señales agregadas de los últimos trimestres mejoran frente a la propia historia de la empresa.",
+            "deteriorating": "Las señales agregadas de los últimos trimestres empeoran frente a la propia historia de la empresa.",
+            "stable": "No hay una dirección confirmada frente a la propia historia de la empresa."}[trajectory]
+    text = f"Health Score {score}: nivel de flujos operativos de seis meses con ajuste de tendencia. {base}"
+    if dependency is not None and dependency >= 0.3:
+        text += f" El apoyo intragrupo recibido supone el {dependency:.0%} de las entradas identificadas en seis meses."
+    reasons = {"optional_components_missing": "Faltan componentes opcionales (facturas) en la evaluación.",
+               "trend_unavailable": "La tendencia todavía no es calculable con el histórico disponible.",
+               "thin_current_month": "El mes actual tiene pocos movimientos utilizables.",
+               "short_history": "El histórico es inferior a seis meses.",
+               "partial_currency": "Parte de la actividad está en otras monedas y no se consolida.",
+               "coverage_account_change": "El conjunto de cuentas activas cambió este mes; la comparación con el anterior es parcial.",
+               "coverage_onboarding": "Primeros meses de actividad observada."}
+    if reason in reasons:
+        text += " " + reasons[reason]
+    return text
 
 
-def _cash_view(cash: dict[str, Any]) -> dict[str, Any]:
-    """Display grouping of canonical classes, not an economic reclassification."""
-    classes = {row["economic_class"]: row for row in cash["classes"]}
-    summary, evidence = cash["summary"], cash["evidence"]
-    period = f"{evidence['window_start']} – {evidence['window_end']}"
-    groups = {
-        "operating": ("operating",), "circulation": ("own_account_circulation",),
-        "support": ("group_or_internal",),
-        "uncertain": ("external_financing", "debt_service", "investment", "uncertain"),
-    }
-    labels = {"operating": "Generación operativa identificada", "circulation": "Circulación propia observada",
-              "support": "Flujos candidatos intragrupo", "uncertain": "Otros flujos no operativos y no identificados"}
-    explanations = {
-        "operating": "Neto operativo del Cash Truth canónico; excluye financiación, servicio de deuda y circulación propia.",
-        "circulation": "Clasificación canónica de circulación propia. Sin evidencia explícita de ambos tramos no se afirma emparejamiento ni neto cero.",
-        "support": "Flujos candidatos internos o de grupo; no acreditan por sí solos apoyo financiero ni libre disponibilidad de caja.",
-        "uncertain": "Agrupa para esta vista financiación externa, servicio de deuda, inversión y movimientos inciertos. Las clases y sus importes se conservan por separado en canonical_cash_truth; no todos son desconocidos.",
-    }
-    components: list[dict[str, Any]] = []
-    for category, names in groups.items():
-        gross = math.fsum(classes[name]["amount_abs"] for name in names if name in classes)
-        net = summary["net_operating_cash"] if category == "operating" else None
-        if category in ("support", "circulation") and gross == 0:
-            net = 0.0
-        components.append({"category": category, "label": labels[category], "gross_movement": gross,
-                           "net_amount": net, "explanation": explanations[category], "confidence": None, "evidence_refs": []})
-    return {"period": period, "total_gross_movement": math.fsum(c["gross_movement"] for c in components),
-            "apparent_net": summary["eligible_net_cash"], "own_account_circulation": None,
-            "account_flows": None, "components": components,
-            "headline": "Flujos observados según el Cash Truth canónico.",
-            "explanation": "Caja operativa, circulación y otros flujos separados; no es saldo bancario, solvencia ni prueba de apoyo confirmado.",
-            "confidence": None, "evidence_refs": [],
-            "evidence_summary": [f"{cash['coverage']['transaction_count']} movimientos observados; detalle por transaction_id en el ledger del run."],
-            "correction": None, "comparison": None}
+def _dimensions(last):
+    health = _score(last.get("score"))
+    coll, pay = _num(last.get("level_collections")), _num(last.get("level_payments"))
+    resilience = None if coll is None and pay is None else float(np.nanmean([v for v in (coll, pay) if v is not None]))
+    raw = {"momentum": _num(last.get("momentum")), "cash_generation": _num(last.get("level_operations")),
+           "resilience": resilience, "debt": _num(last.get("level_debt"))}
+    provisional = any(v is None for v in raw.values()) or last.get("score_status") != "scored"
+    return {k: (_score(v) if v is not None else health) for k, v in raw.items()}, provisional
 
 
-def company_detail(score: dict[str, Any], cash: dict[str, Any], group_id: str | None,
-                   envelope: WebEnvelope) -> dict[str, Any]:
-    _validate_score(score, cash, envelope)
-    status = _status(score)
-    missing = ", ".join(score["missing_components"])
-    assessment = "Health disponible" if status == "complete" else "Health no evaluable · evidencia parcial"
-    if status == "insufficient_evidence":
-        assessment = "Evidencia insuficiente para evaluar los pilares"
-    reason = f"Componentes no evaluables: {missing}." if missing else "Los cuatro pilares están identificados."
-    direction = score["direction"] if score["direction"] in {"improving", "deteriorating", "stable"} else None
-    period = f"Seis meses completos hasta {score['as_of']}"
-    return {"schema_version": "3.0", "source": "generated", **envelope.to_dict(),
-            "company_id": _identifier(score["company_id"], "COMP"), "group_id": group_id,
-            "status": status, "health_score": score["health"], "dimensions": _dimensions(score),
-            "health_score_model": {"version": score["score_version"], "provisional": status != "complete",
-                                   "weights": {alias: score["pillars"][name]["weight"] for alias, name in ALIASES.items()}},
-            "assessment": assessment, "confidence": None, "trajectory": direction,
-            "summary": f"{reason} Diagnóstico de caja y alerta temprana, no probabilidad de impago. Momentum es nowcast, no forecast.",
-            "history": [{"month": score["as_of"], "health_score": score["health"]}],
-            "drivers_period": period, "drivers": [], "cash_truth": _cash_view(cash),
-            "time_borrowed": {"ar": None, "ap": None}, "alerts": [], "evidence": [],
-            "simulation": {"inputs": [], "scenarios": [], "example_id": None,
-                           "methodology": "No hay escenarios publicados para este run Pulse. No se simulan puntuaciones en la interfaz."},
-            "pulse": score, "canonical_cash_truth": cash}
-
-
-def portfolio_export(details: dict[str, dict[str, Any]], envelope: WebEnvelope) -> dict[str, Any]:
-    items = []
-    for cid, detail in sorted(details.items()):
-        score = detail["pulse"]
-        change = score.get("change", {})
-        missing = score["missing_components"]
-        items.append({"company_id": cid, "group_id": detail["group_id"], "run_id": envelope.run_id,
-                      "health_score": score["health"], "dimensions": detail["dimensions"],
-                      "delta_vs_prev": change.get("delta") if change.get("comparable_to_previous") else None,
-                      "trajectory": detail["trajectory"], "trajectory_stage": None, "confidence": None,
-                      "score_status": detail["status"], "status_reason": ", ".join(missing) if missing else None,
-                      "missing_components": missing, "robustness": score.get("robustness", {}).get("level", "indeterminate"),
-                      "main_signal": detail["assessment"], "main_signal_impact": None,
-                      "support_dependency_ratio": None, "attention": "unknown", "has_detail": True})
-    return {"schema_version": "2.0", "source": "generated", **envelope.to_dict(),
-            "period": f"Seis meses completos hasta {envelope.as_of}",
-            "summary": f"{len(items)} empresas observadas en {envelope.currency}; incluye evidencia parcial. Fuente única: {METHOD}.",
-            "items": items}
-
-
-def group_detail(group_id: str, details: list[dict[str, Any]], envelope: WebEnvelope) -> dict[str, Any]:
-    def metric(label: str) -> dict[str, Any]:
-        return {"value": None, "covered_company_ids": [], "explanation": f"{label}: no existe una posición consolidada identificada en este run.", "evidence_refs": []}
-    members = []
-    for detail in sorted(details, key=lambda value: value["company_id"]):
-        members.append({"company_id": detail["company_id"], "health_score": detail["health_score"],
-                        "dimensions": detail["dimensions"], "score_status": detail["status"],
-                        "missing_components": detail["pulse"]["missing_components"], "trajectory": detail["trajectory"],
-                        "role": "unknown", "available_liquidity": None, "identified_debt": None, "obligations_due": None,
-                        "cash_generation_net": detail["canonical_cash_truth"]["summary"]["net_operating_cash"],
-                        "internal_received": None, "internal_provided": None, "confidence": None, "attention": "unknown",
-                        "summary": detail["assessment"], "outlook": {"status": "insufficient", "horizon": "No disponible",
-                        "summary": "Este run contiene diagnóstico observado, no pronóstico de necesidades futuras.",
-                        "funding_need": None, "confidence": None, "evidence_refs": []}, "evidence_refs": []})
-    return {"schema_version": "2.0", "source": "generated", **envelope.to_dict(),
-            "group_id": _identifier(group_id, "GROUP"), "health_score": None, "status": "insufficient_evidence",
-            "period": f"Seis meses completos hasta {envelope.as_of}",
-            "summary": f"{len(members)} sociedades observadas. No se calcula ni promedia un Health Score de grupo.",
-            "coverage": {"known_company_count": None, "confidence": None, "explanation": "Perímetro observado en la moneda de esta vista, no perímetro jurídico completo."},
-            "available_liquidity": metric("Liquidez disponible"), "identified_debt": metric("Deuda contractual"),
-            "obligations": {**metric("Obligaciones futuras"), "horizon": "No evaluable"},
-            "limitations": ["Sin Health Score de grupo; no se promedian empresas.", "No se presume caja fungible ni apoyo confirmado.",
-                            "Sólo sociedades con un panel en la moneda explícita de esta vista."],
-            "members": members, "insights": [], "alerts": [], "concentration": [], "recent_changes": [],
-            "relations": [], "recommendations": [], "evidence": []}
-
-
-def _safe_destination(root: Path) -> None:
-    for path in (root, *root.parents, root / "snapshots", root / "current.json", root / ".publish.lock"):
-        if path.is_symlink():
-            raise ValueError(f"Symbolic publication path: {path}")
-
-
-def _verify_snapshot(path: Path) -> dict[str, Any]:
-    if path.is_symlink() or path.parent.is_symlink():
-        raise ValueError("Symbolic snapshot path")
-    manifest = _load(path / "manifest.json")
-    if recursive_hashes(path, exclude=("manifest.json",)) != manifest["outputs_sha256"]:
-        raise ValueError("Web snapshot integrity failure")
-    return manifest
-
-
-def _publish(staged: Path, root: Path, manifest: dict[str, Any]) -> Path:
-    _safe_destination(root)
-    snapshots = root / "snapshots"
-    snapshots.mkdir(parents=True, exist_ok=True)
-    snapshot_id = manifest["snapshot_id"]
-    if not re.fullmatch(r"web-[a-f0-9]{64}", snapshot_id):
-        raise ValueError("Invalid snapshot identity")
-    target = snapshots / snapshot_id
-    descriptor = os.open(root / ".publish.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, "a") as lock:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        pointer_tmp = root / f".current-{uuid4().hex}.tmp"
-        try:
-            _safe_destination(root)
-            _verify_snapshot(staged)
-            if target.exists() or target.is_symlink():
-                _verify_snapshot(target)
-                if recursive_hashes(target) != recursive_hashes(staged):
-                    raise ValueError("Immutable web snapshot conflict")
-            else:
-                os.rename(staged, target)
-            keys = ("run_id", "snapshot_id", *VERSIONS, "as_of", "currency")
-            pointer = {"schema_version": "1.0", **{key: manifest[key] for key in keys},
-                       "manifest_sha256": sha256(target / "manifest.json")}
-            with pointer_tmp.open("x", encoding="utf-8") as stream:
-                stream.write(_json(pointer) + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(pointer_tmp, root / "current.json")
-        finally:
-            pointer_tmp.unlink(missing_ok=True)
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-    return target
-
-
-def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "EUR",
-        verbose: bool = True) -> dict[str, Any]:
-    if currency != "EUR":
-        raise ValueError("This web contract is an EUR view; since D32 the ledger converts every currency to EUR at a fixed rate")
-    run_dir, out_dir = Path(run_dir).absolute(), Path(out_dir).absolute()
-    check_output_path(out_dir, run_dir)
-    _safe_destination(out_dir)
-    source = verify_run(run_dir)
-    source_hash = sha256(run_dir / "manifest.json")
-    if source.get("versions", {}).get("score_version") != METHOD:
-        raise ValueError("A verified PulseFourPillars-v1.0 run is required; legacy export is research-only")
-    version_fields = {key: source["versions"][key] for key in VERSIONS}
-    identity = {"source_manifest_sha256": source_hash, "exporter_sha256": sha256(Path(__file__)),
-                "export_dependencies_sha256": {"artifacts.py": sha256(Path(__file__).parents[1] / "artifacts.py"),
-                                               "pulse/contracts.py": sha256(Path(__file__).parents[1] / "pulse" / "contracts.py")},
-                "exporter_version": EXPORTER_VERSION, "currency": currency, "schemas": ["3.0", "2.0", "2.0"]}
-    snapshot_id = "web-" + hashlib.sha256(_json(identity).encode()).hexdigest()
-    envelope = WebEnvelope(run_id=source["run_id"], snapshot_id=snapshot_id,
-                           as_of=source["as_of"], currency=currency, **version_fields)
-    catalog = pd.read_parquet(run_dir / "cleaned" / "companies.parquet", columns=["company_id", "group_id"])
-    if catalog.company_id.duplicated().any():
-        raise ValueError("Company catalog must be unique")
-    groups_by_company = {row.company_id: None if pd.isna(row.group_id) else _identifier(str(row.group_id), "GROUP")
-                         for row in catalog.itertuples(index=False)}
-    details: dict[str, dict[str, Any]] = {}
-    excluded = []
-    for path in sorted((run_dir / "companies").glob("*/*/score.json")):
-        cid, panel_currency = path.parent.parent.name, path.parent.name
-        _identifier(cid, "COMP")
-        if cid not in source["companies"] or cid not in groups_by_company:
-            raise ValueError("Source score is outside the declared company perimeter")
-        if panel_currency != currency:
-            excluded.append({"company_id": cid, "currency": panel_currency})
+def _drivers(why_changed):
+    terms = (why_changed or {}).get("terms") or []
+    drivers = []
+    for term in sorted(terms, key=lambda t: t.get("rank", 99))[:20]:
+        impact = _round(term.get("delta_contribution"), 1)
+        if impact is None:
             continue
-        score, cash = _load(path), _load(path.with_name("cash_truth.json"))
-        if score.get("company_id") != cid:
-            raise ValueError("Company identity disagrees with its source path")
-        details[cid] = company_detail(score, cash, groups_by_company[cid], envelope)
-    if not details:
-        raise ValueError("No company panels in the requested currency; current web snapshot was not replaced")
-    group_details: dict[str, list[dict[str, Any]]] = {}
-    for detail in details.values():
-        if detail["group_id"] is not None:
-            group_details.setdefault(detail["group_id"], []).append(detail)
-    counts = {"companies": len(details), "groups": len(group_details),
-              "statuses": {status: sum(d["status"] == status for d in details.values())
-                           for status in ("complete", "partial", "insufficient_evidence")},
-              "excluded_currency_panels": len(excluded)}
-    out_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=".pulse-web-", dir=out_dir) as directory:
-        staged = Path(directory)
-        _write(staged / "portfolio.json", portfolio_export(details, envelope))
-        for cid, detail in details.items():
-            _write(staged / "companies" / f"{cid}.json", detail)
-        for gid, members in group_details.items():
-            _write(staged / "groups" / f"{gid}.json", group_detail(gid, members, envelope))
-        manifest = {"schema_version": "1.0", **envelope.to_dict(), **identity, "counts": counts,
-                    "excluded_currency_panels": excluded,
-                    "companies_without_export_currency": sorted(set(source["companies"]) - set(details)),
-                    "outputs_sha256": recursive_hashes(staged)}
-        _write(staged / "manifest.json", manifest)
-        if sha256(run_dir / "manifest.json") != source_hash or verify_run(run_dir) != source:
-            raise ValueError("Source run changed during export; current snapshot was not replaced")
-        target = _publish(staged, out_dir, manifest)
-    if verbose:
-        print(f"{METHOD}: {counts['companies']} empresas · {counts['groups']} grupos · {counts['statuses']} -> {target}")
+        dimension = COMPONENT_DIMENSION.get(term.get("component"), "cash_generation")
+        drivers.append({
+            "id": f"{term.get('layer', 'x')}-{term.get('feature', 'x')}"[:100], "driver": _text(term.get("label"), "Señal"),
+            "affected_dimensions": [dimension], "impact": impact,
+            "direction": "positive" if impact > 0 else "negative" if impact < 0 else "neutral",
+            "explanation": _text(term.get("sentence"), "Cambio de contribución entre meses consecutivos."),
+            "evidence_count": 0, "evidence_refs": [],
+        })
+    return drivers
+
+
+def _cash_truth(company_id, group_id, cash, confidence, evidence_rows):
+    buckets = {b["bucket"]: b for b in (cash or {}).get("buckets", [])}
+    window = (cash or {}).get("window_months") or []
+    period = _period(window)
+    agg = {c: {"gross": 0.0, "in": 0.0, "out": 0.0, "n": 0} for c in CATEGORY_LABEL}
+    for name, b in buckets.items():
+        cat = BUCKET_CATEGORY.get(name, "uncertain")
+        agg[cat]["gross"] += _num(b.get("amount_abs"), 0.0)
+        agg[cat]["in"] += _num(b.get("amount_in"), 0.0)
+        agg[cat]["out"] += _num(b.get("amount_out"), 0.0)
+        agg[cat]["n"] += int(b.get("n_tx") or 0)
+    total = sum(a["gross"] for a in agg.values())
+    apparent = sum(a["in"] - a["out"] for a in agg.values())
+    has_evidence = len(evidence_rows) > 0
+    refs = [CASH_EVIDENCE_ID] if has_evidence else []
+    explain = {
+        "operating": "Neto de entradas y salidas identificadas como operación (categoría bancaria o AI) en los últimos seis meses.",
+        "circulation": "Traslados emparejados entre cuentas de la misma empresa: mueven dinero, no lo generan. Neto cero por construcción.",
+        "support": "Transferencias espejo con otras sociedades del grupo (D05). Apoyo o tesorería interna, no venta externa.",
+        "uncertain": "Sin categoría fiable, traspasos sin pareja, financiación e inversión. Se publica como bruto sin atribuir.",
+    }
+    components = []
+    for cat in ("operating", "circulation", "support", "uncertain"):
+        a = agg[cat]
+        net = 0.0 if cat == "circulation" else None if cat == "uncertain" else round(a["in"] - a["out"], 2)
+        conf = None if cat == "uncertain" else _score(confidence)
+        components.append({"category": cat, "label": CATEGORY_LABEL[cat], "gross_movement": round(a["gross"], 2),
+                           "net_amount": net, "explanation": explain[cat], "confidence": conf,
+                           "evidence_refs": refs if a["n"] > 0 else []})
+    if group_id is None and agg["support"]["gross"] > 0:
+        components[2]["label"] = "Financiación o apoyo externo"
+    own = buckets.get("own_circulation")
+    own_count = int(own.get("n_tx") or 0) // 2 if own else 0
+    own_amount = round(_num(own.get("amount_in"), 0.0), 2) if own else 0.0
+    if (own_amount == 0) != (own_count == 0):
+        own_amount, own_count = 0.0, 0
+    op_net, sup_net = components[0]["net_amount"], components[2]["net_amount"]
+    if agg["support"]["gross"] > 0 and abs(sup_net) > abs(op_net):
+        headline = "Poca caja del negocio frente al apoyo recibido." if sup_net > 0 else "La empresa aporta más de lo que genera."
+    elif op_net >= 0:
+        headline = "La operación identificada genera caja neta."
+    else:
+        headline = "La operación identificada consume caja neta."
+    explanation = (f"En {period} la operación identificada aporta {op_net:,.0f} € netos y el apoyo intragrupo {sup_net:,.0f} €; "
+                   f"la circulación entre cuentas propias tiene neto cero y {agg['uncertain']['gross']:,.0f} € brutos quedan sin atribuir. "
+                   "No es saldo bancario ni prueba de solvencia.").replace(",", ".")
+    return {
+        "period": period, "total_gross_movement": round(total, 2), "apparent_net": round(apparent, 2),
+        "own_account_circulation": {"transferred_amount": own_amount, "transfer_count": own_count,
+                                    "explanation": "Traslados emparejados entre cuentas propias (D04), contados una vez por traslado; excluye otras sociedades y movimientos sin pareja.",
+                                    "confidence": _score(confidence), "evidence_refs": refs if own_count else []},
+        "account_flows": None, "components": components, "headline": headline, "explanation": explanation,
+        "confidence": _score(confidence), "evidence_refs": refs,
+        "evidence_summary": [f"{agg[c]['n']} movimientos · {CATEGORY_LABEL[c]}" for c in CATEGORY_LABEL if agg[c]["n"]][:20],
+        "correction": None, "comparison": None,
+    }
+
+
+def _evidence_group(evidence_rows, period):
+    if not len(evidence_rows):
+        return []
+    rows = []
+    for r in evidence_rows.itertuples(index=False):
+        rows.append({"kind": "transaction", "id": str(r.transaction_id), "account_id": None,
+                     "transaction_date": pd.Timestamp(r.date).strftime("%Y-%m-%d"), "amount": round(float(r.amount), 2),
+                     "category": BUCKET_CATEGORY.get(r.bucket, "uncertain"),
+                     "description": _text(getattr(r, "description", None), "Sin concepto")[:200]})
+    return [{"id": CASH_EVIDENCE_ID, "title": "Muestra de movimientos clasificados", "period": period,
+             "explanation": "Hasta diez movimientos representativos por empresa, uno o varios por categoría; no es la conciliación completa.",
+             "confidence": None, "total_count": int(evidence_rows.attrs.get("total_count", len(rows))), "rows": rows}]
+
+
+def _simulation(scenarios=None, health_score=None, has_invoices=True):
+    from xray.product.whatif import LEVERS, METHODOLOGY
+    inputs = [{"key": key, "label": spec["label"], "unit": spec["unit"], "baseline": spec["baseline"], "min": spec["min"],
+               "max": spec["max"], "step": spec["step"], "explanation": spec["explanation"]} for key, spec in LEVERS.items()]
+    if scenarios is None or not len(scenarios):
+        return {"inputs": inputs, "scenarios": [], "example_id": None,
+                "methodology": "Los escenarios precalculados todavía no están disponibles para esta empresa: el simulador muestra ausencia en lugar de estimar. Escenario, no predicción."}
+    out, best = [], None
+    for r in scenarios.itertuples(index=False):
+        lever = None if r.scenario_id == "base" else r.scenario_id.split(":")[0]
+        points = round(float(r.delta), 1)
+        label = "Situación actual" if lever is None else f"{LEVERS[lever]['label']}: {getattr(r, lever):+d} {'%' if LEVERS[lever]['unit'] == '%' else 'días'}"
+        if lever is None:
+            explanation = "Sin cambios: coincide con el Health Score publicado."
+        elif points == 0 and lever in ("collection_delay", "supplier_term") and not has_invoices:
+            explanation = "Sin efecto: la empresa no tiene facturas en la ventana, así que el retraso de cobro/pago no forma parte de su score."
+        elif points == 0:
+            explanation = "Sin efecto apreciable sobre el score con la referencia actual."
+        else:
+            explanation = f"Cambio sostenido seis meses; el Health Score pasa de {int(round(r.base_score))} a {int(round(r.score))} ({points:+.1f} puntos)."
+        out.append({"id": r.scenario_id, "label": label,
+                    "inputs": {k: int(getattr(r, k)) for k in ("customer_term", "collection_delay", "supplier_term", "internal_support")},
+                    "health_score": _score(r.score), "impacts": [] if lever is None else [{"key": lever, "label": LEVERS[lever]["label"], "points": points}],
+                    "explanation": explanation})
+        if lever is not None and (best is None or abs(points) > abs(best[1])):
+            best = (r.scenario_id, points)
+    if health_score is not None:
+        out = [s for s in out if s["id"] != "base" or s["health_score"] == health_score]
+    return {"inputs": inputs, "scenarios": out, "example_id": best[0] if best and best[1] != 0 else None, "methodology": METHODOLOGY}
+
+
+def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
+    """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno."""
+    currency = "EUR"
+    block = (company.get("currencies") or {}).get(currency)
+    if not block:
+        return None
+    timeline = [t for t in block.get("timeline", []) if _num(t.get("score")) is not None]
+    if not timeline:
+        return None
+    timeline.sort(key=lambda t: t["month"])
+    last = timeline[-1]
+    as_of = (pd.Timestamp(last["month"]) + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d")
+    dimensions, provisional = _dimensions(last)
+    trajectory = TRAJECTORY.get(last.get("trajectory"), "stable")
+    dependency = _num(cash_summary_row.get("support_dependency_ratio")) if cash_summary_row is not None else None
+    confidence = (block.get("confidence") or {}).get("confidence")
+    cash = _cash_truth(company["company_id"], company.get("group_id"), block.get("cash_truth"), confidence, evidence_rows)
+    return {
+        "schema_version": "2.0", "source": "generated", "company_id": company["company_id"],
+        "group_id": company.get("group_id"), "as_of": as_of, "currency": currency,
+        "health_score": _score(last["score"]), "dimensions": dimensions,
+        "health_score_model": {"version": MODEL_VERSION, "provisional": bool(provisional), "weights": WEIGHTS},
+        "assessment": assessment_text(trajectory, last.get("score_status"), last.get("score_reason"), dependency),
+        "confidence": _score(confidence), "trajectory": trajectory,
+        "summary": summary_text(last, trajectory, dependency, last.get("score_reason")),
+        "history": [{"month": pd.Timestamp(t["month"]).strftime("%Y-%m-%d"), "health_score": _score(t["score"])} for t in timeline[-24:]],
+        "drivers_period": f"{_month_label(last['month'])} · cambio frente al mes anterior",
+        "drivers": _drivers(block.get("why_changed")),
+        "cash_truth": cash, "time_borrowed": {"ar": None, "ap": None}, "alerts": [],
+        "evidence": _evidence_group(evidence_rows, cash["period"]),
+        "simulation": _simulation(scenarios, _score(last["score"]), has_invoices=_num(last.get("level_collections")) is not None
+                                  or _num(last.get("level_payments")) is not None),
+    }
+
+
+def group_detail(group, member_details, cash_summary):
+    """Grupo mínimo válido (contrato 1.0): miembros con score/dimensiones/rol; sin relaciones ni recomendaciones todavía."""
+    members = []
+    for row in group.get("companies", []):
+        detail = member_details.get(row["company_id"])
+        summary = cash_summary.get(row["company_id"], {})
+        dims = detail["dimensions"] if detail else {k: None for k in WEIGHTS}
+        role = {"net_receiver": "receiver", "net_provider": "provider", "balanced": "both"}.get(summary.get("support_role"), "none_identified")
+        if not summary:
+            role = "unknown"
+        ratio = _num(summary.get("support_dependency_ratio"))
+        attention = "high" if (ratio or 0) >= 0.5 else "medium" if (ratio or 0) >= 0.3 or (detail and detail["trajectory"] == "deteriorating") else "low"
+        members.append({
+            "company_id": row["company_id"], "health_score": detail["health_score"] if detail else None,
+            "dimensions": dims, "trajectory": detail["trajectory"] if detail else None, "role": role,
+            "available_liquidity": None, "identified_debt": None, "obligations_due": None,
+            "cash_generation_net": _round(summary.get("operations_in_6m")) if summary else None,
+            "internal_received": _round(summary.get("support_in_6m")) if summary else None,
+            "internal_provided": _round(summary.get("support_out_6m")) if summary else None,
+            "confidence": detail["confidence"] if detail else None, "attention": attention,
+            "summary": (detail["assessment"] if detail else "Sin score publicado para el último mes."),
+            "outlook": {"status": "insufficient", "horizon": "próximo trimestre", "summary": "Sin perspectiva respaldada por evidencia.",
+                        "funding_need": None, "confidence": None, "evidence_refs": []},
+            "evidence_refs": [],
+        })
+    as_of = max((d["as_of"] for d in member_details.values()), default=None)
+    latest = pd.Timestamp(group.get("latest_month") or as_of or "2026-08-01")
+    metric = lambda what: {"value": None, "covered_company_ids": [], "explanation": f"{what} no consolidado en esta versión: no se suman posiciones entre sociedades.", "evidence_refs": []}
+    return {
+        "schema_version": "1.0", "source": "generated", "group_id": group["group_id"],
+        "as_of": (latest + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d"), "period": f"seis meses hasta {_month_label(latest)}", "currency": "EUR",
+        "summary": f"{len(members)} sociedades observadas en el dataset; roles de apoyo derivados de transferencias espejo intragrupo (D05).",
+        "coverage": {"known_company_count": None, "confidence": None, "explanation": "Perímetro observado en el dataset; no se conoce el perímetro jurídico completo."},
+        "available_liquidity": metric("Liquidez disponible"), "identified_debt": metric("Deuda identificada"),
+        "obligations": {**metric("Obligaciones"), "horizon": "30 días"},
+        "limitations": ["No se presume que la caja sea fungible entre sociedades.",
+                        "Relaciones, recomendaciones y posiciones consolidadas no se exportan todavía.",
+                        "La ausencia de relaciones observadas no demuestra que no existan."],
+        "members": members[:50], "insights": [], "alerts": [], "concentration": [], "recent_changes": [],
+        "relations": [], "recommendations": [], "evidence": [],
+    }
+
+
+REASON_LABEL = {
+    "ok": None, "no_usable_transactions": "Sin movimientos utilizables", "insufficient_window_history": "Historial insuficiente",
+    "insufficient_components": "Componentes insuficientes", "incomplete_group_coverage": "Cobertura de filiales incompleta",
+    "optional_components_missing": "Sin facturas (componentes opcionales)", "trend_unavailable": "Tendencia no calculable",
+    "thin_current_month": "Mes actual con pocos movimientos", "short_history": "Historial corto", "partial_currency": "Moneda parcial",
+    "coverage_account_change": "Cambio de cuentas activas", "coverage_onboarding": "Primeros meses de actividad",
+}
+
+
+def portfolio_items(portfolio_rows, details, cash_summary):
+    """Una fila por empresa para la cartera: score/trayectoria de V2, señal principal, apoyo y prioridad de atención."""
+    items = []
+    for row in portfolio_rows:
+        cid = row["company_id"]
+        v2 = row.get("trajectory")
+        trajectory = TRAJECTORY.get(v2) if v2 in TRAJECTORY else ("stable" if v2 in ("stable", "mixed_signals") else None)
+        stage = None if trajectory is None else ("emerging" if str(v2).startswith("emerging") else "confirmed")
+        status = row.get("score_status") or "not_scored"
+        health = _score(row.get("score")) if status != "not_scored" else None
+        summary = cash_summary.get(cid) or {}
+        ratio = _num(summary.get("support_dependency_ratio"))
+        attention = "low"
+        if (trajectory == "deteriorating" and stage == "confirmed") or (ratio or 0) >= 0.5:
+            attention = "high"
+        elif trajectory == "deteriorating" or (ratio or 0) >= 0.3 or (health is not None and health < 35):
+            attention = "medium"
+        items.append({
+            "company_id": cid, "group_id": row.get("group_id"), "health_score": health, "delta_vs_prev": _round(row.get("delta_vs_prev"), 1),
+            "trajectory": trajectory, "trajectory_stage": stage, "confidence": _round(row.get("confidence"), 0),
+            "score_status": status, "status_reason": REASON_LABEL.get(row.get("score_reason"), row.get("score_reason") or None),
+            "main_signal": row.get("main_signal") or None, "main_signal_impact": _round(row.get("main_signal_delta"), 1),
+            "support_dependency_ratio": None if ratio is None else round(min(1.0, max(0.0, ratio)), 3),
+            "attention": attention, "has_detail": cid in details,
+        })
+    return items
+
+
+def portfolio_export(portfolio, details, cash_summary):
+    latest = pd.Timestamp(portfolio["latest_month"])
+    items = portfolio_items(portfolio["companies"], details, cash_summary)
+    scored = sum(1 for i in items if i["health_score"] is not None)
+    return {
+        "schema_version": "1.0", "source": "generated", "as_of": (latest + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d"),
+        "period": f"24 meses hasta {_month_label(latest)}", "currency": "EUR",
+        "summary": (f"{len(items)} empresas observadas, {scored} con Health Score en {_month_label(latest)}. "
+                    "La atención combina trayectoria confirmada y dependencia de apoyo intragrupo; las empresas sin puntuar se muestran con su motivo."),
+        "items": items,
+    }
+
+
+def _write_json(path: Path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, allow_nan=False)
+    os.replace(tmp, path)
+
+
+def _sample_evidence(evidence, company_id, window):
+    rows = evidence.loc[(evidence.company_id == company_id) & evidence.month.isin(window)]
+    total = len(rows)
+    if not total:
+        return rows
+    # una muestra por categoría primero, después las de mayor importe
+    rows = rows.assign(abs_amount=rows.amount.abs()).sort_values("abs_amount", ascending=False)
+    picked = rows.groupby("bucket", sort=False).head(2)
+    rest = rows.loc[~rows.index.isin(picked.index)]
+    sample = pd.concat([picked, rest]).head(EVIDENCE_ROWS).drop(columns="abs_amount")
+    sample.attrs["total_count"] = total
+    return sample
+
+
+def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True):
+    product_dir, out_dir = Path(product_dir), Path(out_dir)
+    say = print if verbose else (lambda *a, **k: None)
+    portfolio = json.loads((product_dir / "portfolio.json").read_text(encoding="utf-8"))
+    latest = pd.Timestamp(portfolio["latest_month"])
+    summary = pd.read_parquet(product_dir / "cash_truth_summary.parquet")
+    summary = summary[summary.month.eq(latest) & summary.currency.eq("EUR")].set_index("company_id")
+    evidence_path = product_dir / "evidence" / "cash_truth_tx.parquet"
+    evidence = pd.read_parquet(evidence_path) if evidence_path.exists() else pd.DataFrame(columns=["company_id", "currency", "month", "bucket", "transaction_id", "date", "amount", "category", "description"])
+    evidence = evidence[evidence.currency.eq("EUR")]
+    whatif_path = product_dir / "whatif_scenarios.parquet"
+    whatif = pd.read_parquet(whatif_path) if whatif_path.exists() else None
+    if whatif is not None:
+        whatif = whatif[whatif.month.eq(latest)]
+        whatif_groups = {cid: frame for cid, frame in whatif.groupby("company_id", sort=False)}
+    else:
+        whatif_groups = {}
+    details, written, skipped = {}, 0, 0
+    for file in sorted((product_dir / "companies").glob("COMP_*.json")):
+        company = json.loads(file.read_text(encoding="utf-8"))
+        block = (company.get("currencies") or {}).get("EUR") or {}
+        window = [pd.Timestamp(m) for m in (block.get("cash_truth") or {}).get("window_months", [])]
+        rows = _sample_evidence(evidence, company["company_id"], window) if window else evidence.iloc[:0]
+        summary_row = summary.loc[company["company_id"]].to_dict() if company["company_id"] in summary.index else None
+        detail = company_detail(company, summary_row, rows, whatif_groups.get(company["company_id"]))
+        if detail is None:
+            skipped += 1
+            continue
+        details[company["company_id"]] = detail
+        _write_json(out_dir / "companies" / f"{company['company_id']}.json", detail)
+        written += 1
+    groups = 0
+    cash_by_company = {cid: row for cid, row in summary.to_dict(orient="index").items()}
+    for file in sorted((product_dir / "groups").glob("GROUP_*.json")):
+        group = json.loads(file.read_text(encoding="utf-8"))
+        group.setdefault("latest_month", portfolio["latest_month"])
+        _write_json(out_dir / "groups" / f"{group['group_id']}.json", group_detail(group, details, cash_by_company))
+        groups += 1
+    _write_json(out_dir / "portfolio.json", portfolio_export(portfolio, details, cash_by_company))
+    manifest = {"model_version": MODEL_VERSION, "latest_month": portfolio["latest_month"], "companies_written": written,
+                "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
+                "companies_with_scenarios": len(whatif_groups),
+                "product_manifest_sha256": _sha(product_dir / "_product_manifest.json")}
+    _write_json(out_dir / "_frontend_export_manifest.json", manifest)
+    say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} · portfolio {len(portfolio['companies'])} -> {out_dir}")
     return manifest
+
+
+def _sha(path: Path):
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None

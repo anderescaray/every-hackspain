@@ -15,7 +15,7 @@
 | Capa | Estado | Referencia |
 |---|---|---|
 | Datos: clean + features | Hecho. Anotaciones D25–D30, `coverage_state` FE10, categorías AI D31 (**default del CLI desde este cierre**) | decisiones §14, FE10, §15, §17 |
-| Pulse Score V2 | Hecho. Nivel 6m, momentum normalizado por volatilidad propia, episodio bache/tendencia, ajuste estacional del crecimiento, `provisional` por cobertura | `scoring-v2.md`, decisiones §13 |
+| Pulse Score V2 (**canónico**, decisiones §21) | Hecho. Nivel 6m, momentum normalizado por volatilidad propia, episodio bache/tendencia, ajuste estacional del crecimiento, `provisional` por cobertura | `scoring-v2.md`, decisiones §13 |
 | Explicación + Confidence | Hecho (F1) | decisiones §16 PR-03/04 |
 | Cash Truth + dependencia de apoyo | Hecho (F2) | decisiones §16 PR-05/06 |
 | API FastAPI (solo lectura, `/import` con referencia congelada) | Hecho | `brief-backend-api.md`, `backend/` |
