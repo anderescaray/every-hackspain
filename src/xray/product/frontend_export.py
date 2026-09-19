@@ -2,6 +2,7 @@
 
 Empresa: `schema_version 2.0` -> frontend/public/generated/companies/<company_id>.json
 Grupo:   `schema_version 1.0` -> frontend/public/generated/groups/<group_id>.json
+Cartera: `schema_version 1.0` -> frontend/public/generated/portfolio.json (frontend/types/portfolio.ts)
 
 Solo traduce y redondea: no recalcula scores. Donde el contrato exige un número y V2 no tiene
 dato, se exporta un valor neutro documentado y `health_score_model.provisional = true`
@@ -292,6 +293,56 @@ def group_detail(group, member_details, cash_summary):
     }
 
 
+REASON_LABEL = {
+    "ok": None, "no_usable_transactions": "Sin movimientos utilizables", "insufficient_window_history": "Historial insuficiente",
+    "insufficient_components": "Componentes insuficientes", "incomplete_group_coverage": "Cobertura de filiales incompleta",
+    "optional_components_missing": "Sin facturas (componentes opcionales)", "trend_unavailable": "Tendencia no calculable",
+    "thin_current_month": "Mes actual con pocos movimientos", "short_history": "Historial corto", "partial_currency": "Moneda parcial",
+    "coverage_account_change": "Cambio de cuentas activas", "coverage_onboarding": "Primeros meses de actividad",
+}
+
+
+def portfolio_items(portfolio_rows, details, cash_summary):
+    """Una fila por empresa para la cartera: score/trayectoria de V2, señal principal, apoyo y prioridad de atención."""
+    items = []
+    for row in portfolio_rows:
+        cid = row["company_id"]
+        v2 = row.get("trajectory")
+        trajectory = TRAJECTORY.get(v2) if v2 in TRAJECTORY else ("stable" if v2 in ("stable", "mixed_signals") else None)
+        stage = None if trajectory is None else ("emerging" if str(v2).startswith("emerging") else "confirmed")
+        status = row.get("score_status") or "not_scored"
+        health = _score(row.get("score")) if status != "not_scored" else None
+        summary = cash_summary.get(cid) or {}
+        ratio = _num(summary.get("support_dependency_ratio"))
+        attention = "low"
+        if (trajectory == "deteriorating" and stage == "confirmed") or (ratio or 0) >= 0.5:
+            attention = "high"
+        elif trajectory == "deteriorating" or (ratio or 0) >= 0.3 or (health is not None and health < 35):
+            attention = "medium"
+        items.append({
+            "company_id": cid, "group_id": row.get("group_id"), "health_score": health, "delta_vs_prev": _round(row.get("delta_vs_prev"), 1),
+            "trajectory": trajectory, "trajectory_stage": stage, "confidence": _round(row.get("confidence"), 0),
+            "score_status": status, "status_reason": REASON_LABEL.get(row.get("score_reason"), row.get("score_reason") or None),
+            "main_signal": row.get("main_signal") or None, "main_signal_impact": _round(row.get("main_signal_delta"), 1),
+            "support_dependency_ratio": None if ratio is None else round(min(1.0, max(0.0, ratio)), 3),
+            "attention": attention, "has_detail": cid in details,
+        })
+    return items
+
+
+def portfolio_export(portfolio, details, cash_summary):
+    latest = pd.Timestamp(portfolio["latest_month"])
+    items = portfolio_items(portfolio["companies"], details, cash_summary)
+    scored = sum(1 for i in items if i["health_score"] is not None)
+    return {
+        "schema_version": "1.0", "source": "generated", "as_of": (latest + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d"),
+        "period": f"24 meses hasta {_month_label(latest)}", "currency": "EUR",
+        "summary": (f"{len(items)} empresas observadas, {scored} con Health Score en {_month_label(latest)}. "
+                    "La atención combina trayectoria confirmada y dependencia de apoyo intragrupo; las empresas sin puntuar se muestran con su motivo."),
+        "items": items,
+    }
+
+
 def _write_json(path: Path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".json")
@@ -345,11 +396,12 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
         group.setdefault("latest_month", portfolio["latest_month"])
         _write_json(out_dir / "groups" / f"{group['group_id']}.json", group_detail(group, details, cash_by_company))
         groups += 1
+    _write_json(out_dir / "portfolio.json", portfolio_export(portfolio, details, cash_by_company))
     manifest = {"model_version": MODEL_VERSION, "latest_month": portfolio["latest_month"], "companies_written": written,
                 "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
                 "product_manifest_sha256": _sha(product_dir / "_product_manifest.json")}
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)
-    say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} -> {out_dir}")
+    say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} · portfolio {len(portfolio['companies'])} -> {out_dir}")
     return manifest
 
 

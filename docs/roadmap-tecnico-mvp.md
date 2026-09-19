@@ -38,7 +38,7 @@
 ### Plan por bloques
 
 **A · Imprescindible para presentar**
-1. ~~Integrar Company Detail~~ (hecho, §19) · Portfolio en el frontend · desplegar con los JSON exportados (Vercel + `COMPANY_ANALYSIS_DIR` o build que ejecute `09`).
+1. ~~Integrar Company Detail~~ ~~Portfolio~~ (hechos, §19 FE-01/FE-03) · desplegar con los JSON exportados (Vercel + `COMPANY_ANALYSIS_DIR` o build que ejecute `09`).
 2. D31 default + reajuste de la referencia V2 + regeneración `processed`/`scores_v2`/`product` (decisiones §18).
 3. Fallback por signo residual + `categorized_amount_share` (test oculto con bancos sin plantilla conocida).
 

@@ -882,3 +882,11 @@ El frontend mergeado (`7822f35`, `frontend/`) **no consume la API ni `product/co
 - `public/` es público y los JSON están gitignored: en despliegue hay que ejecutar `09_export_frontend.py` en el build o montar `COMPANY_ANALYSIS_DIR`/`GROUP_ANALYSIS_DIR`.
 - Cuando existan alertas (bloque B), Time Borrowed y escenarios, se rellenan los campos ya previstos sin cambiar componentes. `account_flows` (cuentas y transferencias con dos tramos) queda pendiente: requiere enlazar los pares D04/D05 a filas de evidencia.
 - Orden de ejecución completo: `00 → 01 → 05 fit → 08 → 09`, y después `npm run validate:generated` desde `frontend/`.
+
+### FE-03 · Portfolio v1 (19-09, noche)
+
+El frontend no tenía ruta raíz. Se añade **`/`** con la cartera («¿qué empresas necesitan atención?»): KPIs (empresas, con score, atención alta, deteriorándose, mejorando, dependientes de apoyo), filtros por trayectoria / atención / estado / grupo / búsqueda, ordenación (atención, Health Score, Δ mes, cobertura, dependencia, id) con nulos siempre al final, paginación de 100 y enlaces a ficha y grupo. Formulario GET: funciona sin JavaScript y conserva la URL como estado.
+
+- Contrato nuevo `frontend/types/portfolio.ts` (`schema_version 1.0`; una fila por empresa: `health_score` entero nullable, `trajectory` 3 valores + `trajectory_stage` confirmed/emerging, `confidence`, `score_status`, `status_reason` en español, `main_signal` e impacto, `support_dependency_ratio`, `attention`, `has_detail`). Lectura en `services/portfolioData.ts` (`PORTFOLIO_ANALYSIS_FILE` opcional); `npm run validate:generated -- --portfolio`. Tests `tests/portfolio.test.ts` (5).
+- Exportación en `frontend_export.portfolio_export`: **1.286 filas** (218 atención alta, 162 media; 85 deteriorándose, 78 mejorando, 491 sin trayectoria). `attention`: alta = deterioro confirmado o dependencia ≥ 50 %; media = deterioro emergente, dependencia ≥ 30 % o score < 35; baja el resto. Es una prioridad de revisión, no una probabilidad.
+- Las empresas sin ficha (`has_detail = false`, 268 sin ningún score) aparecen en la tabla con su motivo pero sin enlace.

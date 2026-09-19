@@ -93,3 +93,24 @@ def test_group_members_keep_nulls_and_roles_from_cash_truth():
     assert m["COMP_0002"]["health_score"] is None and m["COMP_0002"]["role"] == "unknown"
     assert g["available_liquidity"]["value"] is None and g["relations"] == [] and len(g["limitations"]) >= 1
     json.dumps(g, allow_nan=False)
+
+
+def test_portfolio_items_map_status_trajectory_and_attention():
+    from xray.product.frontend_export import portfolio_export
+    rows = [
+        {"company_id": "COMP_0001", "group_id": "GROUP_0001", "score": 61.4, "delta_vs_prev": -3.26, "trajectory": "deteriorating",
+         "score_status": "scored", "score_reason": "ok", "confidence": 88.2, "main_signal": "Margen", "main_signal_delta": -4.26},
+        {"company_id": "COMP_0002", "group_id": None, "score": 70.0, "delta_vs_prev": 1.0, "trajectory": "emerging_improvement",
+         "score_status": "provisional", "score_reason": "coverage_account_change", "confidence": 60.0, "main_signal": None, "main_signal_delta": None},
+        {"company_id": "COMP_0003", "group_id": "GROUP_0001", "score": None, "delta_vs_prev": None, "trajectory": "insufficient_history",
+         "score_status": "not_scored", "score_reason": "no_usable_transactions", "confidence": 0.0, "main_signal": None, "main_signal_delta": None},
+    ]
+    out = portfolio_export({"latest_month": "2026-08-01T00:00:00", "companies": rows}, {"COMP_0001": {}},
+                           {"COMP_0002": {"support_dependency_ratio": 0.55}})
+    items = {i["company_id"]: i for i in out["items"]}
+    assert out["as_of"] == "2026-08-31" and len(out["items"]) == 3
+    assert items["COMP_0001"]["health_score"] == 61 and items["COMP_0001"]["attention"] == "high" and items["COMP_0001"]["trajectory_stage"] == "confirmed"
+    assert items["COMP_0002"]["trajectory"] == "improving" and items["COMP_0002"]["trajectory_stage"] == "emerging"
+    assert items["COMP_0002"]["attention"] == "high" and items["COMP_0002"]["status_reason"] == "Cambio de cuentas activas"
+    assert items["COMP_0003"]["health_score"] is None and items["COMP_0003"]["trajectory"] is None and items["COMP_0003"]["has_detail"] is False
+    json.dumps(out, allow_nan=False)
