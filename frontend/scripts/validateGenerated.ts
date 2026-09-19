@@ -2,8 +2,15 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { CompanyDataError, getCompanyDetail } from "../services/companyData";
 import { getGroupDetail, GroupDataError } from "../services/groupData";
+import { getPortfolio, PortfolioDataError } from "../services/portfolioData";
 
 async function main() {
+  if (process.argv.includes("--portfolio")) {
+    const portfolio = await getPortfolio();
+    if (!portfolio) throw new Error("No hay portfolio.json que validar.");
+    console.log(`portfolio.json: contrato válido (${portfolio.items.length} empresas, corte ${portfolio.as_of}).`);
+    return;
+  }
   const groups = process.argv.includes("--groups");
   const directory = groups ? process.env.GROUP_ANALYSIS_DIR || path.join(process.cwd(), "public/generated/groups") : process.env.COMPANY_ANALYSIS_DIR || path.join(process.cwd(), "public/generated/companies");
   const files = (await readdir(directory)).filter((name) => name.endsWith(".json"));
@@ -24,6 +31,6 @@ async function main() {
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : "No se pudieron validar los datos.");
-  if (error instanceof CompanyDataError || error instanceof GroupDataError) error.issues.forEach((issue) => console.error(issue));
+  if (error instanceof CompanyDataError || error instanceof GroupDataError || error instanceof PortfolioDataError) error.issues.forEach((issue) => console.error(issue));
   process.exitCode = 1;
 });
