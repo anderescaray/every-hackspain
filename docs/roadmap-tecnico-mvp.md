@@ -19,7 +19,7 @@
 | Explicación + Confidence | Hecho (F1) | decisiones §16 PR-03/04 |
 | Cash Truth + dependencia de apoyo | Hecho (F2) | decisiones §16 PR-05/06 |
 | API FastAPI (solo lectura, `/import` con referencia congelada) | Hecho | `brief-backend-api.md`, `backend/` |
-| Frontend | Parcial: `frontend/app/companies` (Company insights). Falta Portfolio, Alerts, Group, Import | `frontend/` |
+| Frontend | Company Detail y Grupo (overview/network/recommendations) hechos por Álvaro; **integrado con datos reales** vía `scripts/09_export_frontend.py` (decisiones §19). Falta Portfolio y despliegue | `frontend/`, `frontend-data-contract.md` |
 | Alertas + lead time (bonus del enunciado) | Solo diseño | `alerts-and-monitoring.md` |
 | Time Borrowed | Medido, no implementado (nicho: 4 empresas AR, 130 AP) | `patron-tiempo-prestado.md` |
 | What-if, despliegue público | No existen | — |
@@ -38,7 +38,7 @@
 ### Plan por bloques
 
 **A · Imprescindible para presentar**
-1. Frontend Portfolio + Company Detail contra la API existente; desplegar (Vercel + Railway/Render).
+1. ~~Integrar Company Detail~~ (hecho, §19) · Portfolio en el frontend · desplegar con los JSON exportados (Vercel + `COMPANY_ANALYSIS_DIR` o build que ejecute `09`).
 2. D31 default + reajuste de la referencia V2 + regeneración `processed`/`scores_v2`/`product` (decisiones §18).
 3. Fallback por signo residual + `categorized_amount_share` (test oculto con bancos sin plantilla conocida).
 

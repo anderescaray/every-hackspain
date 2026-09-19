@@ -1,0 +1,358 @@
+"""Exporta los artefactos de `xray.product` al contrato del frontend (docs/frontend-data-contract.md).
+
+Empresa: `schema_version 2.0` -> frontend/public/generated/companies/<company_id>.json
+Grupo:   `schema_version 1.0` -> frontend/public/generated/groups/<group_id>.json
+
+Solo traduce y redondea: no recalcula scores. Donde el contrato exige un número y V2 no tiene
+dato, se exporta un valor neutro documentado y `health_score_model.provisional = true`
+(decisión FE-01 en decisiones.md). Lo que no existe todavía (Time Borrowed, alertas,
+escenarios) se exporta como `null` / `[]`, que el contrato admite y la UI muestra como ausente.
+"""
+import json
+import math
+import os
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from xray.paths import PROCESSED_DIR, ROOT
+
+FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
+MODEL_VERSION = "financial_smoothed_v2+frontend-export-1"
+# Pesos efectivos de V2 traducidos a las cuatro dimensiones del contrato (suman 1):
+# score = level + 0.2·(momentum−50); level = 0.45 operación + 0.25 deuda + 0.15 cobros + 0.15 pagos.
+WEIGHTS = {"momentum": 0.20, "cash_generation": 0.36, "resilience": 0.24, "debt": 0.20}
+COMPONENT_DIMENSION = {"operations": "cash_generation", "debt": "debt", "collections": "resilience",
+                       "payments": "resilience", "momentum": "momentum"}
+TRAJECTORY = {"improving": "improving", "emerging_improvement": "improving",
+              "deteriorating": "deteriorating", "emerging_deterioration": "deteriorating"}
+BUCKET_CATEGORY = {"operations": "operating", "own_circulation": "circulation", "group_support": "support",
+                   "uncertain": "uncertain", "unpaired_transfer": "uncertain", "financing_investment": "uncertain"}
+CATEGORY_LABEL = {"operating": "Generado por la operación", "circulation": "Circulación de tesorería",
+                  "support": "Apoyo interno / intragrupo", "uncertain": "Origen no identificado"}
+MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+EVIDENCE_ROWS = 10
+CASH_EVIDENCE_ID = "cash-movements"
+
+
+def _month_label(ts):
+    ts = pd.Timestamp(ts)
+    return f"{MONTHS_ES[ts.month - 1]} {ts.year}"
+
+
+def _period(months):
+    months = [pd.Timestamp(m) for m in months]
+    return f"{_month_label(min(months))} – {_month_label(max(months))}" if months else "sin periodo"
+
+
+def _num(value, default=None):
+    if value is None:
+        return default
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return default
+    return default if not math.isfinite(value) else value
+
+
+def _score(value):
+    value = _num(value)
+    return None if value is None else int(round(min(100.0, max(0.0, value))))
+
+
+def _round(value, digits=2):
+    value = _num(value)
+    return None if value is None else round(value, digits)
+
+
+def _text(value, fallback):
+    value = "" if value is None else str(value).strip()
+    return (value or fallback)[:5000]
+
+
+def assessment_text(trajectory, status, reason, dependency):
+    parts = {"improving": "Trayectoria de mejora", "deteriorating": "Señales de deterioro", "stable": "Situación estable"}[trajectory]
+    if status == "provisional":
+        parts += " · evidencia parcial"
+    if dependency is not None and dependency >= 0.3:
+        parts += " · dependencia de apoyo"
+    return parts
+
+
+def summary_text(row, trajectory, dependency, reason):
+    score = _score(row.get("score"))
+    base = {"improving": "Las señales agregadas de los últimos trimestres mejoran frente a la propia historia de la empresa.",
+            "deteriorating": "Las señales agregadas de los últimos trimestres empeoran frente a la propia historia de la empresa.",
+            "stable": "No hay una dirección confirmada frente a la propia historia de la empresa."}[trajectory]
+    text = f"Health Score {score}: nivel de flujos operativos de seis meses con ajuste de tendencia. {base}"
+    if dependency is not None and dependency >= 0.3:
+        text += f" El apoyo intragrupo recibido supone el {dependency:.0%} de las entradas identificadas en seis meses."
+    reasons = {"optional_components_missing": "Faltan componentes opcionales (facturas) en la evaluación.",
+               "trend_unavailable": "La tendencia todavía no es calculable con el histórico disponible.",
+               "thin_current_month": "El mes actual tiene pocos movimientos utilizables.",
+               "short_history": "El histórico es inferior a seis meses.",
+               "partial_currency": "Parte de la actividad está en otras monedas y no se consolida.",
+               "coverage_account_change": "El conjunto de cuentas activas cambió este mes; la comparación con el anterior es parcial.",
+               "coverage_onboarding": "Primeros meses de actividad observada."}
+    if reason in reasons:
+        text += " " + reasons[reason]
+    return text
+
+
+def _dimensions(last):
+    health = _score(last.get("score"))
+    coll, pay = _num(last.get("level_collections")), _num(last.get("level_payments"))
+    resilience = None if coll is None and pay is None else float(np.nanmean([v for v in (coll, pay) if v is not None]))
+    raw = {"momentum": _num(last.get("momentum")), "cash_generation": _num(last.get("level_operations")),
+           "resilience": resilience, "debt": _num(last.get("level_debt"))}
+    provisional = any(v is None for v in raw.values()) or last.get("score_status") != "scored"
+    return {k: (_score(v) if v is not None else health) for k, v in raw.items()}, provisional
+
+
+def _drivers(why_changed):
+    terms = (why_changed or {}).get("terms") or []
+    drivers = []
+    for term in sorted(terms, key=lambda t: t.get("rank", 99))[:20]:
+        impact = _round(term.get("delta_contribution"), 1)
+        if impact is None:
+            continue
+        dimension = COMPONENT_DIMENSION.get(term.get("component"), "cash_generation")
+        drivers.append({
+            "id": f"{term.get('layer', 'x')}-{term.get('feature', 'x')}"[:100], "driver": _text(term.get("label"), "Señal"),
+            "affected_dimensions": [dimension], "impact": impact,
+            "direction": "positive" if impact > 0 else "negative" if impact < 0 else "neutral",
+            "explanation": _text(term.get("sentence"), "Cambio de contribución entre meses consecutivos."),
+            "evidence_count": 0, "evidence_refs": [],
+        })
+    return drivers
+
+
+def _cash_truth(company_id, group_id, cash, confidence, evidence_rows):
+    buckets = {b["bucket"]: b for b in (cash or {}).get("buckets", [])}
+    window = (cash or {}).get("window_months") or []
+    period = _period(window)
+    agg = {c: {"gross": 0.0, "in": 0.0, "out": 0.0, "n": 0} for c in CATEGORY_LABEL}
+    for name, b in buckets.items():
+        cat = BUCKET_CATEGORY.get(name, "uncertain")
+        agg[cat]["gross"] += _num(b.get("amount_abs"), 0.0)
+        agg[cat]["in"] += _num(b.get("amount_in"), 0.0)
+        agg[cat]["out"] += _num(b.get("amount_out"), 0.0)
+        agg[cat]["n"] += int(b.get("n_tx") or 0)
+    total = sum(a["gross"] for a in agg.values())
+    apparent = sum(a["in"] - a["out"] for a in agg.values())
+    has_evidence = len(evidence_rows) > 0
+    refs = [CASH_EVIDENCE_ID] if has_evidence else []
+    explain = {
+        "operating": "Neto de entradas y salidas identificadas como operación (categoría bancaria o AI) en los últimos seis meses.",
+        "circulation": "Traslados emparejados entre cuentas de la misma empresa: mueven dinero, no lo generan. Neto cero por construcción.",
+        "support": "Transferencias espejo con otras sociedades del grupo (D05). Apoyo o tesorería interna, no venta externa.",
+        "uncertain": "Sin categoría fiable, traspasos sin pareja, financiación e inversión. Se publica como bruto sin atribuir.",
+    }
+    components = []
+    for cat in ("operating", "circulation", "support", "uncertain"):
+        a = agg[cat]
+        net = 0.0 if cat == "circulation" else None if cat == "uncertain" else round(a["in"] - a["out"], 2)
+        conf = None if cat == "uncertain" else _score(confidence)
+        components.append({"category": cat, "label": CATEGORY_LABEL[cat], "gross_movement": round(a["gross"], 2),
+                           "net_amount": net, "explanation": explain[cat], "confidence": conf,
+                           "evidence_refs": refs if a["n"] > 0 else []})
+    if group_id is None and agg["support"]["gross"] > 0:
+        components[2]["label"] = "Financiación o apoyo externo"
+    own = buckets.get("own_circulation")
+    own_count = int(own.get("n_tx") or 0) // 2 if own else 0
+    own_amount = round(_num(own.get("amount_in"), 0.0), 2) if own else 0.0
+    if (own_amount == 0) != (own_count == 0):
+        own_amount, own_count = 0.0, 0
+    op_net, sup_net = components[0]["net_amount"], components[2]["net_amount"]
+    if agg["support"]["gross"] > 0 and abs(sup_net) > abs(op_net):
+        headline = "Poca caja del negocio frente al apoyo recibido." if sup_net > 0 else "La empresa aporta más de lo que genera."
+    elif op_net >= 0:
+        headline = "La operación identificada genera caja neta."
+    else:
+        headline = "La operación identificada consume caja neta."
+    explanation = (f"En {period} la operación identificada aporta {op_net:,.0f} € netos y el apoyo intragrupo {sup_net:,.0f} €; "
+                   f"la circulación entre cuentas propias tiene neto cero y {agg['uncertain']['gross']:,.0f} € brutos quedan sin atribuir. "
+                   "No es saldo bancario ni prueba de solvencia.").replace(",", ".")
+    return {
+        "period": period, "total_gross_movement": round(total, 2), "apparent_net": round(apparent, 2),
+        "own_account_circulation": {"transferred_amount": own_amount, "transfer_count": own_count,
+                                    "explanation": "Traslados emparejados entre cuentas propias (D04), contados una vez por traslado; excluye otras sociedades y movimientos sin pareja.",
+                                    "confidence": _score(confidence), "evidence_refs": refs if own_count else []},
+        "account_flows": None, "components": components, "headline": headline, "explanation": explanation,
+        "confidence": _score(confidence), "evidence_refs": refs,
+        "evidence_summary": [f"{agg[c]['n']} movimientos · {CATEGORY_LABEL[c]}" for c in CATEGORY_LABEL if agg[c]["n"]][:20],
+        "correction": None, "comparison": None,
+    }
+
+
+def _evidence_group(evidence_rows, period):
+    if not len(evidence_rows):
+        return []
+    rows = []
+    for r in evidence_rows.itertuples(index=False):
+        rows.append({"kind": "transaction", "id": str(r.transaction_id), "account_id": None,
+                     "transaction_date": pd.Timestamp(r.date).strftime("%Y-%m-%d"), "amount": round(float(r.amount), 2),
+                     "category": BUCKET_CATEGORY.get(r.bucket, "uncertain"),
+                     "description": _text(getattr(r, "description", None), "Sin concepto")[:200]})
+    return [{"id": CASH_EVIDENCE_ID, "title": "Muestra de movimientos clasificados", "period": period,
+             "explanation": "Hasta diez movimientos representativos por empresa, uno o varios por categoría; no es la conciliación completa.",
+             "confidence": None, "total_count": int(evidence_rows.attrs.get("total_count", len(rows))), "rows": rows}]
+
+
+def _simulation():
+    inputs = [
+        {"key": "customer_term", "label": "Plazo concedido a clientes", "unit": "days", "baseline": 30, "min": -30, "max": 60, "step": 5,
+         "explanation": "Ajuste relativo del plazo medio concedido a clientes."},
+        {"key": "collection_delay", "label": "Retraso de cobro", "unit": "days", "baseline": 0, "min": 0, "max": 60, "step": 5,
+         "explanation": "Días adicionales de retraso sobre vencimiento."},
+        {"key": "supplier_term", "label": "Plazo recibido de proveedores", "unit": "days", "baseline": 30, "min": -30, "max": 60, "step": 5,
+         "explanation": "Ajuste relativo del plazo recibido de proveedores."},
+        {"key": "internal_support", "label": "Apoyo interno", "unit": "%", "baseline": 100, "min": -100, "max": 0, "step": 10,
+         "explanation": "Porcentaje del apoyo intragrupo actual que se mantiene."},
+    ]
+    return {"inputs": inputs, "scenarios": [], "example_id": None,
+            "methodology": "Los escenarios precalculados todavía no se exportan: el simulador muestra ausencia en lugar de estimar. Escenario, no predicción."}
+
+
+def company_detail(company, cash_summary_row, evidence_rows):
+    """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno."""
+    currency = "EUR"
+    block = (company.get("currencies") or {}).get(currency)
+    if not block:
+        return None
+    timeline = [t for t in block.get("timeline", []) if _num(t.get("score")) is not None]
+    if not timeline:
+        return None
+    timeline.sort(key=lambda t: t["month"])
+    last = timeline[-1]
+    as_of = (pd.Timestamp(last["month"]) + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d")
+    dimensions, provisional = _dimensions(last)
+    trajectory = TRAJECTORY.get(last.get("trajectory"), "stable")
+    dependency = _num(cash_summary_row.get("support_dependency_ratio")) if cash_summary_row is not None else None
+    confidence = (block.get("confidence") or {}).get("confidence")
+    cash = _cash_truth(company["company_id"], company.get("group_id"), block.get("cash_truth"), confidence, evidence_rows)
+    return {
+        "schema_version": "2.0", "source": "generated", "company_id": company["company_id"],
+        "group_id": company.get("group_id"), "as_of": as_of, "currency": currency,
+        "health_score": _score(last["score"]), "dimensions": dimensions,
+        "health_score_model": {"version": MODEL_VERSION, "provisional": bool(provisional), "weights": WEIGHTS},
+        "assessment": assessment_text(trajectory, last.get("score_status"), last.get("score_reason"), dependency),
+        "confidence": _score(confidence), "trajectory": trajectory,
+        "summary": summary_text(last, trajectory, dependency, last.get("score_reason")),
+        "history": [{"month": pd.Timestamp(t["month"]).strftime("%Y-%m-%d"), "health_score": _score(t["score"])} for t in timeline[-24:]],
+        "drivers_period": f"{_month_label(last['month'])} · cambio frente al mes anterior",
+        "drivers": _drivers(block.get("why_changed")),
+        "cash_truth": cash, "time_borrowed": {"ar": None, "ap": None}, "alerts": [],
+        "evidence": _evidence_group(evidence_rows, cash["period"]), "simulation": _simulation(),
+    }
+
+
+def group_detail(group, member_details, cash_summary):
+    """Grupo mínimo válido (contrato 1.0): miembros con score/dimensiones/rol; sin relaciones ni recomendaciones todavía."""
+    members = []
+    for row in group.get("companies", []):
+        detail = member_details.get(row["company_id"])
+        summary = cash_summary.get(row["company_id"], {})
+        dims = detail["dimensions"] if detail else {k: None for k in WEIGHTS}
+        role = {"net_receiver": "receiver", "net_provider": "provider", "balanced": "both"}.get(summary.get("support_role"), "none_identified")
+        if not summary:
+            role = "unknown"
+        ratio = _num(summary.get("support_dependency_ratio"))
+        attention = "high" if (ratio or 0) >= 0.5 else "medium" if (ratio or 0) >= 0.3 or (detail and detail["trajectory"] == "deteriorating") else "low"
+        members.append({
+            "company_id": row["company_id"], "health_score": detail["health_score"] if detail else None,
+            "dimensions": dims, "trajectory": detail["trajectory"] if detail else None, "role": role,
+            "available_liquidity": None, "identified_debt": None, "obligations_due": None,
+            "cash_generation_net": _round(summary.get("operations_in_6m")) if summary else None,
+            "internal_received": _round(summary.get("support_in_6m")) if summary else None,
+            "internal_provided": _round(summary.get("support_out_6m")) if summary else None,
+            "confidence": detail["confidence"] if detail else None, "attention": attention,
+            "summary": (detail["assessment"] if detail else "Sin score publicado para el último mes."),
+            "outlook": {"status": "insufficient", "horizon": "próximo trimestre", "summary": "Sin perspectiva respaldada por evidencia.",
+                        "funding_need": None, "confidence": None, "evidence_refs": []},
+            "evidence_refs": [],
+        })
+    as_of = max((d["as_of"] for d in member_details.values()), default=None)
+    latest = pd.Timestamp(group.get("latest_month") or as_of or "2026-08-01")
+    metric = lambda what: {"value": None, "covered_company_ids": [], "explanation": f"{what} no consolidado en esta versión: no se suman posiciones entre sociedades.", "evidence_refs": []}
+    return {
+        "schema_version": "1.0", "source": "generated", "group_id": group["group_id"],
+        "as_of": (latest + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d"), "period": f"seis meses hasta {_month_label(latest)}", "currency": "EUR",
+        "summary": f"{len(members)} sociedades observadas en el dataset; roles de apoyo derivados de transferencias espejo intragrupo (D05).",
+        "coverage": {"known_company_count": None, "confidence": None, "explanation": "Perímetro observado en el dataset; no se conoce el perímetro jurídico completo."},
+        "available_liquidity": metric("Liquidez disponible"), "identified_debt": metric("Deuda identificada"),
+        "obligations": {**metric("Obligaciones"), "horizon": "30 días"},
+        "limitations": ["No se presume que la caja sea fungible entre sociedades.",
+                        "Relaciones, recomendaciones y posiciones consolidadas no se exportan todavía.",
+                        "La ausencia de relaciones observadas no demuestra que no existan."],
+        "members": members[:50], "insights": [], "alerts": [], "concentration": [], "recent_changes": [],
+        "relations": [], "recommendations": [], "evidence": [],
+    }
+
+
+def _write_json(path: Path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh, ensure_ascii=False, allow_nan=False)
+    os.replace(tmp, path)
+
+
+def _sample_evidence(evidence, company_id, window):
+    rows = evidence.loc[(evidence.company_id == company_id) & evidence.month.isin(window)]
+    total = len(rows)
+    if not total:
+        return rows
+    # una muestra por categoría primero, después las de mayor importe
+    rows = rows.assign(abs_amount=rows.amount.abs()).sort_values("abs_amount", ascending=False)
+    picked = rows.groupby("bucket", sort=False).head(2)
+    rest = rows.loc[~rows.index.isin(picked.index)]
+    sample = pd.concat([picked, rest]).head(EVIDENCE_ROWS).drop(columns="abs_amount")
+    sample.attrs["total_count"] = total
+    return sample
+
+
+def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True):
+    product_dir, out_dir = Path(product_dir), Path(out_dir)
+    say = print if verbose else (lambda *a, **k: None)
+    portfolio = json.loads((product_dir / "portfolio.json").read_text(encoding="utf-8"))
+    latest = pd.Timestamp(portfolio["latest_month"])
+    summary = pd.read_parquet(product_dir / "cash_truth_summary.parquet")
+    summary = summary[summary.month.eq(latest) & summary.currency.eq("EUR")].set_index("company_id")
+    evidence_path = product_dir / "evidence" / "cash_truth_tx.parquet"
+    evidence = pd.read_parquet(evidence_path) if evidence_path.exists() else pd.DataFrame(columns=["company_id", "currency", "month", "bucket", "transaction_id", "date", "amount", "category", "description"])
+    evidence = evidence[evidence.currency.eq("EUR")]
+    details, written, skipped = {}, 0, 0
+    for file in sorted((product_dir / "companies").glob("COMP_*.json")):
+        company = json.loads(file.read_text(encoding="utf-8"))
+        block = (company.get("currencies") or {}).get("EUR") or {}
+        window = [pd.Timestamp(m) for m in (block.get("cash_truth") or {}).get("window_months", [])]
+        rows = _sample_evidence(evidence, company["company_id"], window) if window else evidence.iloc[:0]
+        summary_row = summary.loc[company["company_id"]].to_dict() if company["company_id"] in summary.index else None
+        detail = company_detail(company, summary_row, rows)
+        if detail is None:
+            skipped += 1
+            continue
+        details[company["company_id"]] = detail
+        _write_json(out_dir / "companies" / f"{company['company_id']}.json", detail)
+        written += 1
+    groups = 0
+    cash_by_company = {cid: row for cid, row in summary.to_dict(orient="index").items()}
+    for file in sorted((product_dir / "groups").glob("GROUP_*.json")):
+        group = json.loads(file.read_text(encoding="utf-8"))
+        group.setdefault("latest_month", portfolio["latest_month"])
+        _write_json(out_dir / "groups" / f"{group['group_id']}.json", group_detail(group, details, cash_by_company))
+        groups += 1
+    manifest = {"model_version": MODEL_VERSION, "latest_month": portfolio["latest_month"], "companies_written": written,
+                "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
+                "product_manifest_sha256": _sha(product_dir / "_product_manifest.json")}
+    _write_json(out_dir / "_frontend_export_manifest.json", manifest)
+    say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} -> {out_dir}")
+    return manifest
+
+
+def _sha(path: Path):
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None

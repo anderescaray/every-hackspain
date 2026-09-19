@@ -864,3 +864,21 @@ Factores estacionales del crecimiento vigentes en agosto 2026 (log-crecimiento, 
 - La referencia congelada ahora presupone features con D31; `predict` sobre un dataset nuevo debe ejecutarse con el mismo artefacto (o con `--no-ai-categories` **y** una referencia ajustada sin D31). Plantillas no vistas quedan `uncategorized`: sigue pendiente el fallback por signo (A.3).
 - El manifiesto guarda la ruta absoluta del artefacto; el hash es lo que identifica la versión.
 - Las cifras de agosto no son acierto frente al organizador; miden cobertura y estabilidad.
+
+## 19. Integración del frontend: exportador al contrato JSON — 19-09-2026 (noche)
+
+El frontend mergeado (`7822f35`, `frontend/`) **no consume la API ni `product/companies/{id}.json`**: lee ficheros estáticos `frontend/public/generated/{companies,groups}/<id>.json` con su propio contrato Zod (`docs/frontend-data-contract.md`: empresa `2.0`, grupo `1.0`). Se decide **no tocar el frontend** y añadir un exportador en la capa de producto (bloque A.1 del roadmap).
+
+### FE-01 · Qué se ha hecho
+
+- `src/xray/product/frontend_export.py` + `scripts/09_export_frontend.py`: traduce `product/` al contrato con escritura atómica; **no recalcula**. Resultado real: **1.018 empresas** (268 sin ningún score no se exportan: la UI muestra «no disponible») y **250 grupos**, todos válidos con `npm run validate:generated` (y `-- --groups`). `/companies/COMP_0647` y `/groups/GROUP_0250` renderizan con datos reales. Tests: `tests/test_frontend_export.py` (7).
+- Mapeo: `health_score = round(score)`; `history` = meses con score (el último coincide con el actual, `as_of` = fin de mes); `trajectory` colapsa las 7 etiquetas V2 a 3 (`emerging_*` → su dirección; `mixed_signals`/`insufficient_history` → `stable`); `drivers` = términos de «por qué ha cambiado» con `component → dimensión`; `cash_truth` = 6 buckets → 4 categorías (`unpaired_transfer` y `financing_investment` → `uncertain`, neto `null`), `own_account_circulation` = pata de entrada de D04 contada una vez; `evidence` = hasta 10 movimientos por empresa (2 por bucket, luego por importe) con `total_count` real. `time_borrowed` `null`, `alerts []`, `scenarios []` con metodología que explica la ausencia. Textos en español por plantilla.
+- **Dimensiones (decisión provisional a revisar con el autor del frontend):** el contrato exige cuatro números 0–100 y V2 puede no tener `momentum` o cobros/pagos. `cash_generation = level_operations`, `debt = level_debt`, `resilience = media(level_collections, level_payments)`, `momentum = momentum`; una dimensión ausente se exporta con el valor del propio `health_score` (no altera la media) y `health_score_model.provisional = true`. Pesos exportados: los efectivos de V2 traducidos a cuatro dimensiones (momentum 0,20 · cash_generation 0,36 · resilience 0,24 · debt 0,20; `0,8×0,45`, `0,8×0,25`, `0,8×0,30`). Propuesta al frontend: admitir `null` en `dimensions` para no exportar neutros.
+- Grupo mínimo válido: miembros con score/dimensiones/rol (`support_role` de Cash Truth → provider/receiver/both), `internal_received/provided` y `cash_generation_net` de la ventana 6m; liquidez/deuda/obligaciones `null` con explicación; `relations`, `recommendations`, `insights` vacíos; `limitations` explícitas.
+
+### FE-02 · Límites y siguientes pasos
+
+- El frontend no tiene **Portfolio**: la demo arranca en una URL de empresa. Pedir al autor una ruta `/` que lea un `portfolio.json` (podemos exportarlo al contrato que defina).
+- `public/` es público y los JSON están gitignored: en despliegue hay que ejecutar `09_export_frontend.py` en el build o montar `COMPANY_ANALYSIS_DIR`/`GROUP_ANALYSIS_DIR`.
+- Cuando existan alertas (bloque B), Time Borrowed y escenarios, se rellenan los campos ya previstos sin cambiar componentes. `account_flows` (cuentas y transferencias con dos tramos) queda pendiente: requiere enlazar los pares D04/D05 a filas de evidencia.
+- Orden de ejecución completo: `00 → 01 → 05 fit → 08 → 09`, y después `npm run validate:generated` desde `frontend/`.
