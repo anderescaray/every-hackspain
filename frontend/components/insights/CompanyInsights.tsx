@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { CompanyDetail, EvidenceRef, TransactionEvidenceRef } from "@/types/companyDetail";
 import { confidenceLabel, dateLabel, numberLabel, severityLabels, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { HEALTH_DIMENSIONS } from "@/lib/healthScore";
@@ -62,6 +63,10 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
         </section>
       </div>
     </header>
+    {company.group_id && <div className={styles.groupEntry}>
+      <div><span className={styles.eyebrow}>Esta empresa pertenece a {company.group_id}</span><strong>Inteligencia de grupo</strong><p>Visión general, relaciones financieras y revisiones de tesorería del grupo observado.</p></div>
+      <Link href={`/groups/${company.group_id}`} className={styles.primaryButton} aria-label={`Ver inteligencia de grupo ${company.group_id}`}>Explorar grupo <span aria-hidden="true">↗</span></Link>
+    </div>}
     <div className={styles.overviewGrid}>
       <TrajectoryChart history={company.history} trajectory={company.trajectory} />
       <section className={styles.panel} aria-label="Factores del Health Score">

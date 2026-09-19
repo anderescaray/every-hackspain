@@ -69,6 +69,11 @@
 .dimensionTrack i { display: block; height: 100%; background: #7597d9; }
 .composition .methodology { margin-top: 15px; border-top: 1px solid var(--line); padding-top: 12px; }
 .driver .dimensionContext { font-size: 10px; color: #536582; margin-bottom: 10px; }
+.groupEntry { display: flex; align-items: center; justify-content: space-between; gap: 20px; background: #edf3ff; border: 1px solid #d4e1f8; border-radius: 8px; padding: 18px 23px; margin-bottom: 24px; }
+.groupEntry strong { display: block; font-size: 15px; font-weight: 600; margin: 4px 0; }
+.groupEntry p { color: var(--muted); font-size: 11px; }
+.groupEntry a { flex-shrink: 0; }
+@media (max-width: 640px) { .groupEntry { flex-direction: column; align-items: flex-start; padding: 18px; } }
 .overviewGrid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; align-items: start; }
 .bottomGrid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; }
 .panel { background: white; border: 1px solid var(--line); border-radius: 12px; padding: 27px 28px; min-width: 0; }

@@ -364,6 +364,125 @@ Si Data aún no suministra simulaciones, exportar `scenarios: []` y `example_id:
 }
 ```
 
+## Inteligencia de grupo: contrato adicional `GroupDetail` 1.0
+
+El acceso aparece automáticamente en una ficha con `company.group_id` no nulo. No se infiere pertenencia por nombres, bancos o importes. El módulo tiene tres rutas: `/groups/<group_id>`, `/groups/<group_id>/network` y `/groups/<group_id>/recommendations`. Un acceso habilitado no implica que ya exista el análisis del grupo.
+
+`getGroupDetail(groupId)` es la única entrada de datos de las tres vistas. Lee y valida **`frontend/public/generated/groups/<group_id>.json`**. `GROUP_ANALYSIS_DIR` permite un directorio absoluto alternativo. El contrato runtime es `frontend/types/groupDetail.ts`; no requiere modificar el JSON de empresa. El nombre del archivo y `group_id` deben coincidir. Archivos ausentes, incompatibles, demasiado grandes o IDs inválidos producen estados explícitos, nunca redes ni conclusiones inventadas. Las lecturas no tienen caché propia y comparten el límite de 2 MiB con las empresas.
+
+### Responsabilidades de Data y semántica
+
+- Data prepara miembros, Health Score y dimensiones individuales, trayectorias, roles, liquidez, deuda, obligaciones, concentración, cambios, relaciones, evidencia y recomendaciones. **No existe Group Health Score**: el esquema raíz rechaza campos de puntuación agregada. El frontend solo cuenta sociedades por trayectoria para la navegación, filtra, ordena por prioridad suministrada y calcula posiciones geométricas del grafo.
+- El grupo es un **perímetro observado**, no una consolidación jurídica completa. `coverage.known_company_count` puede ser `null`; si existe, no puede ser menor que el número de miembros observados. Los miembros deben corresponder al grupo indicado y sus datos individuales deben ser coherentes con sus JSON de empresa; esa consistencia entre exportaciones corresponde al pipeline.
+- `available_liquidity`, `identified_debt` y `obligations` incluyen `value` en EUR (nullable), `covered_company_ids`, `explanation` y `evidence_refs`. Obligaciones añade `horizon`. Son agregados recibidos, nunca una suma de los miembros hecha por el navegador. Explicar perímetro, restricciones y eliminaciones intragrupo aplicadas. La liquidez es una posición a la fecha de corte: no se obtiene sumando flujos operativos y apoyo. La deuda agregada excluye las posiciones internas que Data pueda identificar y eliminar, declarando los límites de esa consolidación.
+- Cada miembro tiene Health Score y cuatro dimensiones nullable, trayectoria nullable, prioridad `attention`, rol observado, importes identificados y `outlook`. `outlook.status: insufficient` exige `funding_need: null`. Las perspectivas son suministradas y deben describir sus supuestos; el frontend no predice necesidades ni simula distribuciones de caja.
+- Los roles son `provider`, `receiver`, `both`, `none_identified` o `unknown`. No se deducen de un saldo, de un score ni de la ausencia de enlaces. Un `null` nunca se convierte en cero.
+- El esquema permite hasta 50 miembros, 200 relaciones, 30 recomendaciones y 50 grupos de evidencia, con hasta 10 registros representativos en cada grupo. No enviar millones de movimientos ni credenciales, IBAN completos o datos personales innecesarios.
+
+### Relaciones y evidencia
+
+- `relations[].status`: `identified` significa identificada por Data con evidencia alta; `candidate`, hipótesis por confirmar; `unknown`, no atribuible de forma fiable. La cobertura numérica no se transforma automáticamente en ese estado ni representa probabilidad de acierto.
+- Tipos: `support`, `transfer`, `cash_pooling`, `treasury_circulation`, `commercial`, `unknown`. Las relaciones comerciales no se convierten en apoyo por compartir grupo. Los traspasos entre cuentas de la **misma** sociedad se analizan en la ficha individual, no se convierten en autoenlaces del grafo.
+- `from_company_id` y `to_company_id` deben ser miembros o `null` cuando no se identifica el extremo; al menos uno debe existir. No dibujar extremos inventados: esas relaciones siguen accesibles en la lista. La ausencia de una conexión no demuestra ausencia de relación.
+- `volume` cuenta cada transferencia o pago una sola vez, no ambas patas bancarias. `transfer_count` es el recuento de transferencias/pagos, no de apuntes; ambos admiten `null`. No sumar candidatos, desconocidos y flujos confirmados como si tuvieran la misma base. Para relaciones comerciales, explicar si el importe corresponde a facturas o a pagos observados.
+- `recurrence`, `change`, `first_seen`, `last_seen` y `explanation` vienen preparados por Data. Los cambios admiten `new`, `increasing`, `stable`, `decreasing`, `unknown`; no se buscan patrones en el frontend.
+- Una relación identificada exige dos sociedades distintas, tipo conocido y evidencia enlazada que conecte esos extremos: transacciones con sociedad observada, contraparte y signo coherentes con la dirección, o facturas entre emisora/receptora para una relación comercial. Esta comprobación valida registros suministrados; no encuentra parejas ni reclasifica movimientos.
+- La evidencia de grupo contiene registros `transaction`, `invoice` y `metric`. Cada grupo incluye título, periodo, explicación, cobertura y número total de registros. Usar grupos de evidencia específicos para cada relación cuando sea posible; la UI abre los grupos referenciados, no toda la biblioteca. Las referencias de sociedades, relaciones y evidencia se validan y los identificadores no pueden duplicarse.
+
+### Recomendaciones
+
+El pipeline suministra `recommendations[]`, incluyendo prioridad, motivo, señales de origen, pasos a revisar, límites, cobertura y referencias. Los siete tipos son `recurring_support`, `liquidity_distribution`, `increasing_dependency`, `funding_structure`, `concentration`, `stress_liquidity` e `insufficient_evidence`. Las señales pueden proceder de `health`, `momentum`, `resilience`, `cash_truth`, `network`, `liquidity`, `obligations`, `outlook`, `concentration` o `confidence`.
+
+No hay API de transferencias ni botones para mover fondos. La UI propone revisar, investigar o preparar escenarios. **La caja no se presume fungible entre sociedades**; deben comprobarse restricciones legales, fiscales, contractuales y operativas antes de actuar. Una recomendación de estrés no calcula automáticamente un resultado futuro.
+
+### Ejemplo completo de exportación de grupo
+
+Ejemplo reducido a dos sociedades para ilustrar todos los bloques. Las cifras son ilustrativas, no resultados verificados: Data debe sustituirlas, no instalarlas como análisis real. El test valida este JSON con el mismo esquema y el mismo comando de producción.
+
+```json
+{
+  "schema_version": "1.0",
+  "source": "generated",
+  "group_id": "GROUP_0042",
+  "as_of": "2026-08-31",
+  "period": "sep 2025 – ago 2026",
+  "currency": "EUR",
+  "summary": "El perímetro observado contiene una aportante y una receptora de apoyo. Revisar generación propia y condiciones del soporte.",
+  "coverage": { "known_company_count": null, "confidence": 86, "explanation": "Dos sociedades observadas; no se conoce el perímetro completo del grupo." },
+  "available_liquidity": { "value": 8450000, "covered_company_ids": ["COMP_0356", "COMP_0007"], "explanation": "Posición de liquidez suministrada para ambas sociedades. No implica disponibilidad para transferir entre ellas.", "evidence_refs": ["positions"] },
+  "identified_debt": { "value": 9400000, "covered_company_ids": ["COMP_0356", "COMP_0007"], "explanation": "Deuda externa identificada en este perímetro; no es el total jurídico del grupo.", "evidence_refs": ["positions"] },
+  "obligations": { "value": 1520000, "covered_company_ids": ["COMP_0356", "COMP_0007"], "horizon": "sep 2026 · 30 días", "explanation": "Vencimientos identificados de ambas sociedades.", "evidence_refs": ["positions"] },
+  "limitations": ["No se presume que la caja sea fungible entre sociedades.", "La ausencia de relaciones observadas no demuestra que no existan otras."],
+  "members": [
+    {
+      "company_id": "COMP_0356", "health_score": 72,
+      "dimensions": { "momentum": 68, "cash_generation": 81, "resilience": 74, "debt": 59 },
+      "trajectory": "deteriorating", "role": "receiver", "available_liquidity": 250000, "identified_debt": 3400000, "obligations_due": 620000,
+      "cash_generation_net": 25600, "internal_received": 4140000, "internal_provided": 0,
+      "confidence": 88, "attention": "high", "summary": "Generación neta reducida frente al apoyo identificado.",
+      "outlook": { "status": "insufficient", "horizon": "sep 2026", "summary": "Sin perspectiva suficientemente respaldada.", "funding_need": null, "confidence": null, "evidence_refs": [] },
+      "evidence_refs": ["positions", "support-records"]
+    },
+    {
+      "company_id": "COMP_0007", "health_score": 85,
+      "dimensions": { "momentum": 83, "cash_generation": 92, "resilience": 80, "debt": 84 },
+      "trajectory": "improving", "role": "provider", "available_liquidity": 8200000, "identified_debt": 6000000, "obligations_due": 900000,
+      "cash_generation_net": 1800000, "internal_received": 0, "internal_provided": 4140000,
+      "confidence": 93, "attention": "medium", "summary": "Aportante observada; revisar límites y restricciones antes de valorar recursos internos.",
+      "outlook": { "status": "insufficient", "horizon": "sep 2026", "summary": "Sin perspectiva suficientemente respaldada.", "funding_need": null, "confidence": null, "evidence_refs": [] },
+      "evidence_refs": ["positions", "support-records"]
+    }
+  ],
+  "insights": [
+    { "id": "support-weight", "title": "Poca caja propia frente al apoyo recibido", "explanation": "La operación identificada de COMP_0356 aporta menos que el apoyo. Revisar su recurrencia sin inferir insolvencia.", "severity": "high", "company_refs": ["COMP_0356"], "relation_refs": ["support-main"], "evidence_refs": ["support-records"] }
+  ],
+  "alerts": [
+    { "id": "review-support", "title": "Revisar el peso del apoyo", "explanation": "El flujo merece revisión junto a las condiciones de financiación.", "severity": "high", "period": "sep 2025 – ago 2026", "company_refs": ["COMP_0356", "COMP_0007"], "relation_refs": ["support-main"], "evidence_refs": ["support-records"] }
+  ],
+  "concentration": [
+    { "id": "provider", "title": "Una aportante identificada en el perímetro", "explanation": "No se afirma que sea la única alternativa del grupo completo.", "severity": "medium", "company_refs": ["COMP_0007"], "relation_refs": ["support-main"], "evidence_refs": ["support-records"] }
+  ],
+  "recent_changes": [
+    { "id": "last-flow", "date": "2026-08-14", "title": "Nueva observación de apoyo", "explanation": "Se documentó una transferencia dentro de una relación existente.", "severity": "medium", "company_refs": ["COMP_0007", "COMP_0356"], "relation_refs": ["support-main"], "evidence_refs": ["support-records"] }
+  ],
+  "relations": [
+    { "id": "support-main", "from_company_id": "COMP_0007", "to_company_id": "COMP_0356", "kind": "support", "status": "identified", "volume": 4140000, "transfer_count": 12, "period": "sep 2025 – ago 2026", "recurrence": "Apoyo recurrente en el periodo", "change": "increasing", "first_seen": "2025-09-12", "last_seen": "2026-08-14", "explanation": "Relación clasificada por Data como apoyo intragrupo; importe contado una vez por transferencia.", "confidence": 91, "evidence_refs": ["support-records"] }
+  ],
+  "recommendations": [
+    {
+      "id": "support-review", "type": "recurring_support", "priority": "high", "title": "Revisar el apoyo interno recurrente",
+      "explanation": "Revisar el peso del soporte observado junto a la capacidad operativa y las obligaciones de ambas sociedades.", "period": "sep 2025 – ago 2026", "confidence": 88,
+      "signals": [ { "source": "network", "observation": "Se identifican doce transferencias en la relación." }, { "source": "confidence", "observation": "La perspectiva futura todavía no tiene evidencia suficiente." } ],
+      "review_steps": ["Contrastar si la necesidad de soporte es recurrente.", "Revisar límites, acuerdos y capacidad del aportante antes de estudiar alternativas."],
+      "constraints": ["No se autoriza ninguna transferencia.", "La caja no se considera libremente transferible entre sociedades."],
+      "company_refs": ["COMP_0356", "COMP_0007"], "relation_refs": ["support-main"], "evidence_refs": ["support-records", "positions"]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "support-records", "title": "Muestra de apoyo intragrupo", "period": "sep 2025 – ago 2026", "explanation": "Dos tramos de una transferencia representativa; no son las doce transferencias del periodo.", "confidence": 91, "total_count": 24,
+      "rows": [
+        { "kind": "transaction", "id": "GROUP-TX-001", "company_id": "COMP_0007", "counterparty_company_id": "COMP_0356", "transaction_date": "2026-08-14", "amount": -600000, "category": "Apoyo intragrupo identificado", "description": "Salida documentada de la aportante" },
+        { "kind": "transaction", "id": "GROUP-TX-002", "company_id": "COMP_0356", "counterparty_company_id": "COMP_0007", "transaction_date": "2026-08-14", "amount": 600000, "category": "Apoyo intragrupo identificado", "description": "Entrada documentada de la receptora" }
+      ]
+    },
+    {
+      "id": "positions", "title": "Posiciones recibidas de Data", "period": "31 ago 2026", "explanation": "Liquidez, deuda y obligaciones del perímetro observado.", "confidence": 86, "total_count": 6,
+      "rows": [
+        { "kind": "metric", "id": "POS-0356", "company_id": "COMP_0356", "metric": "Liquidez disponible observada", "value": 250000, "unit": "EUR", "period": "31 ago 2026", "source": "Posición preparada por Data" },
+        { "kind": "metric", "id": "POS-0007", "company_id": "COMP_0007", "metric": "Liquidez disponible observada", "value": 8200000, "unit": "EUR", "period": "31 ago 2026", "source": "Posición preparada por Data" },
+        { "kind": "metric", "id": "DEBT-0356", "company_id": "COMP_0356", "metric": "Deuda externa identificada", "value": 3400000, "unit": "EUR", "period": "31 ago 2026", "source": "Deuda preparada por Data" },
+        { "kind": "metric", "id": "DEBT-0007", "company_id": "COMP_0007", "metric": "Deuda externa identificada", "value": 6000000, "unit": "EUR", "period": "31 ago 2026", "source": "Deuda preparada por Data" },
+        { "kind": "metric", "id": "DUE-0356", "company_id": "COMP_0356", "metric": "Obligaciones identificadas", "value": 620000, "unit": "EUR", "period": "sep 2026", "source": "Calendario suministrado por Data" },
+        { "kind": "metric", "id": "DUE-0007", "company_id": "COMP_0007", "metric": "Obligaciones identificadas", "value": 900000, "unit": "EUR", "period": "sep 2026", "source": "Calendario suministrado por Data" }
+      ]
+    }
+  ]
+}
+```
+
+Validar grupos desde `frontend/`: `npm run validate:generated -- --groups`. El modo normal no contiene resultados ficticios. Para probar localmente sin el pipeline, `npm run dev:fixtures -- --port 3107` exporta ambos contratos a directorios temporales separados y habilita los fixtures solo en ese proceso. `GROUP_0042` tiene seis sociedades, relaciones identificadas/candidatas/desconocidas y siete tipos de revisión; `GROUP_0099` cubre el estado de perímetro vacío. Las fichas individuales de las sociedades adicionales son resúmenes de demo sin histórico o escenarios inventados. No se escriben JSON en `public/generated` ni se tocan archivos reales.
+
 ## Verificación de la entrega
 
 Desde `frontend/`: `npm test`, `npm run lint`, `npm run build`, `npm run typecheck`. Para navegador: `npx playwright install chromium` y `npm run test:e2e` tras el build. Las pruebas cubren JSON ausentes/inválidos, ruta predeterminada, actualizaciones, ausencia de fallback, valores suministrados sin recálculo, escenarios sin coincidencia, español, accesibilidad y responsive.
