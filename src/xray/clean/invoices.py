@@ -73,7 +73,7 @@ def clean_invoices(inv: pd.DataFrame, log: CleaningLog, extraction_date: pd.Time
           f"pending vencida hace > {STALE_PENDING_DAYS} días")
     _flag(f, log, "D23", "has_invalid_exchange_rate",
           f.exchange_rate.isna() | f.exchange_rate.le(0) | f.exchange_rate.abs().eq(float("inf")),
-          "exchange_rate no finito o no positivo; no se imputa")
+          "exchange_rate no finito o no positivo; informativo, la conversión usa xray.fx (D32)")
     return f.reset_index(drop=True)
 
 

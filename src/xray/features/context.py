@@ -1,18 +1,22 @@
 import pandas as pd
 
 from xray.features.temporal import divide
+from xray.fx import REPORTING_CURRENCY, to_eur
 
 
 def reconstruct_liquidity(tables, config):
     bank = tables["banking_products"]
     accounts = bank.loc[bank.type.eq("checking"), ["product_id", "company_id", "currency", "created_at"]]
     balances = accounts.merge(tables["balances"][["product_id", "date", "balance"]], on="product_id", how="left", validate="one_to_one")
+    # D32: saldo y movimientos en EUR con el mismo tipo fijo, así la identidad hacia atrás se mantiene.
+    balances["balance"] = to_eur(balances.balance.astype(float), balances.currency)
+    balances["currency"] = REPORTING_CURRENCY
     tx = tables["transactions"]
     tx = tx.loc[tx.product_id.isin(balances.product_id)].copy()
+    tx["amount"] = to_eur(tx.amount.astype(float), tx.product_currency)
     tx = tx.merge(balances[["product_id", "date"]].rename(columns={"date": "snapshot_date"}), on="product_id", validate="many_to_one")
     tx = tx.loc[tx.date.lt(tx.snapshot_date.dt.normalize() + pd.Timedelta(days=1))]
-    tx["unsafe"] = (~tx.status.eq("booked") | ~tx.exchange_rate.eq(1) | tx.is_extreme_amount
-                    | tx.is_relative_outlier | tx.is_sync_duplicate)
+    tx["unsafe"] = ~tx.status.eq("booked") | tx.amount.isna() | tx.is_sync_duplicate
     first = tx.groupby("product_id").date.min()
     bank_flow = tx.loc[tx.status.eq("booked") & ~tx.is_sync_duplicate]
     frames = []
@@ -55,9 +59,12 @@ def liquidity_summary(accounts, panel):
 def debt_snapshot(tables, config):
     debt = tables["debt_products"].copy()
     debt["snapshot_date"] = pd.Timestamp(config.extraction_date)
-    debt["debt_outstanding"] = -pd.to_numeric(debt.outstanding)
-    debt["debt_granted"] = -pd.to_numeric(debt.granted)
+    debt["source_currency"] = debt.currency
+    debt["debt_outstanding"] = -to_eur(pd.to_numeric(debt.outstanding), debt.source_currency)
+    debt["debt_granted"] = -to_eur(pd.to_numeric(debt.granted), debt.source_currency)
+    debt["liquidity"] = to_eur(pd.to_numeric(debt.liquidity), debt.source_currency)
+    debt["currency"] = REPORTING_CURRENCY
     debt["debt_utilization"] = divide(debt.debt_outstanding, debt.debt_granted)
     debt["has_unexpected_sign"] = debt.debt_outstanding.lt(0) | debt.debt_granted.lt(0)
-    return debt[["company_id", "product_id", "currency", "type", "snapshot_date", "debt_outstanding",
+    return debt[["company_id", "product_id", "currency", "source_currency", "type", "snapshot_date", "debt_outstanding",
                  "debt_granted", "liquidity", "debt_utilization", "has_unexpected_sign"]]

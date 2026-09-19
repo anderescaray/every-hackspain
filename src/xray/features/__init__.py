@@ -15,9 +15,11 @@ from xray.features.context import debt_snapshot, liquidity_summary, reconstruct_
 from xray.features.coverage import STATES, add_coverage_state
 from xray.features.invoices import invoice_features, prepare_invoices
 from xray.features.temporal import add_ratios, add_temporal, model_columns
-from xray.features.transactions import coverage_by_company, prepare_transactions, stress_events, transaction_features
+from xray.features.transactions import (PARTIAL_MONTH_COLUMNS, coverage_by_company, prepare_transactions,
+                                       stress_events, transaction_features)
+from xray.fx import REPORTING_CURRENCY
 from xray.io import read_cleaned
-from xray.paths import CLEANED_DIR, PROCESSED_DIR
+from xray.paths import CLEANED_DIR, DATA_START, PROCESSED_DIR
 
 
 INPUTS = ("companies", "groups", "transactions", "invoices", "banking_products", "debt_products", "balances")
@@ -25,7 +27,9 @@ INPUTS = ("companies", "groups", "transactions", "invoices", "banking_products",
 
 def build_features(tables: dict[str, pd.DataFrame], config: FeatureConfig | None = None) -> dict[str, pd.DataFrame]:
     config = config or FeatureConfig()
-    companies = tables["companies"]
+    declared = tables["companies"]
+    # D32: todos los paneles van en EUR; la moneda declarada se conserva como contexto.
+    companies = declared.assign(currency=REPORTING_CURRENCY)
     t = prepare_transactions(tables, config)
     f = prepare_invoices(tables, config)
     pairs = pd.concat([companies[["company_id", "currency"]], t[["company_id", "currency"]],
@@ -41,16 +45,17 @@ def build_features(tables: dict[str, pd.DataFrame], config: FeatureConfig | None
         p = transaction_features(t, skeleton, unit)
         invoice_panel = invoice_features(f, skeleton, unit)
         p = p.merge(invoice_panel, on=[unit, "currency", "month"], how="left", validate="one_to_one")
+        p = mask_partial_first_month(add_coverage_state(p, t, unit, config))
         p = add_temporal(add_ratios(p), unit, config)
-        p = add_coverage_state(p, t, unit, config)
         if unit == "company_id":
             p["group_id"] = p.company_id.map(companies.set_index("company_id").group_id)
         result[filename] = p
     currency = result["company_currency_monthly_features"]
     primary = currency.merge(companies[["company_id", "currency"]], on=["company_id", "currency"], validate="many_to_one")
-    coverage = coverage_by_company(t, companies, config.months)
+    coverage = coverage_by_company(t, declared, config.months)
     primary = primary.merge(coverage, on=["company_id", "currency", "month"], validate="one_to_one")
-    primary["has_partial_currency_coverage"] = primary.tx_primary_currency_row_share.lt(1) | primary.tx_ambiguous_fx_count.gt(0)
+    primary["declared_currency"] = primary.company_id.map(declared.set_index("company_id").currency)
+    primary["has_partial_currency_coverage"] = primary.tx_unknown_currency_count.gt(0)
     result["company_monthly_features"] = primary.sort_values(["company_id", "month"]).reset_index(drop=True)
     result["stress_events_reserved"] = stress_events(t, companies, config.months)
     result["reconstructed_liquidity_context"] = reconstruct_liquidity(tables, config)
@@ -58,6 +63,20 @@ def build_features(tables: dict[str, pd.DataFrame], config: FeatureConfig | None
     result["debt_snapshot_context"] = debt_snapshot(tables, config)
     validate_features(result, companies, config)
     return result
+
+
+def mask_partial_first_month(panel):
+    """D33: el mes `onboarding` (primer mes con actividad real) es parcial; sus importes bancarios no cuentan.
+
+    Se conservan los conteos (el mes existe y se ve en la cobertura), pero los importes quedan NaN, así las
+    ventanas, ratios y el score empiezan en el primer mes completo en lugar de ver un crecimiento falso.
+    Si ese mes es el primero de la extracción (`DATA_START`), está completo: la entidad ya existía y no se anula.
+    """
+    p = panel.copy()
+    onboarding = p.coverage_state.eq("onboarding").fillna(False).astype(bool)
+    p["is_partial_first_month"] = onboarding & p.month.gt(DATA_START)
+    p.loc[p.is_partial_first_month, PARTIAL_MONTH_COLUMNS] = np.nan
+    return p
 
 
 def validate_features(artifacts, companies, config):

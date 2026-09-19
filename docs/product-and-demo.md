@@ -36,7 +36,8 @@ No hace falta un plan de negocio completo; sí una respuesta clara a **quién pa
 | **Company Detail** | Timeline 24m, descomposición, drivers | `scores` + `explanations.json` |
 | **Monitor** | Feed de alertas proactivas | `alerts.json` |
 | **Recommendations** | Acciones sugeridas por tipo de alerta | Reglas en alertas |
-| **Group View** | Salud relativa entre filiales del holding | `group_id` join |
+| **Qué mueve tu nivel** (ficha) | Sensibilidad por empresa: palanca top por 1 % y por 10.000, hasta dónde vale, cuánto para cambiar de tramo, papel en el plan de grupo | `advisor/company_sensitivity/{id}.json` + `.md` (implementado, [group-optimization.md](./group-optimization.md) §6) |
+| **Group View** | Plan mecánico intragrupo (D1/P) con evidencia, restricciones activas, alternativas rechazadas y supuestos en pantalla; solo si ≥2 filiales puntuadas | `advisor/group_plans/{group_id}.json` + `.md` (implementado, [group-optimization.md](./group-optimization.md) §5) |
 
 ---
 
@@ -95,6 +96,9 @@ backend/
 | GET | `/companies/{id}/timeline` | Serie 24 meses (score, level, momentum, stability) |
 | GET | `/companies/{id}/explanation?month=` | Explicación completa con drivers |
 | GET | `/groups/{group_id}` | Empresas del holding con scores relativos |
+| GET | `/groups/{group_id}/plan` | JSON del plan (`advisor/group_plans/`) y su narrativa `.md`; `status` ∈ plan / no_feasible_levers / single_subsidiary |
+| GET | `/companies/{id}/sensitivity` | JSON de sensibilidad (`advisor/company_sensitivity/`) y su narrativa `.md` |
+| POST | `/qa` | `{doc_id, intent, args}` → respuesta cerrada de `xray.group_advisor.qa.answer` (nueve intenciones); sin LLM |
 | GET | `/alerts` | Feed paginado, filtros severity/type |
 | GET | `/alerts/recent?limit=10` | Para widget del dashboard |
 | POST | `/alerts/{id}/acknowledge` | Demo: marcar alerta como vista |
@@ -150,18 +154,29 @@ Cargar Parquet/JSON al arranque en memoria (dataset pequeño post-agregación).
 - Click → navega a detalle empresa
 - Botón "Marcar como vista" (ack)
 
-#### 4. Vista grupo (`/groups/[id]`) — recomendada
+#### 4. Vista grupo (`/groups/[id]`) — solo si el grupo tiene ≥2 filiales puntuadas
 
-- Barras horizontales: score por filial
-- Destaca la peor y la mejor del holding
+- Barras horizontales: nivel por filial con tramo (rojo/ámbar/verde) y papel (donante/receptora/estructural)
+- `G` antes → después (k=1 y k=6), filiales que cambian de tramo, caja comprometida por donante
+- Plan paso a paso (`render_plan`): frase de negocio, efecto en receptora y donante, eficiencia por 10.000, restricción activa, evidencia
+- «Por qué no más / por qué no otras» y **supuestos en pantalla** («escenario mecánico bajo supuestos explícitos»)
+- Sin plan: motivos por filial, sin «todo bien» implícito
+
+#### 2b. Bloque «Qué mueve tu nivel» (en la ficha de empresa)
+
+- Tres palancas top por 1 % y por 10.000 (`render_sensitivity`), con la pendiente y hasta dónde vale
+- Frase de cambio de tramo: «Para pasar a verde: −27,3 % de salidas o +34 % de entradas»
+- Palancas de negocio etiquetadas como sensibilidad; palancas no evaluables con motivo
+- Banner «En el plan de grupo, esta filial recibe apoyo en el paso 1» con enlace a `/groups/[id]`
 
 ### UX para el pitch (5 min)
 
 1. **Monitor** — "Esta semana 3 empresas requieren atención"
 2. **Detalle deterioro** — Velasco-like: score 68 pero momentum rojo 4 meses
 3. **Detalle mejora** — Northbrook-like: score medio pero tendencia fuerte
-4. **Explicación** — un click y se ve el porqué
-5. **Comprador** — "Embat lo vende como Pulse premium"
+4. **Explicación** — un click y se ve el porqué; debajo, «Qué mueve tu nivel» (COMP_0007: para verde, −27,3 % de salidas o +34 % de entradas; la cuota no basta)
+5. **Grupo** — GROUP_0067: COMP_1048 asume las cuotas de COMP_1275 (12.340 EUR/mes) y esta pasa de 31 a 66,7; supuestos en pantalla; GROUP_0064 como contraejemplo honesto («sin palancas: problema estructural»)
+6. **Comprador** — "Embat lo vende como Pulse premium"
 
 ---
 

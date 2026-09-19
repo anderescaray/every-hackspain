@@ -22,14 +22,13 @@ def test_mirrors_require_same_known_currency():
     assert not result.is_intragroup.any()
 
 
-def test_relative_outliers_do_not_depend_on_future():
+def test_no_row_is_flagged_or_dropped_for_its_size():
+    # D32: ni corte absoluto (D01) ni relativo a la propia empresa (D02).
     rows = [row(i, date='2025-01-10', amount=10, description=str(i)) for i in range(120)]
-    rows += [row(120, date='2025-02-10', amount=1000)]
-    prefix = clean_transactions(tx_frame(rows), PRODUCTS, GROUPS, CleaningLog())
-    future = rows + [row(i, date='2025-03-10', amount=1e7) for i in range(121, 241)]
-    full = clean_transactions(tx_frame(future), PRODUCTS, GROUPS, CleaningLog())
-    assert prefix.iloc[-1].is_relative_outlier
-    pd.testing.assert_series_equal(prefix.is_relative_outlier, full.iloc[:len(prefix)].is_relative_outlier)
+    rows += [row(120, date='2025-02-10', amount=1e10)]
+    out = clean_transactions(tx_frame(rows), PRODUCTS, GROUPS, CleaningLog())
+    assert len(out) == len(rows)
+    assert not {'is_extreme_amount', 'is_relative_outlier'} & set(out.columns)
 
 
 def test_payment_dates_are_flagged_at_exact_extraction_boundary():

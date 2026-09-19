@@ -1,7 +1,7 @@
 """Cash Truth: ¿esta caja se genera, circula o viene de apoyo?
 
-Clasifica cada movimiento bancario elegible (booked, FX=1, sin flags de calidad; mismo criterio que
-`xray.features.transactions`) en un único bucket, por prioridad:
+Clasifica cada movimiento bancario elegible (booked, importe convertible a EUR, sin flags de calidad; mismo
+criterio que `xray.features.transactions`, D32: todo en EUR con tipo fijo) en un único bucket, por prioridad:
 
     own_circulation        espejo +X/−X mismo día entre cuentas propias (D04 `is_internal_transfer`)
     group_support          espejo entre empresas del mismo grupo (D05 `is_intragroup`)
@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from xray.features.transactions import FLAGS, INFLOW, OUTFLOW
+from xray.fx import REPORTING_CURRENCY, to_eur
 from xray.paths import EXTRACTION_DATE
 
 BUCKETS = ["own_circulation", "group_support", "financing_investment", "operations", "unpaired_transfer", "uncertain"]
@@ -42,12 +43,15 @@ EVIDENCE_COLUMNS = ["company_id", "currency", "month", "bucket", "transaction_id
 def classify(transactions, stop=EXTRACTION_DATE):
     """Devuelve los movimientos elegibles con columnas `month`, `bucket` y `currency`."""
     t = transactions.loc[transactions.date.lt(stop)].copy()
-    if "currency" not in t and "product_currency" in t:
-        t = t.rename(columns={"product_currency": "currency"})
+    t = t.rename(columns={"product_currency" if "product_currency" in t else "currency": "source_currency"})
+    # D32: importes en EUR con tipo fijo por moneda; sin moneda conocida no es elegible.
+    t["amount"] = to_eur(t.amount.astype(float), t.source_currency)
+    t["currency"] = REPORTING_CURRENCY
     flags = [f for f in FLAGS if f in t]
-    eligible = t.status.eq("booked") & t.exchange_rate.eq(1) & ~t[flags].any(axis=1) if flags else t.status.eq("booked") & t.exchange_rate.eq(1)
+    eligible = t.status.eq("booked") & t.amount.notna()
+    if flags:
+        eligible &= ~t[flags].any(axis=1)
     t = t.loc[eligible].copy()
-    t["amount"] = t.amount.astype(float)
     t["month"] = t.date.dt.to_period("M").dt.to_timestamp()
     t["bucket"] = np.select(
         [t.is_internal_transfer.fillna(False).astype(bool), t.is_intragroup.fillna(False).astype(bool),

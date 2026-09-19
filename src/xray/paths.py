@@ -20,3 +20,5 @@ PROCESSED_DIR = DATA_DIR / "processed"
 
 # Fecha de la foto final (balances, status de facturas).
 EXTRACTION_DATE = pd.Timestamp("2026-09-01")
+# Primer día de la extracción: quien ya tenía datos entonces empieza con un mes completo (D33).
+DATA_START = pd.Timestamp("2024-09-01")

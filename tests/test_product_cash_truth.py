@@ -22,12 +22,13 @@ def test_buckets_priority_and_eligibility():
             tx(5, "A", "2026-01-08", -30, category="transfer"),               # unpaired_transfer
             tx(6, "A", "2026-01-09", 40, category="uncategorized"),           # uncertain
             tx(7, "A", "2026-01-10", 999, status="pending"),                  # fuera: no booked
-            tx(8, "A", "2026-01-11", 999, fx=1.1),                            # fuera: FX
-            tx(9, "A", "2026-01-12", 999, is_extreme_amount=True),            # fuera: flag
+            tx(8, "A", "2026-01-11", 999, fx=1.1),                            # dentro: exchange_rate no se usa (D32)
+            tx(9, "A", "2026-01-12", 999, is_sync_duplicate=True),            # fuera: flag de calidad
             tx(10, "A", "2026-09-02", 999)]                                   # fuera: posterior a la extracción
     c = classify(pd.DataFrame(rows), stop=pd.Timestamp("2026-09-01"))
     assert dict(zip(c.transaction_id, c.bucket)) == {"T1": "operations", "T2": "own_circulation", "T3": "group_support",
-                                                     "T4": "financing_investment", "T5": "unpaired_transfer", "T6": "uncertain"}
+                                                     "T4": "financing_investment", "T5": "unpaired_transfer", "T6": "uncertain",
+                                                     "T8": "operations"}
     m = monthly_buckets(c)
     assert m.share_abs.sum() == pytest.approx(1.0) and set(m.bucket) <= set(BUCKETS)
     assert m.set_index("bucket").loc["group_support", "amount_in"] == 500
