@@ -122,6 +122,26 @@
 .correctionAfter strong { color: #1b7863; }
 .correctionSupport { background: #fcf7ed; }
 .correctionSupport strong { color: #926025; }
+.identifiedCashTotal { display: grid; grid-template-columns: minmax(260px, 1.45fr) 28px minmax(140px, 1fr) 28px minmax(160px, 1.05fr); align-items: center; gap: 18px; padding: 26px; border: 1px solid #cbdaf6; border-radius: 10px; background: #edf3ff; }
+.identifiedCashMain, .cashSumTerm { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.identifiedCashMain h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; line-height: 1.6; color: #304d7c; }
+.identifiedCashMain > strong { font-size: 44px; font-weight: 600; letter-spacing: -1.5px; color: #17396e; line-height: 1.2; overflow-wrap: anywhere; }
+.identifiedCashMain > span, .cashSumTerm > span, .cashSumTerm small { color: #4d6383; font-size: 11px; line-height: 1.6; }
+.cashSumTerm > strong { font-size: 23px; font-weight: 550; color: #203a62; line-height: 1.4; }
+.cashSumOperator { color: #496fa8; font-size: 25px; text-align: center; }
+.page .cashTotalDefinition { color: var(--muted); font-size: 11px; line-height: 1.8; margin: 12px 0 24px; }
+.cashTotalDefinition strong { font-weight: 550; }
+@media (max-width: 1000px) {
+  .identifiedCashTotal { grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr); }
+  .identifiedCashMain, .cashSumOperator:nth-child(2) { grid-column: 1 / -1; }
+  .cashSumOperator:nth-child(2) { text-align: left; }
+}
+@media (max-width: 640px) {
+  .identifiedCashTotal { grid-template-columns: 1fr; padding: 20px; gap: 13px; }
+  .identifiedCashMain > strong { font-size: 32px; letter-spacing: -1px; }
+  .cashSumOperator { text-align: left; }
+  .cashSumTerm > strong { font-size: 21px; }
+}
 .cashOrigins { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 26px; }
 .cashOrigins > article { padding: 24px; display: flex; flex-direction: column; align-items: flex-start; border-right: 1px solid var(--line); }
 .cashOrigins > article:last-child { border-right: 0; }

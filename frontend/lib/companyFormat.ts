@@ -39,7 +39,7 @@ export function money(value: number, signed = false, decimals = 2): string {
 }
 
 export function exactMoney(value: number): string {
-  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 }).format(value);
 }
 
 export function dateLabel(value: string, monthOnly = false): string {

@@ -4,7 +4,7 @@
 
 `CSV originales → pipeline de Data (Pandas / Polars / Parquet, fuera del frontend) → JSON de presentación → Next.js`
 
-El pipeline calcula **todos** los resultados: Health Score, dimensiones, histórico, factores, clasificaciones de caja, tiempos, alertas, cobertura y escenarios. Next.js no lee CSV ni Parquet, no procesa transacciones completas y no calcula ni corrige scores. Solo valida el contrato, presenta valores suministrados y selecciona escenarios precalculados.
+El pipeline calcula **todos** los resultados: Health Score, dimensiones, histórico, factores, clasificaciones de caja, tiempos, alertas, cobertura y escenarios. Next.js no lee CSV ni Parquet, no procesa transacciones completas y no calcula ni corrige scores. Valida el contrato, presenta valores suministrados y selecciona escenarios precalculados. La única suma de presentación del bloque de caja es el subtotal explícito de los dos netos recibidos (operación + apoyo/financiación); no es un score ni un modelo financiero.
 
 La fuente única de la página es `getCompanyDetail(companyId)`, en `frontend/services/companyData.ts`. Los componentes reciben un `CompanyDetail` y no importan fixtures ni conocen rutas de archivos.
 
@@ -93,6 +93,10 @@ El cálculo ponderado y su redondeo corresponden **al pipeline**, no al frontend
 Las cuatro dimensiones indican una mejor situación cuando suben, no más crecimiento ni más deuda. «Crecimiento bajo presión» debe exportarse como factor/alerta asociado a `momentum`, `cash_generation` y/o `resilience`, no como una quinta puntuación. La cobertura se presenta de forma secundaria (alta ≥80, media ≥60, limitada por debajo; `null`: no evaluable), sin alterar la puntuación recibida.
 
 ### Origen de la caja
+
+El primer valor visible es **Total de caja neta identificada = neto operativo + neto de apoyo/financiación**. Se muestra con importes completos y la fórmula al lado, antes del desglose. Para COMP_0356: **4.165.600 € = 25.600 € + 4.140.000 €**.
+
+Este subtotal solo suma los dos `components[].net_amount` de categorías `operating` y `support`. No usa `apparent_net`, no reconstruye saldos bancarios y no incorpora circulación ni importes no identificados. No cambia el contrato ni los valores recibidos de Data. Para que la ecuación cuadre con los importes mostrados, ambos sumandos se redondean a céntimos y se suman en unidades enteras de céntimo; no se recalcula ningún score. Se conservan importes negativos (salidas) y cero. Si falta cualquiera de los dos netos o excede la precisión monetaria segura, el total aparece como no disponible: nunca se trata un dato ausente como cero. Sin apoyo identificado y con neto explícito 0, el total coincide con la operación; el sumando 0 se explica en la fórmula sin reintroducir la tarjeta vacía de apoyo.
 
 - Importes en **euros**, no céntimos ni cadenas formateadas. El frontend aplica formato español.
 - `total_gross_movement` y `gross_movement` son movimientos en valor absoluto. En circulación se cuentan entrada y salida.

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CashTruth } from "@/types/companyDetail";
 import { cashCategoryLabel, exactMoney, money } from "@/lib/companyFormat";
-import { getSupportPresentation, getTreasuryState } from "@/lib/cashPresentation";
+import { getIdentifiedCashTotal, getSupportPresentation, getTreasuryState } from "@/lib/cashPresentation";
 import { Confidence, EvidenceButton, SectionHeading, type OpenEvidence } from "./InsightPrimitives";
 import { AccountTransfers } from "./AccountTransfers";
 import styles from "./insights.module.css";
@@ -16,10 +16,31 @@ export function CashTruthSection({ cash, companyId, groupId, onOpen }: { cash: C
   const uncertain = cash.components.find((item) => item.category === "uncertain");
   const treasury = cash.own_account_circulation;
   const treasuryState = getTreasuryState(cash);
+  const identifiedCash = getIdentifiedCashTotal(cash);
 
   return (
     <section className={`${styles.panel} ${styles.featurePanel}`} aria-label="Origen de la caja">
       <SectionHeading number="03" title="Origen de la caja" description="¿De dónde viene realmente la liquidez?"><span className={styles.featureBadge}>{cash.period}</span></SectionHeading>
+      <div className={styles.identifiedCashTotal} role="group" aria-label="Total de caja neta identificada">
+        <div className={styles.identifiedCashMain}>
+          <h3>Total de caja neta identificada</h3>
+          <strong data-testid="identified-cash-total">{identifiedCash.total === null ? "No disponible" : exactMoney(identifiedCash.total)}</strong>
+          <span>Flujos netos del periodo</span>
+        </div>
+        <span className={styles.cashSumOperator} aria-hidden="true">=</span>
+        <div className={styles.cashSumTerm}>
+          <span>Generación operativa</span>
+          <strong data-testid="cash-total-operating">{identifiedCash.operating === null ? "No identificado" : exactMoney(identifiedCash.operating)}</strong>
+        </div>
+        <span className={styles.cashSumOperator} aria-hidden="true">{identifiedCash.support !== null && identifiedCash.support < 0 ? "−" : "+"}</span>
+        <div className={styles.cashSumTerm}>
+          <span>{supportView.visible ? supportView.label : identifiedCash.support === 0 ? "Sin apoyo identificado" : "Financiación o apoyo sin dato"}</span>
+          <strong data-testid="cash-total-support">{identifiedCash.support === null ? "No identificado" : exactMoney(Math.abs(identifiedCash.support))}</strong>
+          {identifiedCash.support !== null && identifiedCash.support < 0 && <small>Salida neta: resta del total</small>}
+        </div>
+      </div>
+      <p className={styles.cashTotalDefinition}><strong>Es la suma de la generación operativa y el apoyo o financiación identificados.</strong> No es el saldo bancario disponible. Excluye la circulación entre cuentas y los movimientos no identificados.</p>
+      {identifiedCash.total === null && <p className={styles.disclaimer} role="status">No se puede completar el total: falta un neto identificado o su importe no puede representarse con precisión. No se sustituye por cero.</p>}
       <div className={styles.cashOrigins} role="group" aria-label="Origen de la liquidez">
         <article className={styles.operatingOrigin} aria-label="Generación operativa">
           <h3>Generación operativa</h3>

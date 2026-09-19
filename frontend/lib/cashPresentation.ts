@@ -18,6 +18,22 @@ export function getSupportPresentation(cash: CashTruth, groupId: string | null) 
   };
 }
 
+export function getIdentifiedCashTotal(cash: CashTruth) {
+  const cents = (value: number | null | undefined) => {
+    if (value == null || !Number.isFinite(value)) return null;
+    const rounded = Math.round((value + Math.sign(value) * Number.EPSILON) * 100);
+    return Number.isSafeInteger(rounded) ? rounded || 0 : null;
+  };
+  const operating = cents(cash.components.find((item) => item.category === "operating")?.net_amount);
+  const support = cents(cash.components.find((item) => item.category === "support")?.net_amount);
+  const sum = operating !== null && support !== null ? operating + support : null;
+  return {
+    operating: operating === null ? null : operating / 100,
+    support: support === null ? null : support / 100,
+    total: sum !== null && Number.isSafeInteger(sum) ? sum / 100 : null,
+  };
+}
+
 export function getTreasuryState(cash: CashTruth) {
   if (!cash.own_account_circulation) return "unavailable";
   if (cash.own_account_circulation.transfer_count > 0) return "identified";
