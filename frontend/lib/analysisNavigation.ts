@@ -1,6 +1,7 @@
 export const companySections = [
   { id: "health-score", label: "Health Score", icon: "health" },
   { id: "trajectory", label: "Tendencia", icon: "trend" },
+  { id: "actionability", label: "Palancas", icon: "actions" },
   { id: "cash-truth", label: "Origen de la caja", icon: "cash" },
   { id: "time-borrowed", label: "Tiempo financiado", icon: "time" },
 ] as const;

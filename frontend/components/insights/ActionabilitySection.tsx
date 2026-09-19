@@ -20,62 +20,78 @@ function Feasibility({ lever }: { lever: ActionLever }) {
     <span className={styles.actionStatusDot} data-state={resources.feasibility} aria-hidden="true" />
     <span>{state}</span>
     {resources.required !== null && resources.own_available !== null && <small>{exactMoney(resources.required)} requeridos · {exactMoney(resources.own_available)} disponibles</small>}
-    {resources.scope === "selected_grid_scenario" && <small>Para el escenario mostrado; no implica una operación ejecutable.</small>}
+    <small>Escenario modelado; no equivale a una operación ejecutable.</small>
   </div>;
+}
+
+function LeverRow({ lever, onSelect }: { lever: ActionLever; onSelect?: () => void }) {
+  const content = <><span className={styles.actionRowName}>{lever.label}<small>{lever.change_description}</small></span><strong>{lever.delta_points === null ? "No evaluable" : `${signedNumber(lever.delta_points)} pts`}</strong>{onSelect && <span aria-hidden="true">→</span>}</>;
+  return <li>{onSelect ? <button type="button" onClick={onSelect} aria-label={`Ver escenario de ${lever.label}`}>{content}</button> : <div className={styles.actionStaticRow}>{content}</div>}</li>;
+}
+
+function BusinessSensitivities({ levers }: { levers: ActionLever[] }) {
+  if (!levers.length) return null;
+  return <div className={styles.actionAlternatives} aria-label="Sensibilidades de negocio"><h3>Sensibilidades de negocio</h3><ul>{levers.map((lever) => <LeverRow key={lever.lever} lever={lever} />)}</ul><p className={styles.actionBusinessNote}>Sensibilidad, no recomendación.</p></div>;
 }
 
 function BandPath({ actionability, selected }: { actionability: Actionability; selected: ActionLever }) {
   const band = actionability.next_band;
-  if (!band || band.current_level === null || band.target_level === null) return <div className={styles.actionPathEmpty}>Siguiente tramo no disponible.</div>;
-  return <div className={styles.actionPath} aria-label={`Nivel actual ${numberLabel(band.current_level, 0)}, escenario ${numberLabel(selected.level_after, 0)}, siguiente tramo ${numberLabel(band.target_level, 0)}`}>
-    <div className={styles.actionPathTop}><h3>Camino al siguiente tramo</h3><strong>{numberLabel(band.target_level, 0)}</strong></div>
+  if (!band || selected.health_after === null) return null;
+  return <div className={styles.actionPath} aria-label={`Health actual ${numberLabel(band.current_health, 0)}, escenario ${numberLabel(selected.health_after, 0)}, objetivo ${numberLabel(band.target_health, 0)}`}>
+    <div className={styles.actionPathTop}><h3>Camino al siguiente tramo</h3><strong>{numberLabel(band.target_health, 0)}</strong></div>
     <div className={styles.actionPathTrack} aria-hidden="true">
-      <span className={styles.actionPathCurrent} style={{ left: `${band.current_level}%` }} />
-      <span className={styles.actionPathScenario} style={{ left: `${selected.level_after}%` }} />
-      <span className={styles.actionPathTarget} style={{ left: `${band.target_level}%` }} />
+      <span className={styles.actionPathCurrent} style={{ left: `${band.current_health}%` }} />
+      <span className={styles.actionPathScenario} style={{ left: `${selected.health_after}%` }} />
+      <span className={styles.actionPathTarget} style={{ left: `${band.target_health}%` }} />
     </div>
-    <div className={styles.actionPathLegend}><span><i className={styles.actionLegendCurrent} />Actual <strong>{numberLabel(band.current_level, 0)}</strong></span><span><i className={styles.actionLegendScenario} />Escenario <strong>{numberLabel(selected.level_after, 0)}</strong></span><span><i className={styles.actionLegendTarget} />Objetivo <strong>{numberLabel(band.target_level, 0)}</strong></span></div>
-    {selected.lever === actionability.primary?.lever && band.reachable_with_primary === true && <p>Cruza el siguiente tramo de nivel.</p>}
+    <div className={styles.actionPathLegend}><span><i className={styles.actionLegendCurrent} />Actual <strong>{numberLabel(band.current_health, 0)}</strong></span><span><i className={styles.actionLegendScenario} />Escenario <strong>{numberLabel(selected.health_after, 0)}</strong></span><span><i className={styles.actionLegendTarget} />Objetivo <strong>{numberLabel(band.target_health, 0)}</strong></span></div>
+    <p>Umbral de nivel V2 expresado en Health con Momentum fijo.</p>
+    {selected.lever === actionability.primary?.lever && band.reachable_with_primary === true && <strong className={styles.actionPathReached}>Cruza el siguiente tramo.</strong>}
   </div>;
 }
 
 export function selectActionLever(actionability: Actionability | undefined, selectedId: ActionLever["lever"] | null): ActionLever | null {
-  if (!actionability) return null;
-  return [actionability.primary, ...actionability.alternatives].find((lever) => lever?.lever === selectedId) ?? actionability.primary;
+  if (!actionability || actionability.status !== "actionable_treasury") return null;
+  return actionability.treasury_actions.find((lever) => lever.lever === selectedId) ?? actionability.primary;
 }
 
 export function ActionabilitySection({ actionability }: { actionability?: Actionability }) {
   const [selectedId, setSelectedId] = useState<ActionLever["lever"] | null>(null);
-  const levers = actionability ? [actionability.primary, ...actionability.alternatives].filter((item): item is ActionLever => item !== null) : [];
   const selected = selectActionLever(actionability, selectedId);
-  const alternatives = levers.filter((lever) => lever.lever !== selected?.lever).slice(0, 4);
-  const metricIsHealth = selected != null && selected.health_before !== null && selected.health_after !== null;
-  const metricBefore = metricIsHealth ? selected?.health_before : selected?.level_before;
-  const metricAfter = metricIsHealth ? selected?.health_after : selected?.level_after;
+  const treasury = actionability?.treasury_actions ?? [];
+  const business = actionability?.business_sensitivities ?? [];
+  const alternatives = treasury.filter((lever) => lever.lever !== selected?.lever);
+  const hasRail = (actionability?.next_band != null && selected?.health_after != null) || alternatives.length > 0 || business.length > 0;
 
-  return <section className={`${styles.panel} ${styles.actionSection}`} aria-label="Qué puede mover tu Health">
-    <SectionHeading number="03" title="Qué puede mover tu Health" description="Palancas con mayor impacto bajo las condiciones actuales." />
-    {!selected ? <div className={styles.actionQuietState} role="status"><strong>No hay una palanca evaluable.</strong><span>{actionability?.status === "no_actionable_lever" ? "Ningún cambio aislado muestra un efecto positivo suficiente." : "Todavía no hay sensibilidades calculadas para esta empresa."}</span></div> : <div className={styles.actionLayout}>
+  return <section id="actionability" data-company-section="actionability" className={`${styles.panel} ${styles.actionSection}`} aria-label="Qué puede mover tu Health">
+    <SectionHeading number="03" title="Qué puede mover tu Health" description="Escenarios mecánicos bajo las condiciones actuales." />
+    {selected && actionability?.status === "actionable_treasury" ? <div className={styles.actionLayout} data-has-rail={hasRail}>
       <div className={styles.actionPrimary}>
-        <div className={styles.actionIdentity}><span>{selected.type === "treasury" ? selected.lever === actionability?.primary?.lever ? "MEJOR PALANCA · TESORERÍA" : "PALANCA · TESORERÍA" : "SENSIBILIDAD · NEGOCIO"}</span><h3>{selected.label}</h3></div>
-        {actionability?.status === "business_sensitivity" && selected.type === "business" && <p className={styles.actionStructural}>{actionability.structural_issue ? "Problema principalmente operativo" : "Sin palanca de tesorería con impacto suficiente"}</p>}
-        <div className={styles.actionMetric} data-testid="actionability-primary-score"><span>{metricBefore === null || metricBefore === undefined ? "—" : numberLabel(metricBefore, 0)}</span><span className={styles.actionMetricArrow} aria-hidden="true">→</span><strong>{metricAfter === null || metricAfter === undefined ? "—" : numberLabel(metricAfter, 0)}</strong>{selected.delta_points !== null && <em>{signedNumber(selected.delta_points)} pts</em>}</div>
-        <div className={styles.actionMetricCaption}>{metricIsHealth ? "Health · escenario a seis meses" : "Nivel · escenario a seis meses"}</div>
+        <div className={styles.actionIdentity}><span>TESORERÍA · CAMBIO EVALUADO</span><h3>{selected.label}</h3></div>
         <div className={styles.actionQuantity}><span>{selected.quantity.label}</span><strong>{quantityLabel(selected.quantity.before, selected.quantity.unit)} <span aria-hidden="true">→</span> {quantityLabel(selected.quantity.after, selected.quantity.unit)}</strong></div>
-        <div className={styles.actionStats}>
-          {selected.resources?.required !== null && selected.resources?.required !== undefined && <div><strong>{money(selected.resources.required)}</strong><span>{selected.resources.kind === "liquidity" ? "Liquidez requerida" : "Alivio de caja"}</span></div>}
-          {!selected.resources && selected.cash_equivalent !== null && selected.lever === "debt_service_cut" && <div><strong>{money(selected.cash_equivalent)}</strong><span>Alivio de caja modelado</span></div>}
-          {selected.efficiency && <div><strong>{selected.efficiency.value > 0 ? "+" : selected.efficiency.value < 0 ? "−" : ""}{numberLabel(Math.abs(selected.efficiency.value), 2)} pts / €10k</strong><span>{selected.efficiency.label} · nivel</span></div>}
-          <div><strong>{selected.horizon.full_effect_months} meses</strong><span>Efecto pleno modelado</span></div>
+        <div className={styles.actionEffect}>
+          <span>EFECTO MODELADO EN HEALTH</span>
+          <div className={styles.actionMetric} data-testid="actionability-primary-score">
+            <span>{selected.health_before === null ? "—" : numberLabel(selected.health_before, 0)}</span><span className={styles.actionMetricArrow} aria-hidden="true">→</span><strong>{selected.health_after === null ? "—" : numberLabel(selected.health_after, 0)}</strong>{selected.delta_points !== null && <em>{signedNumber(selected.delta_points)} pts</em>}
+          </div>
+          <small>Escenario a {selected.horizon.full_effect_months} meses · Momentum constante</small>
         </div>
+        {(selected.resources?.required != null || selected.cash_equivalent !== null && selected.lever === "debt_service_cut" || selected.efficiency !== null) && <div className={styles.actionStats}>
+          {selected.resources?.required != null && <div><strong>{money(selected.resources.required)}</strong><span>Liquidez requerida</span></div>}
+          {!selected.resources && selected.cash_equivalent !== null && selected.lever === "debt_service_cut" && <div><strong>{money(selected.cash_equivalent)}</strong><span>Alivio de caja modelado</span></div>}
+          {selected.efficiency && <div><strong>{selected.efficiency.value > 0 ? "+" : selected.efficiency.value < 0 ? "−" : ""}{numberLabel(Math.abs(selected.efficiency.value), 2)} pts / €10k</strong><span>{selected.efficiency.label} · nivel V2</span></div>}
+        </div>}
         <Feasibility lever={selected} />
       </div>
-      <div className={styles.actionSide}>
-        {actionability && <BandPath actionability={actionability} selected={selected} />}
-        <div className={styles.actionAlternatives}><h3>Otras palancas</h3>{alternatives.length ? <ul>{alternatives.map((lever) => <li key={lever.lever}><button type="button" onClick={() => setSelectedId(lever.lever)} aria-label={`Ver sensibilidad de ${lever.label}`}><span>{lever.label}</span><small>{lever.type === "treasury" ? "TESORERÍA" : "NEGOCIO"}</small><strong>{lever.delta_points === null ? "No evaluable" : `${signedNumber(lever.delta_points)} pts`}</strong><span aria-hidden="true">→</span></button></li>)}</ul> : <p>No hay otras palancas evaluables.</p>}</div>
-        {levers.some((lever) => lever.type === "business") && <p className={styles.actionBusinessNote}>Negocio = sensibilidad, no recomendación.</p>}
-        <a href="#scenarios" className={styles.actionExplore}>Explorar escenarios <span aria-hidden="true">→</span></a>
-      </div>
-    </div>}
+      {hasRail && <div className={styles.actionSide}>
+        <BandPath actionability={actionability} selected={selected} />
+        {alternatives.length > 0 && <div className={styles.actionAlternatives} aria-label="Otras palancas de tesorería"><h3>Otras palancas de tesorería</h3><ul>{alternatives.map((lever) => <LeverRow key={lever.lever} lever={lever} onSelect={() => setSelectedId(lever.lever)} />)}</ul></div>}
+        <BusinessSensitivities levers={business} />
+        <a href="#scenarios" className={styles.actionExplore}>Explorar otros escenarios <span aria-hidden="true">→</span></a>
+      </div>}
+    </div> : actionability?.status === "business_sensitivity_only" || actionability?.status === "structural_issue" ? <div className={styles.actionContext}>
+      <div className={styles.actionContextLead}><strong>{actionability.status === "structural_issue" ? "Problema principalmente operativo" : "Sin palanca de tesorería con impacto identificado"}</strong><span>Las variaciones de negocio son sensibilidades del modelo, no acciones recomendadas.</span></div>
+      <BusinessSensitivities levers={business} />
+    </div> : <div className={styles.actionQuietState} role="status"><strong>{actionability?.status === "top_band_no_action" ? "Sin siguiente tramo identificado" : actionability?.status === "no_actionable_lever" ? "No se identifica una palanca con impacto positivo" : "Datos insuficientes para evaluar palancas"}</strong><span>{actionability?.status === "top_band_no_action" ? "El nivel V2 ya está en su tramo superior; Health también incorpora Momentum." : actionability?.status === "no_actionable_lever" ? "Los escenarios disponibles no mejoran el Health observado." : "Todavía no hay una sensibilidad fiable para esta empresa."}</span></div>}
   </section>;
 }

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 
+from xray.group_advisor.sensitivity import score_with_baseline_momentum
+
 METHOD = "company_sensitivity_v1"
 LABELS = {
     "ap_on_time": ("Pagar antes a proveedores", "Retraso a proveedores"),
@@ -19,7 +21,7 @@ LABELS = {
 TREASURY = frozenset(("ap_on_time", "ar_faster", "debt_service_cut"))
 BUSINESS = frozenset(("cut_outflow", "raise_inflow"))
 LIQUIDITY = "ap_on_time"
-CASH_RELIEF = frozenset(("debt_service_cut", "cut_outflow"))
+CASH_RELIEF = frozenset(("debt_service_cut",))
 
 
 def _number(value):
@@ -37,9 +39,12 @@ def unavailable(doc, status, reason):
         "status": status,
         "reason": reason,
         "method": METHOD,
+        "band_basis": "level_v2",
         "month": doc.get("month"),
         "primary": None,
         "alternatives": [],
+        "treasury_actions": [],
+        "business_sensitivities": [],
         "next_band": None,
         "structural_issue": bool(doc.get("structural_note")),
         "assumptions": list(doc.get("assumptions") or []),
@@ -60,7 +65,11 @@ def _resources(lever, row, currency):
         return None
     required = _number(row.get("cash_equivalent"))
     own = _number((lever.get("feasibility") or {}).get("own_excess_cash"))
-    if required is None or own is None:
+    # Zero AP stock proxy does not prove that accelerating supplier payment
+    # needs zero liquidity (the modeled delay may still change).
+    if required is None or required <= 0:
+        required, feasibility, gap = None, "unknown", None
+    elif own is None:
         feasibility, gap = "unknown", None
     else:
         gap = max(0.0, required - own)
@@ -84,14 +93,28 @@ def _lever(doc, lever, row):
     level_after, score_after = _number(row.get("level_after_k6")), _number(row.get("score_after_k6"))
     unit = "days" if lever["unit"] == "days" else doc["currency"]
     breakpoint = _number((lever.get("slope_now") or {}).get("valid_until"))
+    before, after = _number(lever.get("current")), _number(row.get("quantity_after"))
+    relative = _number(row.get("rel_change"))
+    percentage = None if relative is None else relative * 100
+    percentage_text = None if percentage is None else f"{percentage:g} %"
+    descriptions = {
+        "ap_on_time": f"Pagar un {percentage_text} antes",
+        "ar_faster": f"Cobrar un {percentage_text} antes",
+        "debt_service_cut": f"Reducir servicio de deuda un {percentage_text}",
+        "cut_outflow": f"Reducir salidas un {percentage_text}",
+        "raise_inflow": f"Aumentar entradas un {percentage_text}",
+    }
     return {
         "lever": key, "type": "treasury" if key in TREASURY else "business", "label": LABELS[key][0],
         "level_before": level_before, "level_after": level_after,
         "health_before": score_before, "health_after": score_after,
         "delta_points": None if score_before is None or score_after is None else score_after - score_before,
-        "quantity": {"label": LABELS[key][1], "before": _number(lever.get("current")),
-                     "after": _number(row.get("quantity_after")), "unit": unit,
+        "quantity": {"label": LABELS[key][1], "before": before,
+                     "after": after, "unit": unit,
                      "direction": lever.get("direction")},
+        "change_description": descriptions[key],
+        "required_change": {"absolute": None if before is None or after is None else abs(after - before),
+                            "relative_pct": percentage, "unit": unit},
         "resources": _resources(lever, row, doc["currency"]),
         "cash_equivalent": _number(row.get("cash_equivalent")),
         "efficiency": _efficiency(lever),
@@ -117,10 +140,10 @@ def from_sensitivity(doc):
     if doc.get("method") != METHOD:
         raise ValueError(f"Expected {METHOD}, got {doc.get('method')!r}")
     if doc.get("status") != "sensitivity":
-        return unavailable(doc, "unavailable", "advisor_not_scored")
+        return unavailable(doc, "insufficient_data", "advisor_not_scored")
     score = _number((doc.get("baseline") or {}).get("score"))
     if score is None:
-        return unavailable(doc, "unavailable", "missing_baseline_score")
+        return unavailable(doc, "insufficient_data", "missing_baseline_score")
     candidates = {}
     for lever in doc.get("levers") or []:
         key = lever.get("lever")
@@ -129,13 +152,34 @@ def from_sensitivity(doc):
         row = _best_row(lever, score)
         if row is not None:
             candidates[key] = (lever, row)
-    if not candidates:
-        return unavailable(doc, "no_actionable_lever", "no_positive_precomputed_impact")
     by_cash = (doc.get("ranking") or {}).get("by_cash") or []
     cash_rank = {key: rank for rank, key in enumerate(by_cash)}
+    impact = lambda key: candidates[key][1]["score_after_k6"] - score
+    treasury_keys = sorted((key for key in candidates if key in TREASURY),
+                           key=lambda key: (0, cash_rank[key], key) if key in cash_rank and _efficiency(candidates[key][0])
+                           else (1, -impact(key), key))
+    business_keys = sorted((key for key in candidates if key in BUSINESS), key=lambda key: (-impact(key), key))
+    treasury_actions = [_lever(doc, *candidates[key]) for key in treasury_keys]
+    business_sensitivities = [_lever(doc, *candidates[key]) for key in business_keys]
+    target = _number(doc.get("next_tramo_target"))
+    if target is None:
+        result = unavailable(doc, "top_band_no_action", "already_in_top_level_band")
+        result.update(treasury_actions=treasury_actions, business_sensitivities=business_sensitivities)
+        return result
+    if not candidates:
+        return unavailable(doc, "no_actionable_lever", "no_positive_precomputed_impact")
+    structural = bool(doc.get("structural_note")) and not any(
+        bool((lever.get("to_next_tramo") or {}).get("reachable")) for key, (lever, _) in candidates.items() if key in TREASURY)
+    if structural and not business_sensitivities:
+        result = unavailable(doc, "structural_issue", "no_treasury_path_to_next_level_band")
+        result.update(treasury_actions=treasury_actions)
+        return result
     treasury_cash = [key for key in candidates if key in TREASURY and key in cash_rank
                      and _efficiency(candidates[key][0]) is not None]
-    if treasury_cash:
+    if structural and business_sensitivities:
+        primary_key = min((key for key in candidates if key in BUSINESS),
+                          key=lambda key: (-(candidates[key][1]["score_after_k6"] - score), key))
+    elif treasury_cash:
         primary_key = min(treasury_cash, key=lambda key: (cash_rank[key], key))
     else:
         treasury = [key for key in candidates if key in TREASURY]
@@ -147,9 +191,13 @@ def from_sensitivity(doc):
     target = _number(doc.get("next_tramo_target"))
     current_level = _number((doc.get("baseline") or {}).get("level"))
     primary_level = actions[0]["level_after"]
-    result = unavailable(doc, "available" if primary_key in TREASURY else "business_sensitivity", None)
+    status = "structural_issue" if structural else "actionable_treasury" if primary_key in TREASURY else "business_sensitivity_only"
+    result = unavailable(doc, status, None)
+    health_target = _number(score_with_baseline_momentum(target, (doc.get("baseline") or {}).get("momentum_adjustment")))
+    health_path_identified = health_target is not None and score < health_target
     result.update(primary=actions[0], alternatives=actions[1:], next_band={
         "current_level": current_level, "target_level": target, "projected_level": primary_level,
+        "current_health": score, "projected_health": actions[0]["health_after"], "target_health": health_target,
         "reachable_with_primary": None if target is None or primary_level is None else primary_level >= target,
-    })
+    } if health_path_identified else None, treasury_actions=treasury_actions, business_sensitivities=business_sensitivities)
     return result

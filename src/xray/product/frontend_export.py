@@ -280,7 +280,7 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, sen
         if sensitivity.get("company_id") != company["company_id"] or sensitivity.get("currency") != currency:
             raise ValueError(f"Advisor sensitivity identity mismatch for {company['company_id']}")
         if sensitivity.get("month") != pd.Timestamp(last["month"]).strftime("%Y-%m-%d"):
-            detail["actionability"] = actionability_unavailable(sensitivity, "unavailable", "score_month_not_current")
+            detail["actionability"] = actionability_unavailable(sensitivity, "insufficient_data", "score_month_not_current")
         else:
             advisor_score = _num((sensitivity.get("baseline") or {}).get("score"))
             if advisor_score is not None and abs(advisor_score - float(last["score"])) > 1e-4:

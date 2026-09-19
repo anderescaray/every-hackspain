@@ -100,6 +100,8 @@ const actionLeverSchema = z.object({
   delta_points: amount.nullable(),
   cash_equivalent: amount.nonnegative().nullable(),
   source_grid_rel_change: amount.nullable(),
+  change_description: text,
+  required_change: z.object({ absolute: amount.nonnegative(), relative_pct: amount.nonnegative(), unit: z.enum(["days", "EUR"]) }).strict(),
   quantity: z.object({ label: text, before: amount, after: amount, unit: z.enum(["days", "EUR"]), direction: z.enum(["increase", "decrease"]) }).strict(),
   resources: z.object({ kind: z.enum(["liquidity", "cash_flow_relief"]), required: amount.nonnegative().nullable(), own_available: amount.nonnegative().nullable(), gap: amount.nonnegative().nullable(), currency: z.literal("EUR"), feasibility: z.enum(["own_liquidity_sufficient", "requires_financing", "unknown"]), scope: z.literal("selected_grid_scenario").nullable() }).strict().nullable(),
   efficiency: z.object({ value: amount, unit: z.literal("level_points_per_10k"), label: z.enum(["Eficiencia de liquidez", "Eficiencia de caja"]) }).strict().nullable(),
@@ -108,28 +110,35 @@ const actionLeverSchema = z.object({
   scenario_id: z.null(),
 }).strict();
 const actionabilitySchema = z.object({
-  status: z.enum(["available", "business_sensitivity", "no_actionable_lever", "unavailable"]),
+  status: z.enum(["actionable_treasury", "business_sensitivity_only", "top_band_no_action", "structural_issue", "insufficient_data", "no_actionable_lever"]),
   reason: text.nullable(),
   method: z.literal("company_sensitivity_v1"),
   month: date,
   primary: actionLeverSchema.nullable(),
   alternatives: z.array(actionLeverSchema).max(4),
-  next_band: z.object({ current_level: score.nullable(), target_level: score.nullable(), projected_level: score.nullable(), reachable_with_primary: z.boolean().nullable() }).strict().nullable(),
+  treasury_actions: z.array(actionLeverSchema).max(3),
+  business_sensitivities: z.array(actionLeverSchema).max(2),
+  next_band: z.object({ current_level: score.nullable(), target_level: score.nullable(), projected_level: score.nullable(), current_health: score, projected_health: score, target_health: score, reachable_with_primary: z.boolean().nullable() }).strict().nullable(),
+  band_basis: z.literal("level_v2"),
   structural_issue: z.boolean(),
   assumptions: z.array(text).max(20),
   source: z.object({ method: z.literal("company_sensitivity_v1"), inputs_sha256: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) }).strict(),
 }).strict().superRefine((value, ctx) => {
   const all = [value.primary, ...value.alternatives].filter((lever): lever is z.infer<typeof actionLeverSchema> => lever !== null);
   if (new Set(all.map((lever) => lever.lever)).size !== all.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Palancas duplicadas", path: ["alternatives"] });
-  if ((value.status === "unavailable" || value.status === "no_actionable_lever") && (value.primary !== null || value.alternatives.length > 0)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Sin palanca evaluable no puede haber resultados", path: ["primary"] });
-  if (value.status === "available" && value.primary?.type !== "treasury") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La palanca disponible principal debe ser de tesorería", path: ["primary"] });
-  if (value.status === "business_sensitivity" && value.primary?.type !== "business") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La sensibilidad principal debe ser de negocio", path: ["primary"] });
+  if ((value.status === "top_band_no_action" || value.status === "insufficient_data" || value.status === "no_actionable_lever") && value.primary !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Este estado no puede tener una acción principal", path: ["primary"] });
+  if (value.status === "actionable_treasury" && value.primary?.type !== "treasury") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La acción principal debe ser de tesorería", path: ["primary"] });
+  if (value.status === "business_sensitivity_only" && value.primary?.type !== "business") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La sensibilidad principal debe ser de negocio", path: ["primary"] });
+  if (value.status === "structural_issue" && value.primary !== null && value.primary.type !== "business") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Una causa estructural no debe presentar una acción de tesorería", path: ["primary"] });
+  if ((value.status === "top_band_no_action" || value.status === "insufficient_data" || value.status === "no_actionable_lever") && value.next_band !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Este estado no debe presentar un camino al siguiente tramo", path: ["next_band"] });
   all.forEach((lever, index) => {
     const treasury = lever.lever === "ap_on_time" || lever.lever === "ar_faster" || lever.lever === "debt_service_cut";
     if (lever.type !== (treasury ? "treasury" : "business")) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Tipo de palanca incoherente", path: [index === 0 ? "primary" : "alternatives"] });
     if ((lever.lever === "ar_faster" || lever.lever === "raise_inflow") && lever.efficiency !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La eficiencia en euros no está identificada para esta palanca", path: [index === 0 ? "primary" : "alternatives", "efficiency"] });
     if (lever.lever !== "ap_on_time" && lever.resources !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "No hay liquidez identificada para esta palanca", path: [index === 0 ? "primary" : "alternatives", "resources"] });
   });
+  value.treasury_actions.forEach((lever, index) => { if (lever.type !== "treasury") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Solo palancas de tesorería", path: ["treasury_actions", index] }); });
+  value.business_sensitivities.forEach((lever, index) => { if (lever.type !== "business" || lever.efficiency !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Negocio es sensibilidad, no retorno de caja", path: ["business_sensitivities", index] }); });
 });
 
 export const companyDetailSchema = z.object({
