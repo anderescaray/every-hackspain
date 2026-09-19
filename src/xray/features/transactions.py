@@ -1,45 +1,37 @@
 import pandas as pd
 
-from xray.features.ai_categories import NONOPERATING, apply_ai_categories, load_template_categories
 from xray.features.temporal import divide
+from xray.ledger.classify import FIXED, QUALITY_FLAGS, classify_transactions
 
-
-INFLOW = {"collection", "bulk_collection", "pos_settlement", "cash_settlement", "cash_settlements",
-          "payment_refund", "tax_refund"}
-OUTFLOW = {"payment", "bulk_payment", "utility", "salary", "social_security", "tax", "collection_refund"}
-FIXED = {"salary", "social_security", "tax", "utility"}
-FLAGS = ["is_extreme_amount", "is_relative_outlier", "is_sync_duplicate", "is_unknown_product"]
+FLAGS = list(QUALITY_FLAGS)
 AMOUNTS = ["tx_cash_inflow", "tx_cash_outflow", "tx_inflow", "tx_outflow", "tx_fixed_cost",
            "tx_fees_paid", "debt_principal_paid", "debt_interest_paid", "tx_uncategorized_amount",
            "tx_internal_amount", "tx_intragroup_amount", "tx_ai_categorized_amount", "tx_ai_nonoperating_amount"]
 
 
 def prepare_transactions(tables, config):
-    t = tables["transactions"].copy()
-    t["amount"] = t.amount.astype(float)
-    t = t.loc[t.date.lt(config.stop)].rename(columns={"product_currency": "currency"})
-    if config.ai_categories_path:
-        t = apply_ai_categories(t, load_template_categories(config.ai_categories_path), config.ai_min_confidence)
-    else:
-        t["category_source"] = "none"
+    # Compatibility projection only: no independent economic category map.
+    t = classify_transactions(tables["transactions"], as_of=config.stop - pd.Timedelta(days=1),
+        ai_categories_path=config.ai_categories_path, ai_min_confidence=config.ai_min_confidence)
     t["group_id"] = t.company_id.map(tables["companies"].set_index("company_id").group_id)
-    t["month"] = t.date.dt.to_period("M").dt.to_timestamp()
-    eligible = t.status.eq("booked") & t.exchange_rate.eq(1) & ~t[FLAGS].any(axis=1)
-    operating = eligible & ~t.is_internal_transfer & ~t.is_intragroup
+    eligible = t.eligible
     t["usable"] = eligible
     t["tx_cash_inflow"] = t.amount.clip(lower=0).where(eligible, 0.)
     t["tx_cash_outflow"] = (-t.amount).clip(lower=0).where(eligible, 0.)
-    t["tx_inflow"] = t.amount.clip(lower=0).where(operating & t.category.isin(INFLOW), 0.)
-    t["tx_outflow"] = (-t.amount).clip(lower=0).where(operating & t.category.isin(OUTFLOW), 0.)
-    for name, categories in (("tx_fixed_cost", FIXED), ("tx_fees_paid", {"fee"}),
-                             ("debt_principal_paid", {"debt_repayment"}), ("debt_interest_paid", {"interest_charge"})):
-        scope = eligible & ~t.is_intragroup if name.startswith("debt_") else operating
-        t[name] = (-t.amount).clip(lower=0).where(scope & t.category.isin(categories), 0.)
-    for name, mask in (("tx_uncategorized_amount", t.category.eq("uncategorized")),
-                       ("tx_internal_amount", t.is_internal_transfer), ("tx_intragroup_amount", t.is_intragroup),
-                       ("tx_ai_categorized_amount", t.category_source.eq("ai")),
-                       ("tx_ai_nonoperating_amount", t.category.eq(NONOPERATING))):
-        t[name] = t.amount.abs().where(eligible & mask, 0.)
+    t["tx_inflow"] = t.amount.clip(lower=0).where(t.included_in_operating_inflows, 0.)
+    t["tx_outflow"] = (-t.amount).clip(lower=0).where(t.included_in_operating_outflows, 0.)
+    t["tx_fixed_cost"] = t.tx_outflow.where(t.economic_subclass.isin(FIXED), 0.)
+    t["tx_fees_paid"] = (-t.amount).clip(lower=0).where(
+        eligible & t.economic_subclass.isin(["financial_fee", "payment_processing_fee"]), 0.)
+    for name, subclass in (("debt_principal_paid", "debt_principal"), ("debt_interest_paid", "debt_interest")):
+        t[name] = (-t.amount).clip(lower=0).where(t.included_in_debt_service & t.economic_subclass.eq(subclass), 0.)
+    for name, cls in (("tx_uncategorized_amount", "uncertain"),
+                      ("tx_internal_amount", "own_account_circulation"),
+                      ("tx_intragroup_amount", "group_or_internal")):
+        t[name] = t.amount.abs().where(eligible & t.economic_class.eq(cls), 0.)
+    # Diagnostic compatibility columns; shared ledger enrichment preserves D31.
+    t["tx_ai_categorized_amount"] = t.amount.abs().where(eligible & t.category_source.eq("ai"), 0.)
+    t["tx_ai_nonoperating_amount"] = t.amount.abs().where(eligible & t.category.eq("ai_nonoperating"), 0.)
     tokens = t.description.fillna("").str.findall(r"\bCOUNTERPARTY_\d+\b")
     extracted = tokens.str[0].where(tokens.str.len().eq(1))
     t["counterparty"] = t.counterparty_id.fillna(extracted)
