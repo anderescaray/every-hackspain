@@ -53,7 +53,9 @@ def _calendar(frame, keys, last_month):
     pieces = []
     for key, rows in frame.groupby(keys, sort=False):
         idx = pd.date_range(rows.month.min(), last_month, freq="MS")
-        piece = rows.set_index("month").reindex(idx).fillna(0.0).rename_axis("month").reset_index()
+        piece = rows.set_index("month").reindex(idx).rename_axis("month").reset_index()
+        numeric = piece.select_dtypes(include="number").columns
+        piece[numeric] = piece[numeric].fillna(0.0)   # solo importes: las claves de texto se reponen abajo
         for k, v in zip(keys, key if isinstance(key, tuple) else (key,)):
             piece[k] = v
         pieces.append(piece)

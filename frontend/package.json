@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --require ./tests/support/cssModules.cjs --test tests/*.test.ts",
     "test:e2e": "playwright test",
     "validate:generated": "tsx scripts/validateGenerated.ts"
   },
