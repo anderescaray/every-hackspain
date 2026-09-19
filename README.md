@@ -6,6 +6,11 @@ Reto de Embat: construir un **score de salud financiera** (empresa × mes, con t
 
 **Rama `score_v2`:** la demo usa PulseFourPillars-v1.2 con Operating Health y Extended Health versionados. V2 suavizado permanece para investigación/advisor, no es fallback de la web. El run Pulse y el snapshot web se regeneran desde los CSV; ver [`docs/pulse-frontend-integration.md`](docs/pulse-frontend-integration.md).
 
+El push de esta rama publica **código, no datos financieros**: los CSV raw, runs
+y snapshots JSON no se suben a Git. Para desplegar la web hay que generar el
+run con una fuente autorizada y exportar el snapshot, o montar un snapshot
+privado verificado mediante `PULSE_GENERATED_DIR`.
+
 **Si retomas el proyecto con otro agente/modelo**, empieza por [`docs/decisiones.md`](docs/decisiones.md) §13 (score V2 suavizado: qué se hizo, resultados y qué no mejora), luego [`docs/scoring-v2.md`](docs/scoring-v2.md). El registro central sigue siendo `decisiones.md` (§10 V1, §11 producto, §12 auditoría, §13 V2). [`docs/continuar-score-v2.md`](docs/continuar-score-v2.md) es el relevo previo a V2, ya ejecutado en su mayor parte.
 
 ## Estado real

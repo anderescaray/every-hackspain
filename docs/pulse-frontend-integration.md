@@ -63,21 +63,30 @@ frontend/public/generated/
 
 El exporter verifica el manifiesto recursivo del run, prepara el snapshot completo y cambia `current.json` mediante rename atómico bajo lock. Comprueba rutas, symlinks, hashes y conflictos de snapshots existentes. Next fija el snapshot por petición y comprueba hashes/esquemas/procedencia al leer cada documento; nunca busca los JSON sueltos legacy. `PULSE_GENERATED_DIR` permite otra raíz absoluta compartida.
 
+**Despliegue y privacidad:** esta rama Git contiene código y contratos, **no** los
+CSV raw, el run financiero inmutable ni los JSON privados del snapshot web.
+Antes de servir la app hay que ejecutar Pulse v1.2 sobre una fuente autorizada
+y exportar su run, o montar un snapshot privado completo y verificado mediante
+`PULSE_GENERATED_DIR` absoluto. No hacer `git add -f` de `data/processed/` ni de
+`frontend/public/generated/**/*.json`; publicar la rama por sí sola no
+publica los datos ni activa un fallback V2.
+
 ## Generación real
 
-Desde `/Users/pablo/every.hackspain`:
+Desde un checkout con el dataset autorizado montado en `data/` (los
+worktrees limpios no incluyen esos CSV):
 
 ```bash
 /tmp/pulse_four_pillars_venv/bin/python -m xray.pulse \
-  --raw-dir data/raw --out-dir data/processed/pulse \
+  --raw-dir data --out-dir /ruta/privada/pulse \
   --as-of 2026-08-31 --data-vintage 2026-09-19
 
 /tmp/pulse_four_pillars_venv/bin/python scripts/09_export_frontend.py \
-  --run-dir data/processed/pulse/runs/<run_id> \
+  --run-dir /ruta/privada/pulse/runs/<run_id> \
   --currency EUR --out-dir frontend/public/generated
 ```
 
-La materialización histórica v1.1 pre-D32 tenía 1.286 empresas y 1.790 paneles empresa/moneda: 1.208 EUR y 582 de otras monedas. La nueva materialización v1.2 debe recalcularse con el ledger EUR consolidado, no reutilizar ese run. La fecha económica no se confunde con la fecha de conocimiento: los artefactos indican `retrospective_restatement`, no reconstrucción histórica de información disponible entonces. Los CSV originales no se modifican.
+La materialización histórica v1.1 pre-D32 tenía 1.286 empresas y 1.790 paneles empresa/moneda: 1.208 EUR y 582 de otras monedas. **El run v1.2 final** `pulse-4d101dc4a0fb6ac20f7c28a1a6272c7651feb45d7fad55645ed1e814c000cb43` se verificó recursivamente y exportó al snapshot privado `web-e5ee5cfc9ad88494f397f48d57fbd8ee1f764d95d64c0f9d51fd81fd18f36380`: 1.286 paneles EUR, 1.085 Operating Health identificados, 153 Extended Health identificados (18 verified y 135 bounded), 932 operating-only y 201 sin Operating. El exportador publicó 1.286 fichas y 250 grupos, todos con el mismo run/versiones. El run y los JSON quedan fuera de Git. La fecha económica no se confunde con la fecha de conocimiento: los artefactos indican `retrospective_restatement`, no reconstrucción histórica de información disponible entonces. Los CSV originales no se modifican.
 
 Para contener memoria se liberan las copias de tablas raw/cleaned únicamente después de persistir snapshots y hashes, sin cambiar cálculos ni contenido. El ledger ya se indexaba por empresa/moneda; no se vuelve a recorrer todo por empresa.
 
