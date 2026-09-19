@@ -100,7 +100,7 @@ Las cuatro dimensiones indican una mejor situación cuando suben, no más crecim
 - Categorías: `operating`, `circulation`, `support`, `uncertain`, exactamente una de cada una.
 - No sumar los importes principales mostrados: pueden usar bases brutas o netas, siempre etiquetadas.
 - `apparent_net` es una observación independiente suministrada, no un saldo reconstruido por el frontend.
-- La presentación principal distingue lo que genera el negocio, lo que aporta el grupo y lo que solo circula. Muestra netos identificados; los movimientos brutos y su volumen total quedan en un desglose secundario. Volumen movido no significa saldo disponible.
+- La presentación principal muestra solo dos resultados: lo que genera el negocio y lo que aporta el grupo, ambos como netos identificados. La tarjeta «Lo que solo se mueve» se ha retirado. La circulación se conserva en el contrato y el detalle secundario, junto a los movimientos brutos. Volumen movido no significa saldo disponible.
 - `comparison` contiene observaciones preparadas por Data. `correction` se conserva como campo legado por compatibilidad, pero ya no se representa en la UI: exportar `null` si no existe una corrección real documentada. No fabricar un antes/después para explicar la circulación.
 - COMP_0356 ilustra +25,6 mil € de operación, +4,14 M€ de apoyo y cero neto en circulación identificada. Esto señala el peso del apoyo, no demuestra insolvencia ni autosuficiencia.
 - Se ha retirado la biblioteca independiente de evidencia; se mantienen los botones contextuales en factores, caja, transferencias, tiempos y alertas.

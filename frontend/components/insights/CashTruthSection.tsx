@@ -28,12 +28,6 @@ export function CashTruthSection({ cash, companyId, onOpen }: { cash: CashTruth;
           <p>Aportación neta clasificada como apoyo intragrupo. No es caja generada por vender o prestar servicios.</p>
           <EvidenceButton refs={support?.evidence_refs ?? []} title="Lo que aporta el grupo" onOpen={onOpen} />
         </article>
-        <article className={styles.circulationOrigin} aria-label="Lo que solo se mueve">
-          <span className={styles.eyebrow}>Circulación de tesorería</span><h3>Lo que solo se mueve</h3>
-          <strong>{circulation?.net_amount != null ? money(circulation.net_amount, true) : "No identificado"}</strong>
-          <p>{circulation?.net_amount === 0 ? "Neto cero en la circulación identificada. Mover dinero entre cuentas no es generar caja nueva." : "Neto de la circulación identificada, no generación operativa. No se presume que los movimientos se compensen."}</p>
-          <EvidenceButton refs={circulation?.evidence_refs ?? []} title="Lo que solo se mueve" onOpen={onOpen} />
-        </article>
       </div>
       <div className={styles.cashLayout}>
         <div>
