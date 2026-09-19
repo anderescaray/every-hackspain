@@ -241,3 +241,39 @@ def test_debt_snapshot_prefers_balances_and_utilization_only_for_revolving():
     assert snap.loc['P1', 'debt_utilization'] == pytest.approx(0.95)         # póliza casi al límite
     assert snap.loc['P2', 'outstanding_source'] == 'debt_products'            # sin foto en balances
     assert snap.loc['P2', 'debt_utilization'] == pytest.approx(0.25)
+
+
+def test_sentinel_balance_rule_marks_only_unexplained_huge_bank_balances():
+    from xray.clean.balances import sentinel_balances
+    products = pd.DataFrame({'product_id': ['A', 'B', 'C', 'L'], 'company_id': 'C1', 'currency': 'EUR',
+                             'type': ['checking', 'checking', 'checking', 'loan'],
+                             'kind': ['banking', 'banking', 'banking', 'debt']})
+    balances = pd.DataFrame({'product_id': ['A', 'B', 'C', 'L'],
+                             'balance': [99_999_990_000., 25_000_000., 1_000_208_000., -300_000_000.]})
+    tx = pd.DataFrame({'product_id': ['A', 'B', 'C', 'C'], 'amount': [5000., 7_000_000., 999_999_999., -100.]})
+    flags = sentinel_balances(balances, products, tx)
+    assert flags.tolist() == [True, False, True, False]   # relleno, legítimo grande, ajuste técnico, préstamo real
+
+
+def test_sentinel_balance_is_not_reliable_cash_nor_available_liquidity():
+    from xray.features.context import liquidity_snapshot
+    tables = fixture_tables([row(1, date='2026-08-10', amount=100)])
+    tables['balances']['is_sentinel_balance'] = [False, True, False]      # P2 de C1 es centinela
+    result = build_features(tables, FeatureConfig(start_month='2026-08-01'))
+    context = result['reconstructed_liquidity_context'].set_index('product_id')
+    assert context.loc['P2', 'is_reconstruction_unreliable']
+    assert pd.isna(context.loc['P2', 'reconstructed_balance'])
+    snap = liquidity_snapshot(tables, FeatureConfig()).set_index('company_id')
+    assert snap.loc['C1', 'cash_accounts_eur'] == 500                        # P2 (200) no cuenta
+    assert snap.loc['C1', 'sentinel_balances_excluded'] == 1
+
+
+def test_technical_placeholder_movement_stays_in_flows_but_breaks_prior_cash():
+    rows = [row(0, date='2026-07-10', amount=5000), row(1, date='2026-08-05', amount=100),
+            row(2, date='2026-08-20', amount=999_999_999, category='uncategorized')]
+    tables = fixture_tables(rows)
+    assert tables['transactions'].is_technical_placeholder.tolist() == [False, False, True]
+    result = build_features(tables, FeatureConfig(start_month='2026-07-01', end_month='2026-08-01'))
+    context = result['reconstructed_liquidity_context'].set_index(['product_id', 'month'])
+    assert context.loc[('P1', pd.Timestamp('2026-07-01')), 'is_reconstruction_unreliable']   # el ajuste es posterior
+    assert company(result).loc['2026-08-01', 'tx_cash_inflow'] == 100 + 999_999_999         # D32: sigue en los flujos
