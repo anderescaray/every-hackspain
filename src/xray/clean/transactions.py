@@ -6,6 +6,7 @@ cada feature decida qué hacer. Los IDs corresponden a docs/decisiones.md.
 import numpy as np
 import pandas as pd
 
+from xray.clean.annotations import annotate_products, annotate_text
 from xray.clean.log import CleaningLog
 
 TABLE = "transactions"
@@ -18,7 +19,7 @@ PENDING_TWIN_DAYS = 5         # T02
 
 def clean_transactions(tx: pd.DataFrame, products: pd.DataFrame, company_group: pd.Series,
                        log: CleaningLog) -> pd.DataFrame:
-    """`products`: product_id + company_id de banking y debt. `company_group`: company_id -> group_id."""
+    """`products`: product_id + company_id (+ type, kind) de banking y debt. `company_group`: company_id -> group_id."""
     t = tx.copy()
     t["amount"] = pd.to_numeric(t.amount)
     t["exchange_rate"] = pd.to_numeric(t.exchange_rate)
@@ -62,6 +63,8 @@ def clean_transactions(tx: pd.DataFrame, products: pd.DataFrame, company_group: 
           "product_id no está en banking_products ni en debt_products")
     _flag(t, log, "D23", "has_invalid_exchange_rate", ~np.isfinite(t.exchange_rate) | t.exchange_rate.le(0),
           "exchange_rate no finito o no positivo; no se imputa")
+    annotate_products(t, products, log)
+    annotate_text(t, log)
     return t.reset_index(drop=True)
 
 

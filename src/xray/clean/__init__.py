@@ -33,8 +33,8 @@ def clean_all(raw: dict[str, pd.DataFrame]) -> tuple[dict[str, pd.DataFrame], Cl
     log = CleaningLog()
     cleaned = {name: clean_table(name, raw[name], log)
                for name in TABLES if name not in ("transactions", "invoices")}
-    products = pd.concat([raw["banking_products"][["product_id", "company_id", "currency"]],
-                          raw["debt_products"][["product_id", "company_id", "currency"]]])
+    products = pd.concat([raw["banking_products"][["product_id", "company_id", "currency", "type"]].assign(kind="banking"),
+                          raw["debt_products"][["product_id", "company_id", "currency", "type"]].assign(kind="debt")])
     company_group = raw["companies"].set_index("company_id").group_id
     cleaned["transactions"] = clean_transactions(raw["transactions"], products, company_group, log)
     cleaned["invoices"] = clean_invoices(raw["invoices"], log)

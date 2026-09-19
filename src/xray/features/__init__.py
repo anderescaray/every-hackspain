@@ -12,6 +12,7 @@ import pyarrow
 from xray.artifacts import check_output_path, code_manifest, publish_bundle, sha256
 from xray.features.config import FeatureConfig
 from xray.features.context import debt_snapshot, liquidity_summary, reconstruct_liquidity
+from xray.features.coverage import STATES, add_coverage_state
 from xray.features.invoices import invoice_features, prepare_invoices
 from xray.features.temporal import add_ratios, add_temporal, model_columns
 from xray.features.transactions import coverage_by_company, prepare_transactions, stress_events, transaction_features
@@ -41,6 +42,7 @@ def build_features(tables: dict[str, pd.DataFrame], config: FeatureConfig | None
         invoice_panel = invoice_features(f, skeleton, unit)
         p = p.merge(invoice_panel, on=[unit, "currency", "month"], how="left", validate="one_to_one")
         p = add_temporal(add_ratios(p), unit, config)
+        p = add_coverage_state(p, t, unit, config)
         if unit == "company_id":
             p["group_id"] = p.company_id.map(companies.set_index("company_id").group_id)
         result[filename] = p
@@ -88,6 +90,12 @@ def validate_features(artifacts, companies, config):
             absent = frame.tx_usable_count.eq(0)
             if frame.loc[absent, "tx_inflow"].notna().any():
                 raise ValueError(f"{name}: se ha convertido falta de datos a cero")
+            if not frame.coverage_state.isin(STATES).all():
+                raise ValueError(f"{name}: coverage_state fuera del contrato")
+            if (frame.coverage_state.eq("no_data") != frame.tx_count.eq(0)).any():
+                raise ValueError(f"{name}: no_data no coincide con tx_count == 0")
+            if frame.loc[frame.coverage_state.eq("ok"), "tx_active_accounts_real"].eq(0).any():
+                raise ValueError(f"{name}: mes comparable sin cuentas activas reales")
             forbidden = {"cash_balance", "outstanding", "pending_amount", "status", "is_stale_pending"}
             if forbidden.intersection(frame.columns):
                 raise ValueError(f"{name}: snapshot en panel histórico")
@@ -120,7 +128,8 @@ def quality_report(artifacts):
                             "eligible_rows": int(frame.is_training_eligible.sum()),
                             "missing_after_onboarding": int(frame.is_missing_after_onboarding.sum()),
                             "thin_months": int(frame.is_thin_month.sum()),
-                            "invoice_source_rows": int(frame.inv_source_seen.sum())})
+                            "invoice_source_rows": int(frame.inv_source_seen.sum()),
+                            "coverage_state": frame.coverage_state.value_counts().astype(int).to_dict()})
         report[name] = section
     return report
 
@@ -152,6 +161,7 @@ def run(cleaned_dir: Path = CLEANED_DIR, out_dir: Path = PROCESSED_DIR,
         manifest = {"created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                     "config": asdict(config), "code": code_manifest(), "inputs_sha256": hashes,
                     "cleaning_manifest_sha256": sha256(cleaned_dir / "_manifest.json"),
+                    "ai_categories_sha256": sha256(Path(config.ai_categories_path)) if config.ai_categories_path else None,
                     "versions": {"python": platform.python_version(), "pandas": pd.__version__,
                                  "numpy": np.__version__, "pyarrow": pyarrow.__version__},
                     "outputs_sha256": {path.name: sha256(path) for path in sorted(staged.iterdir())}}

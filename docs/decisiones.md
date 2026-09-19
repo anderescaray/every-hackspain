@@ -5,7 +5,7 @@
 ## 1. Resumen: qué tienes ya
 
 - `data/raw/` intacto: **los hashes SHA-256 de los 8 CSV coinciden con los existentes antes de esta revisión**.
-- Limpieza regenerada: **2.554.288 transacciones** y **876.756 facturas**; no se han añadido eliminaciones de filas a las reglas originales.
+- Limpieza regenerada: **2.554.288 transacciones** y **876.756 facturas**; no se han añadido eliminaciones de filas a las reglas originales. El 19-09 (noche) se añadieron anotaciones semánticas D25–D30 y F07 (§6, §14) sin tocar filas.
 - Panel primario: **30.864 filas × 252 columnas**, empresa × mes, septiembre de 2024–agosto de 2026. El 19-09 se añadieron dos contadores exactos de soporte AR/AP (FE09, §10). Contiene importes, ratios, dinámicas y diagnósticos; **no son 252 predictores**.
 - Lista explícita de **126 candidatos de modelo**, sin IDs, fotos finales de deuda/saldos, niveles absolutos de vencidas ERP ni concentración descriptiva.
 - Paneles auxiliares empresa-moneda y grupo-moneda, eventos reservados y contexto de liquidez/deuda separados.
@@ -195,6 +195,22 @@ Los porcentajes exploratorios antiguos sobre sumas brutas de importes no son imp
 | D21 · deuda final | Aplicada: `outstanding/granted/liquidity` solo como contexto a extracción. Deuda pagada/intereses observados sí son features mensuales. No se repite el saldo final en toda la historia; no se proyecta el cuadro de amortización |
 | D23 · FX inválido | **Nueva:** `has_invalid_exchange_rate`: **77 transacciones y 3.311 facturas** con tasa nula, no finita o ≤0. No imputar. Excluir del importe bancario; factura en su moneda explícita puede aportar nominal sin conversión |
 | D24 · saldo sin producto | **Nueva:** `balances.is_unknown_product`: **29** filas. Conservar, pero no agregar sin moneda ni reconstruir cuenta desconocida |
+
+### Anotaciones semánticas (19-09, `src/xray/clean/annotations.py`; evidencia en `docs/hallazgos-datos.md`)
+
+Solo marcan; ninguna feature las consume todavía (paso siguiente: máscara de cobertura y fallback por signo en features).
+
+| ID | Columna(s) | Estado y decisión implementada |
+|---|---|---|
+| D25 · tipo de producto | `product_kind` (banking/debt/nulo), `product_type` | **183.417** movimientos ocurren sobre productos de deuda (181.917 en `lineofcredit`, 312 pólizas, 170 empresas): pólizas usadas como cuenta operativa. Reconstruir su saldo/utilización igual que checking; no tratarlas como producto desconocido |
+| D26 · SCF | `is_scf_adjustment` | **18.208** filas (`SCF-AJUS.SALDO`, 42 empresas, ~1.400 M abs): ajustes de confirming. Financiación, fuera del flujo operativo y del fallback por signo |
+| D27 · repos | `is_repo_pair` | **5.530** filas `PR.A`/`VT.A` con sumas espejo: colocación de tesorería. Fuera del operativo |
+| D28 · efectivo | `is_cash_disposal` | **3.803** filas `DISP.ENTREG.EFECT.` sin categoría: retirada de efectivo, no gasto identificado |
+| D29 · pasarela | `gateway_kind`, `is_gateway_cost` | **13.009** filas `[fecha] tipo` (charge/payment/payout/refund/stripe_fee/network_cost/adjustment). Los **5.020** costes de pasarela venían como `interest_charge` antes de 2025-01 y como sin categoría después: excluirlos del servicio de deuda |
+| D30 · eventos | `event_type` | **15.676** filas: impagado_cliente 7.887, recibo_devuelto 5.433 (refund negativo **por signo**, robusto al cambio de taxonomía de 2025-01), aplazamiento 902, embargo 646, cuota_impagada 365, descubierto 283, demora 111, reclamacion 30, recargo_apremio 19. Prioridad al primero que casa. `SANCION` excluido a propósito: "SANCIONES Y MULTAS" son multas de tráfico en tarjeta (3.638 filas de una flota) |
+| F07 · fecha prevista | `invoices.expected_payment_date` | **219.366** facturas no pagadas conservan la fecha de relleno como previsión del ERP, separada de `payment_date` (real). Nunca se usa como pago realizado |
+
+Ruptura de taxonomía conocida (2025-01): `payment_refund`/`collection_refund` invierten signo y `interest_charge` deja de incluir costes de pasarela. Ninguna feature debe depender del **nombre** de categoría de refund; usar signo + D29.
 
 ## 7. Contrato de feature engineering
 
@@ -648,3 +664,101 @@ Tests V2 (`tests/test_score_v2.py`): ciclo de entradas sin mejora ficticia, agre
 3. Liquidez como dimensión (variante D) y fallback de exportación (E) siguen sin implementar; la caja actual predice caja futura (AUC 0,86–0,93) y podría aportar una dimensión de nivel si se resuelve la auditoría de fiabilidad retrospectiva de §12.
 4. El rebote simétrico del momentum tres meses después de un mes atípico está documentado (`atypical_months_in_window`), no suavizado.
 5. Ninguna cifra de este apartado equivale a acuerdo con el score oculto ni a anticipación financiera demostrada; los proxies son texto sintético y caja reconstruida.
+
+## 14. Anotaciones semánticas en cleaned — 19-09-2026 (noche)
+
+**Petición del usuario:** entender los datos con detalle, identificar patrones no evidentes para el motor de scoring e implementarlos uno a uno. La evidencia completa está en `docs/hallazgos-datos.md` (onboarding/desconexión, ruido blanco mensual, estacionalidad, ruptura de taxonomía en 2025-01, 39 % del importe sin categoría, pólizas operativas, deuda no declarada, `overdue` como higiene ERP). Este apartado documenta el **primer paso implementado**: marcas en la capa cleaned. No cambia ninguna feature ni ningún score.
+
+### SC14 · Qué se ha hecho
+
+- Nuevo módulo `src/xray/clean/annotations.py` (D25–D30), llamado al final de `clean_transactions`. Solo añade columnas; **no quita filas ni recategoriza**: 2.554.288 transacciones y 876.756 facturas, como antes.
+- `clean_all` pasa ahora a `clean_transactions` la tabla de productos con `type` y `kind` (banking/debt). Si faltan, `product_kind`/`product_type` quedan nulos (compatibilidad con tests y tablas antiguas).
+- `clean_invoices`: nueva columna `expected_payment_date` (F07) con la fecha de relleno que F04 anula; `payment_date` sigue siendo solo pago real.
+- `CleaningLog` admite la acción `annotate` para columnas no booleanas.
+- Tests nuevos en `tests/test_clean_annotations.py` (6): tipo de producto y compatibilidad, bloques SCF/repo/efectivo, pasarela, prioridad de eventos y signo, fecha prevista. **225 tests pasan** (`python -m pytest -q -p no:asyncio`; `-W error` falla en el entorno del usuario por el plugin global `pytest-asyncio`, no por el proyecto).
+- `data/cleaned` regenerado (44 s). Conteos por regla en `_cleaning_log.csv` y en la tabla de §6 «Anotaciones semánticas».
+
+### SC15 · Por qué estas marcas y no otras
+
+| Marca | Problema que resuelve | Cómo se verificó |
+|---|---|---|
+| D25 `product_kind/type` | 170 empresas operan (cobros, nóminas, impuestos) desde 312 pólizas de crédito; la reconstrucción de caja solo mira `checking` y D06 las trataba como desconocidas | 183.417 movimientos, 181.917 en `lineofcredit`; `liquidity = balance − granted` en `balances` |
+| D26–D28 SCF, repos, efectivo | Son el grueso identificable del 39 % de importe sin categoría; no son ingreso ni gasto operativo y contaminarían cualquier fallback por signo | Plantillas de texto sobre 635k filas sin categoría; sumas espejo PR.A/VT.A idénticas (2,22e8) |
+| D29 pasarela | `interest_charge` incluía costes de Stripe antes de 2025-01 y después pasaron a `-`: ruptura del servicio de deuda para ~150 empresas | Mismas 528 empresas activas antes/después; plantilla `[fecha] tipo` casa 13.009 filas en 17 empresas |
+| D30 `event_type` | Los eventos de estrés son el único ancla discreta e independiente para medir anticipación; el conteo previo (`stress_events`) no distinguía cuota impagada propia de recibo devuelto de cliente ni era robusto al cambio de signo de los refunds | Revisión manual de plantillas por evento; `SANCION` retirado tras detectar 3.638 multas de tráfico de una flota |
+| F07 fecha prevista | El 96 % de las facturas `overdue` tienen `payment_date == due_date`: es la previsión del ERP, útil como calendario de vencimientos, nunca como pago | Distribución de edad de overdue sin decaimiento por antigüedad |
+
+Descartado en esta capa y aplazado a features: mes dormido / cuenta cerrada / cambio de cuentas (son propiedades del calendario mensual, no de la fila) y el ajuste estacional.
+
+### SC16 · Qué no ha cambiado
+
+- Reglas T/F/D01–D24 idénticas; mismos hashes de raw; mismas filas eliminadas.
+- Ninguna feature consume aún D25–D30 ni F07. `stress_events` sigue usando sus propios patrones hasta que se migre a `event_type`.
+- Ningún score (V1, V2) cambia con esta regeneración de cleaned.
+
+### SC17 · Siguiente paso acordado
+
+`coverage_state` empresa-mes en features (**hecho, FE10 abajo**), ajuste estacional explícito y fallback por signo excluyendo D04/D05/D26/D27; después utilización de póliza, servicio de deuda desde transacciones (con D29 excluido) y colas de retraso en facturas. Ver `docs/hallazgos-datos.md` §11 para el orden y la justificación.
+
+### FE10 · Estado de cobertura por entidad-moneda-mes (`src/xray/features/coverage.py`)
+
+Motivo: las trayectorias más extremas del panel eran altas de cuentas y desconexiones, no cambios de negocio (`hallazgos-datos.md` §1). Se etiqueta cada fila de los tres paneles con `coverage_state`, calculado **solo con datos ≤ mes**; el test de prefijo hasta 2026-02 sigue pasando.
+
+| Estado | Regla | Filas panel primario | Agosto 2026 |
+|---|---|---:|---:|
+| `no_data` | `tx_count == 0` | 10.163 | 152 |
+| `pre_activity` | solo cuentas dormidas y aún sin actividad real observada | 511 | 11 |
+| `dormant` | solo cuentas dormidas tras haber tenido actividad real (pausa o desconexión: no se distingue sin mirar el futuro) | 848 | 62 |
+| `onboarding` | primeros `onboarding_months=2` meses desde la primera actividad real | 2.417 | 1 |
+| `account_change` | entran/salen cuentas activas que pesan ≥ `account_change_min_share=0,10` del volumen del mes en que estaban activas | 1.982 | 86 |
+| `ok` | comparable con el mes anterior | 14.943 | 974 |
+
+Cuenta dormida en el mes = ≤ `dormant_max_transactions=3` movimientos utilizables **y** < `dormant_max_amount=2.000` unidades nominales (comisiones de 12/30/182/250). El umbral de importe es nominal por moneda; revisar si se puntúan monedas con escala muy distinta. Sin materialidad, `account_change` marcaba 4.739 filas porque tarjetas secundarias parpadean entre dormida y activa; con ella, 1.982.
+
+Columnas nuevas: `coverage_state`, `is_coverage_comparable`, `tx_active_accounts_real`, `tx_dormant_accounts`, `tx_new_active_accounts`, `tx_dropped_active_accounts`, `tx_account_change_share`, `months_since_first_activity`. Son calidad/cobertura: **fuera de `model_features`** (siguen siendo 126). Validación añadida: estados dentro del contrato, `no_data` ⇔ `tx_count == 0`, ningún `ok` sin cuenta activa real. `_feature_quality.json` publica el recuento por estado.
+
+Casos verificados sobre datos reales: COMP_0794 (alta en 26-02) pasa `pre_activity → onboarding → account_change → ok`; COMP_0612 (desconexión) termina en `dormant`/`no_data`; COMP_1109 marca `no_data` en el hueco y `account_change` al reaparecer. De las 12.583 filas `is_training_eligible`, 1.334 son `account_change` y 34 dormidas/onboarding: hoy entran al score y no deberían alimentar el momentum.
+
+**Uso previsto (pendiente, capa score):** momentum y deltas solo entre meses `ok` consecutivos; `onboarding`/`account_change` → nivel sin trayectoria; `dormant` → no puntuar ni arrastrar el score anterior. Tests: `tests/test_coverage_state.py` (8).
+
+## 15. Categorías AI para movimientos sin categoría (TypeSafe Jev) — 19-09-2026
+
+**Petición del usuario:** evaluar dónde aporta valor real el modelo Jev de TypeSafe (decisiones tipadas con probabilidad y confianza, sin generación de texto) e integrarlo **una sola vez**, sin dependencia de API en el pipeline. Evidencia previa en §14/`hallazgos-datos.md` §5: el 24,9 % de las filas y el **38,8 % del importe** están sin categoría, con importe sin categoría ≈ 0,95× el importe operativo identificado, concentrado en banca no española (HSBC/ING/Revolut 76–85 %).
+
+### D31 · Qué se ha hecho
+
+- **Pasada única** con `scripts/experimental/jev_categorize_all.py` (experimental, fuera del pipeline): 145.818 plantillas de texto (`upper`, `COUNTERPARTY_n→CP`, `[TOKEN]→T`, dígitos→`#`, sin puntuación), una llamada por plantilla+signo con `state = {narrativa, dirección, importe típico}`. 140.818 plantillas sin categoría (todas, sobre booked y |importe| ≤ 1e8) + 5.000 más frecuentes con categoría del banco como control. 144.166 llamadas, 80 min, ~30 req/s; **198 plantillas (0,14 %) sin respuesta** por agotarse los créditos. Preguntas: `Choice` en 12 bloques económicos (con opción `unknown` obligatoria), dos `Noul` de estrés (recibo devuelto por impago; descubierto/embargo/recargo).
+- **Artefacto estático versionado:** `resources/jev_categories/template_categories.parquet` (11 MB) + `_manifest.json` (preguntas, mapeos, hashes, conteos). Respuestas crudas (99 MB) solo en `data/enriched/`, gitignored.
+- **Integración como política en features, no en cleaned** (A03): `src/xray/features/ai_categories.py`; `FeatureConfig(ai_categories_path, ai_min_confidence=0.7)`; CLI `--ai-categories`, `--ai-min-confidence`. Solo rellena filas `category == "uncategorized"`; **la categoría del banco nunca se sobreescribe**. Conserva `category_bank`, `category_source` (bank/ai/none) y `category_ai_confidence`. Nuevos importes diagnósticos `tx_ai_categorized_amount`, `tx_ai_nonoperating_amount`. El manifiesto de features registra `ai_categories_sha256`.
+- Mapeo bloque→categoría FE03: `operating_inflow→collection`, `supplier_payment→payment`, `utility/salary/social_security/tax` idénticos (tax con signo positivo → `tax_refund`), `bank_fee→fee`, `internal_transfer/cash/bank_adjustment→ai_nonoperating` (fuera de flujos operativos). **`interest_or_debt` y `unknown` no se usan**: el bloque de deuda tuvo acuerdo débil con el banco en el control. Veto en código: bloque operativo incoherente con el signo → `unknown` (3.089 plantillas, 42.031 filas).
+- Tests: `tests/test_ai_categories.py` (5). **233 tests pasan.** Sin flag, ninguna feature ni score cambia.
+
+### D31 · Evidencia
+
+Control (5.000 plantillas con categoría de banco, a nivel de bloque grueso FE03 `op_in/op_out/debt/fee/nonop`): acuerdo **78 %** sin umbral, **85 %** con conf ≥ 0,7 (cobertura 48 %), **87 %** con conf ≥ 0,85; ponderado por filas 86–88 %. Cruces `op_in↔op_out`: 42 filas de 460k. Revisión manual: una parte visible de los desacuerdos son errores del banco (`PRIMEVIDEO.ES`=utility, `FACEBK ads`=fee, `CLARET LOAN`=tax, `TRANSF INTERNA`=tax), así que el acuerdo es un suelo, no la accuracy. Fuga principal: banco `payment`/`collection` → Jev `nonop` (transferencias a contrapartes; ambiguo), que es conservadora.
+
+Sin categoría (613k filas): confianza mediana 0,71. Con conf ≥ 0,7 se clasifica el **39 % de filas / 34 % del importe**; operativo recuperado **29 % / 30 %**; no operativo identificado 8 % / 4 %. Techo: el 4,4 % de filas y **13 % del importe** es texto totalmente redactado (`([X] NONREF)…`) marcado `unknown` con alta confianza; irrecuperable por cualquier método.
+
+A/B sobre el pipeline completo (misma cleaned, `data/processed` vs `data/processed_ai`):
+
+| Medida | Base | Con D31 |
+|---|---:|---:|
+| `tx_inflow` / `tx_outflow` totales | — | +6,4 % / +11,8 % |
+| Importe sin categoría | 6,39e10 | 5,07e10 (−20,6 %) |
+| Empresa-mes (≥5 mov.) que fallan «≥10 % operativo» | 2.188 | **1.164** (1.024 recuperados, 0 nuevos fallos; 239 empresas) |
+| Share operativo mediano | 0,557 | 0,630 |
+| Volatilidad intra-empresa del margen (std mensual, mediana) | 0,419 | 0,401 (baja en 313 empresas, sube en 132) |
+| Score V2 agosto 2026: puntuadas / `not_scored` | 922 / 364 | **977 / 309** |
+| Score V2 toda la historia: filas puntuadas | 14.084 | 14.932 (+848, 179 empresas; 0 perdidas) |
+| Δ score en filas puntuadas en ambas | — | mediana 0,78, p90 7,1; >10 pts en 7,2 % |
+| Mediana por empresa del Δ mensual del score | 3,18 | 3,27 |
+
+Los cambios grandes revisados son correcciones, no artefactos: COMP_1101 (score 1 → 64: cobros «CT INGENIEROS» 302k sin categoría daban margen −1), COMP_0045 (100 → 48: banco holandés, todas las salidas `SEPA Overboeking` sin categoría daban margen +1), COMP_0556 (30 → 91: «Amount received» de banco UK sin categoría daban entradas 0).
+
+### D31 · Límites y pendientes
+
+- Umbral 0,7 **propuesto, no calibrado**: elegido por el codo del control (85 %) y la cobertura; comparar 0,6/0,85 con el mismo holdout antes de cerrarlo.
+- Acuerdo medido contra la categoría del banco, que tiene errores; no hay etiqueta oro ni resultados del organizador.
+- `interest_or_debt` sin usar: el servicio de deuda sigue dependiendo de `debt_repayment/interest_charge` del banco (con la ruptura D29). Los dos `Noul` de estrés están en el artefacto (129 plantillas / 10.307 filas de recibo devuelto ≥0,7; 409 / 3.960 de descubierto/embargo) pero **ninguna feature los consume** todavía; candidatos a complementar D30 `event_type`.
+- El artefacto cubre solo plantillas vistas en este dataset: un dataset nuevo con textos distintos requiere otra pasada (créditos) o quedará `uncategorized` como hoy.
+- Decidir si D31 pasa a ser el default del pipeline (`01_build_monthly_features.py --ai-categories resources/jev_categories/template_categories.parquet`) y regenerar `processed`/`scores_v2` con él.

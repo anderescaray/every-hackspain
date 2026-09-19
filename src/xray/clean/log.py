@@ -3,7 +3,7 @@ from dataclasses import asdict, dataclass, field
 
 import pandas as pd
 
-ACTIONS = ("drop_rows", "drop_column", "set_null", "normalize", "flag")
+ACTIONS = ("drop_rows", "drop_column", "set_null", "normalize", "flag", "annotate")
 
 
 @dataclass

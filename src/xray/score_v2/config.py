@@ -43,8 +43,14 @@ class ScoreV2Config:
     direction_z: float = 1.5
     hysteresis: float = 0.5
     atypical_z: float = 2.0
+    # Estacionalidad del crecimiento de entradas (hallazgos-datos.md §3): factores por mes del año estimados
+    # con la referencia y restados de inflow_growth_q / inflow_growth_m1. Mínimo de filas por mes del año.
+    seasonal_adjustment: bool = True
+    seasonal_min_rows: int = 50
 
     def __post_init__(self):
+        if self.seasonal_min_rows < 1:
+            raise ValueError("seasonal_min_rows debe ser positivo")
         if self.panel not in PANELS:
             raise ValueError(f"Panel desconocido: {self.panel}")
         for name in ("level_window", "level_min_months", "momentum_window", "momentum_min_months",

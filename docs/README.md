@@ -6,7 +6,7 @@
 
 | Capa | Estado | Referencia |
 |---|---|---|
-| Limpieza reproducible | Implementada y revisada; flags, validación, hashes y publicación con respaldo | `src/xray/clean/`, [decisiones.md](./decisiones.md) |
+| Limpieza reproducible | Implementada y revisada; flags, validación, hashes y publicación con respaldo. Anotaciones semánticas D25–D30/F07 (pólizas operativas, SCF, repos, pasarela, eventos de estrés, fecha prevista ERP) | `src/xray/clean/`, [decisiones.md](./decisiones.md) §14, [hallazgos-datos.md](./hallazgos-datos.md) |
 | Features mensuales | Implementadas: empresa, empresa-moneda y grupo-moneda; nivel, dinámica y calidad | `src/xray/features/`, [feature-engineering.md](./feature-engineering.md) |
 | Contexto retrospectivo | Saldos reconstruidos, cobertura de liquidez y deuda final, separados del modelo | [feature-engineering.md](./feature-engineering.md) |
 | Validación de features | Tests, hashes, checks de contrato e invariancia de prefijo | [validation.md](./validation.md) |
@@ -27,7 +27,7 @@ python -X utf8 scripts/04_validate_scores.py
 python -X utf8 scripts/05_compute_scores_v2.py fit              # V2 -> data/processed/scores_v2/
 python -X utf8 scripts/06_validate_scores_v2.py --check-prefix 2026-02-01
 python -X utf8 scripts/07_compare_scores.py                     # -> data/processed/evaluation/
-python -W error -m pytest -q                                    # 201 tests
+python -m pytest -q -p no:asyncio                               # 233 tests (-W error si no hay pytest-asyncio global)
 ```
 
 `-X utf8` evita problemas de consola Windows con los mensajes del log. No hace falta instalar nuevas dependencias (pandas/numpy/pyarrow/pytest). `XRAY_DATA_DIR` permite otra raíz de datos. Ambos scores admiten `--panel group_currency` y `predict --reference ...` para entidades nuevas sin recalibrar.

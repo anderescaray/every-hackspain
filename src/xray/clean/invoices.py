@@ -37,9 +37,12 @@ def clean_invoices(inv: pd.DataFrame, log: CleaningLog, extraction_date: pd.Time
     f = f[~mask]
 
     # F04 · En facturas no pagadas, payment_date es un relleno (= due_date): no es una fecha de pago.
+    # F07 · Ese relleno es la fecha prevista de pago del ERP: se conserva aparte, nunca como pago realizado.
     mask = (f.status != "paid") & f.payment_date.notna()
+    f["expected_payment_date"] = f.payment_date.where(mask)
     f["payment_date"] = f.payment_date.where(~mask)
     log.add(TABLE, "F04", "set_null", mask.sum(), "payment_date cuando status != paid (valor de relleno)")
+    log.add(TABLE, "F07", "normalize", mask.sum(), "nueva columna expected_payment_date: fecha prevista en facturas no pagadas")
 
     # F05 · Fechas imposibles (años 2000, 6913, 7025...).
     lo, hi = VALID_YEARS

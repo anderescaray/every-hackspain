@@ -12,7 +12,8 @@ import pandas as pd
 from xray.score.core import partition_groups
 from xray.score_v2.config import ScoreV2Config
 from xray.score_v2.level import fit_reference, score_level
-from xray.score_v2.signals import CORE_FEATURES, OPTIONAL_FEATURES, QUALITY_FIELDS, build_signals, month_quality
+from xray.score_v2.signals import (CORE_FEATURES, OPTIONAL_FEATURES, QUALITY_FIELDS, apply_seasonal_adjustment,
+                                   build_signals, month_quality, seasonal_growth_factors)
 from xray.score_v2.trajectory import score_trajectory
 
 
@@ -77,10 +78,12 @@ def fit_reference_bundle(panel, config=None):
             "max_observed_month": str(source_months.loc[prior.index].max().date()) if len(prior) else None,
             "rows": len(prior), "groups": int(prior.group_id.nunique()) if "group_id" in prior else 0,
             "state": fit_reference(prior),
+            "seasonal_growth": seasonal_growth_factors(prior, source_months.loc[prior.index], config.seasonal_min_rows),
         })
     return {"schema_version": SCHEMA_VERSION, "method": METHOD, "config": asdict(config),
             "reference_groups": reference_groups, "holdout_groups": holdout_groups,
             "anchor_reference": fit_reference(source.iloc[:0]), "references": references,
+            "anchor_seasonal_growth": seasonal_growth_factors(source.iloc[:0], source_months.iloc[:0], config.seasonal_min_rows),
             "input_contract": {"required_features": QUALITY_FIELDS + CORE_FEATURES,
                                "optional_invoice_features": OPTIONAL_FEATURES,
                                "keys": list(dict.fromkeys([config.unit, "group_id", "currency", "month"]))},
@@ -102,16 +105,26 @@ def score_panel(panel, reference):
     levels, explanations = [], []
     reference_date = pd.Series(pd.NaT, index=p.index, dtype="datetime64[ns]")
     reference_rows = pd.Series(0, index=p.index, dtype=int)
+    entries = {}
     for month, subset in p.groupby("month", sort=True):
         selected = np.searchsorted(np.array(dates, dtype="datetime64[ns]"), np.datetime64(month), side="right") - 1
-        state = reference["anchor_reference"]
+        entry = None
         if selected >= 0:
             entry = reference["references"][selected]
             if entry["max_observed_month"] is not None and pd.Timestamp(entry["max_observed_month"]) >= month:
                 raise ValueError("La referencia contiene datos del mes puntuado o del futuro")
-            state = entry["state"]
             reference_date.loc[subset.index] = dates[selected]
             reference_rows.loc[subset.index] = entry["rows"]
+        entries[month] = entry
+    if config.seasonal_adjustment:
+        anchor = reference.get("anchor_seasonal_growth", {"factors": {}})["factors"]
+        table = pd.DataFrame(0.0, index=p.index, columns=[str(m) for m in range(1, 13)])
+        for month, subset in p.groupby("month", sort=True):
+            factors = (entries[month] or {}).get("seasonal_growth", {"factors": anchor})["factors"]
+            table.loc[subset.index, list(factors)] = [factors[k] for k in factors]
+        signals = apply_seasonal_adjustment(signals, p.month, table, config)
+    for month, subset in p.groupby("month", sort=True):
+        state = entries[month]["state"] if entries[month] else reference["anchor_reference"]
         level, explanation = score_level(signals.loc[subset.index], state)
         levels.append(level)
         explanation["layer"] = "level"
@@ -127,9 +140,10 @@ def score_panel(panel, reference):
     diagnostics = ["month_quality_ok", "level_months", "op_margin_w", "op_margin_m1", "op_margin_sigma",
                    "op_margin_deviation", "op_margin_deviation_z", "is_atypical_month", "atypical_months_in_window",
                    "op_margin_q_recent", "op_margin_q_prior", "op_margin_qoq", "op_margin_change_z",
-                   "inflow_growth_q", "inflow_growth_change_z"]
+                   "inflow_growth_q", "inflow_growth_change_z", "coverage_state",
+                   "inflow_growth_q_raw", "inflow_growth_seasonal_factor"]
     for column in diagnostics:
-        result[column] = signals[column]
+        result[column] = signals[column] if column in signals else np.nan
     result["reference_partition"] = np.select(
         [p.group_id.isin(reference["reference_groups"]), p.group_id.isin(reference["holdout_groups"])],
         ["reference", "holdout"], default="unseen")
@@ -161,6 +175,11 @@ def score_panel(panel, reference):
     reason.loc[usable & quality_ok & history & result.momentum.isna()] = "trend_unavailable"
     reason.loc[usable & quality_ok & history & result.momentum.notna() & level.level_coverage.lt(.999)] = "optional_components_missing"
     reason.loc[usable & reason.eq("") & partial] = "partial_currency"
+    coverage = signals.coverage_state.astype("string").fillna("ok")
+    for state in ("onboarding", "account_change"):   # FE10: mes no comparable con el anterior; nivel válido, trayectoria a revisar
+        flagged = usable & reason.eq("") & coverage.eq(state).to_numpy(dtype=bool)
+        result.loc[flagged, "score_status"] = "provisional"
+        reason.loc[flagged] = f"coverage_{state}"
     result["score_reason"] = reason.replace("", "ok")
     components = [f"level_{name}" for name in ("operations", "debt", "collections", "payments")]
     result["component_mask"] = result[components].notna().astype(int).astype(str).agg("".join, axis=1)

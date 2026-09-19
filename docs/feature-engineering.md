@@ -47,6 +47,10 @@ Publicación: staging, copias anteriores en `.history/`, sustitución atómica *
 - `has_partial_currency_coverage` avisa de filas en otras monedas, sin producto conocido o con FX ambiguo. Las shares son **por filas**, no una cobertura económica en euros.
 - No se usa `last_transaction_date` global ni la futura fecha de desconexión como predictor.
 
+### Estado de cobertura (FE10)
+
+`coverage_state` por entidad-moneda-mes: `no_data`, `pre_activity`, `dormant`, `onboarding`, `account_change`, `ok`. Una cuenta está dormida en el mes si tiene ≤3 movimientos utilizables y <2.000 unidades (comisiones); el estado usa solo cuentas no dormidas y datos ≤ mes. `account_change` exige que las cuentas que entran o salen pesen ≥10 % del volumen. Columnas auxiliares: `tx_active_accounts_real`, `tx_dormant_accounts`, `tx_new_active_accounts`, `tx_dropped_active_accounts`, `tx_account_change_share`, `months_since_first_activity`, `is_coverage_comparable`. Son cobertura, no predictores; las dinámicas deben calcularse entre meses `ok`. Umbrales en `FeatureConfig` (`dormant_max_transactions`, `dormant_max_amount`, `onboarding_months`, `account_change_min_share`). Detalle y cifras en `decisiones.md` FE10.
+
 ## 2. Monedas y transacciones
 
 No hay tipos de cambio fiables para consolidar. No se multiplican ni dividen importes por `exchange_rate`. Tampoco es válido dividir sumas de monedas mezcladas y llamarlo ratio independiente de moneda.

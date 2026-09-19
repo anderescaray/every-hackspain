@@ -18,6 +18,11 @@ Momentum (trimestre reciente t-2..t frente a trimestre anterior t-5..t-3):
                      medias trimestrales y σ·√q para la suma de crecimientos. Es una razón señal/ruido
                      por empresa: una empresa volátil necesita un cambio mayor para marcar dirección.
 
+Cobertura (FE10, opcional): el crecimiento no se mide hacia o desde meses `onboarding`.
+Estacionalidad: `seasonal_growth_factors` estima con la referencia el log-crecimiento típico de cada mes
+del año (agosto y enero muy negativos, diciembre positivo) y `apply_seasonal_adjustment` lo resta de
+`inflow_growth_q` / `inflow_growth_m1` con los factores vigentes en cada mes puntuado.
+
 Diagnóstico del mes actual (bache frente a tendencia):
     *_deviation      valor mensual − valor de la ventana de nivel
     *_deviation_z    desviación / σ propia
@@ -103,8 +108,22 @@ def _delay_aggregates(frame, side, window, min_count):
     return _ratio(weighted, total).where(total.ge(min_count)), total
 
 
+def coverage_states(frame):
+    """`coverage_state` de FE10 si el panel lo trae; si no, todo se considera comparable."""
+    if "coverage_state" not in frame.columns:
+        return pd.Series("ok", index=frame.index, dtype="string")
+    return frame["coverage_state"].astype("string").fillna("no_data")
+
+
 def _log_growth(frame, ok, clip):
-    growth = _numeric(frame, "tx_lfl_inflow_growth").where(ok & ok.shift(1, fill_value=False))
+    """log(1+g) del crecimiento en cuentas comunes; solo entre meses con calidad y fuera del onboarding.
+
+    El primer mes de actividad real suele ser parcial (el histórico empieza a mitad de mes), así que
+    el crecimiento hacia o desde un mes `onboarding` no es comparable y se deja en NaN.
+    """
+    onboarding = coverage_states(frame).eq("onboarding").fillna(False).astype(bool)
+    comparable = ok & ok.shift(1, fill_value=False) & ~onboarding & ~onboarding.shift(1, fill_value=False)
+    growth = _numeric(frame, "tx_lfl_inflow_growth").where(comparable)
     with np.errstate(divide="ignore", invalid="ignore"):
         logged = np.log1p(growth.where(growth.ge(-1)))
     return logged.clip(-clip, clip)
@@ -157,7 +176,10 @@ def smoothed_signals(frame, config):
         "ar_delay_deviation": ar_m1 - ar_w,
         "ap_delay_deviation": ap_m1 - ap_w,
         "inflow_growth_m1": log_growth,
+        "coverage_state": coverage_states(frame),
     }, index=frame.index)
+    for lag in range(q):  # crecimientos del trimestre reciente, uno por retardo, para el ajuste estacional posterior
+        signals[f"inflow_growth_lag{lag}"] = log_growth.shift(lag)
     for name, base in sigma.items():
         signals[f"{name}_sigma"] = base
         change = signals["inflow_growth_q"] if name == "inflow_growth" else signals[f"{name}_qoq"]
@@ -168,6 +190,54 @@ def smoothed_signals(frame, config):
     signals["is_atypical_month"] = signals.op_margin_deviation_z.abs().ge(config.atypical_z).fillna(False)
     signals["atypical_months_in_window"] = signals.is_atypical_month.astype(float).rolling(w, min_periods=1).sum().astype(int)
     return signals.replace([np.inf, -np.inf], np.nan)
+
+
+def seasonal_growth_factors(signals, months, min_rows):
+    """Factor estacional del crecimiento mensual por mes del año: mediana de log(1+g) entre filas de referencia.
+
+    Se centra restando la mediana global para que el ajuste no cambie el crecimiento medio, solo lo
+    reparta entre meses. Los meses del año con menos de `min_rows` observaciones no se ajustan (0).
+    """
+    growth = pd.to_numeric(signals["inflow_growth_m1"], errors="coerce")
+    valid = growth.notna()
+    factors = {str(m): 0.0 for m in range(1, 13)}
+    support = {str(m): 0 for m in range(1, 13)}
+    if valid.sum() < min_rows:
+        return {"factors": factors, "support": support, "centered_on": None}
+    centre = float(growth[valid].median())
+    by_month = growth[valid].groupby(pd.DatetimeIndex(months[valid]).month)
+    for m, values in by_month:
+        support[str(m)] = int(len(values))
+        if len(values) >= min_rows:
+            factors[str(m)] = float(values.median() - centre)
+    return {"factors": factors, "support": support, "centered_on": centre}
+
+
+def apply_seasonal_adjustment(signals, months, factor_table, config):
+    """Desestacionaliza las señales de crecimiento con los factores vigentes en cada mes puntuado.
+
+    `factor_table`: DataFrame indexado por fila de `signals`, columnas '1'..'12' con el factor del
+    mes del año según la referencia efectiva para esa fila. Para el trimestre t-2..t se resta el factor
+    de cada mes del trimestre; para el mes actual, el suyo. La σ propia se mantiene sobre la serie sin
+    ajustar (conservadora: incluye la varianza estacional).
+    """
+    s = signals.copy()
+    moy = pd.DatetimeIndex(months).month.to_numpy()
+    lags = []
+    for lag in range(config.momentum_window):
+        m = ((moy - 1 - lag) % 12) + 1
+        factor = factor_table.to_numpy()[np.arange(len(s)), m - 1]
+        lags.append(s[f"inflow_growth_lag{lag}"].to_numpy(dtype=float) - factor)
+    stacked = np.vstack(lags)
+    s["inflow_growth_seasonal_factor"] = factor_table.to_numpy()[np.arange(len(s)), moy - 1]
+    s["inflow_growth_q_raw"] = s["inflow_growth_q"]
+    s["inflow_growth_q"] = np.where(np.isfinite(stacked).all(axis=0), stacked.sum(axis=0), np.nan)
+    s["inflow_growth_m1_raw"] = s["inflow_growth_m1"]
+    s["inflow_growth_m1"] = s["inflow_growth_m1"] - s["inflow_growth_seasonal_factor"]
+    sigma = s["inflow_growth_sigma"]
+    s["inflow_growth_change_z"] = s["inflow_growth_q"] / (sigma * np.sqrt(config.momentum_window))
+    s["inflow_growth_deviation_z"] = s["inflow_growth_m1"] / sigma
+    return s.replace([np.inf, -np.inf], np.nan)
 
 
 def build_signals(panel, config):
