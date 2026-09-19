@@ -52,6 +52,8 @@ every.hackspain/
 python -X utf8 scripts/00_clean_data.py
 python -X utf8 scripts/01_build_monthly_features.py
 python -X utf8 scripts/02_validate_features.py
+python -X utf8 scripts/03_compute_scores.py fit
+python -X utf8 scripts/04_validate_scores.py
 python -m pytest -q
 ```
 

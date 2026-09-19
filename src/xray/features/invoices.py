@@ -64,6 +64,7 @@ def invoice_features(f, skeleton, unit):
             p[days_name] = paid_side.groupby(keys).days.median().reindex(p.index)
             p[f"inv_{label}_paid_count"] = paid_side.groupby(keys).size().reindex(p.index).fillna(0)
             delays = paid_side.loc[paid_side.valid_due].copy()
+            p[f"inv_{label}_delay_count"] = delays.groupby(keys).size().reindex(p.index).fillna(0)
             delays["delay"] = (delays.payment_date - delays.due_date).dt.days.clip(-60, 365)
             delays["late"] = delays.delay.gt(0)
             p[f"inv_{label}_delay_median"] = delays.groupby(keys).delay.median().reindex(p.index)

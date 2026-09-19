@@ -91,6 +91,7 @@ Para cierre de mes t:
 | Emitido / recibido | Importe absoluto y conteo en el mes de emisión, AR/AP separados |
 | DSO / DPO realizado | Mediana de `payment_date - issuance_date`, observada **en el mes del pago**, acotada a 0–365 días |
 | Retraso | `payment_date - due_date`, separado de DSO/DPO, acotado a −60–365; mediana, p90 y proporción tardía |
+| `inv_ar_delay_count` / `inv_ap_delay_count` | Añadidos el 19-09: conteos exactos de pagos con vencimiento válido que forman las estadísticas de retraso. No confundir con `paid_count`; permiten exigir ≥5 observaciones en el score |
 | Aging | Abierto, vencido y vencido más de 90 días, por AR/AP |
 | Presión próxima | Vencimientos conocidos 30/60/90 días; ratio 30d/emitido o recibido del mes |
 

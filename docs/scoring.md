@@ -1,252 +1,151 @@
-# Scoring — HackSpain X-Ray · Embat
+# Scoring v1 — índice financiero explicable
 
-> **Estado: diseño previo, no implementado.** La implementación terminada es limpieza + features; ver [decisiones.md](./decisiones.md). El enfoque acordado vigente es GBM a 3/6 meses, nivel y momentum separados y SHAP desde el primer modelo. Los pesos 40/40/20 y nombres de features de abajo son una propuesta de baseline, no decisiones cerradas ni un score generado. Usar la lista `model_features` del catálogo; snapshots y niveles absolutos de morosidad ERP quedan fuera. Normalización aprendida solo en train. Una regla que mira t+1 no se puede ejecutar en t.
+**Implementado:** primer baseline sin etiquetas oficiales, con nivel 0–100 y tendencia separada. Fuente de verdad: `src/xray/score/`. Estado, resultados reales y decisiones pendientes en [decisiones.md](./decisiones.md).
 
-Documentación de diseño de la futura capa que convierte features mensuales en un **score de salud financiera 0–100** por empresa y mes.
+El usuario ha aclarado que el organizador evaluará nuestros scores frente a resultados que solo él conoce. **No entrenamos un GBM contra un target inventado para aparentar que aprendemos ese score.** Esta versión usa reglas financieras explícitas y una referencia estadística que se fija con grupos y meses anteriores. No es una probabilidad de impago ni una predicción validada a 3/6 meses.
 
-## Entrada y salida
+## Ejecutar
 
+```bash
+python -X utf8 scripts/01_build_monthly_features.py
+python -X utf8 scripts/02_validate_features.py
+python -X utf8 scripts/03_compute_scores.py fit
+python -X utf8 scripts/04_validate_scores.py --check-prefix 2026-02-01
 ```
-Entrada:  data/processed/company_monthly_features.parquet
-Salida:   data/processed/company_monthly_scores.parquet
-          data/processed/leaderboard_submission.csv   (para test oculto)
+
+Para grupos, sin mezclar monedas:
+
+```bash
+python -X utf8 scripts/03_compute_scores.py fit --panel group_currency
+python -X utf8 scripts/04_validate_scores.py --panel group_currency
 ```
 
-Cada fila de salida: `company_id × month` con score descompuesto en tres componentes.
+También se admite `--panel company_currency`. El directorio de salida por defecto es `data/processed/scores/`. `fit` significa **ajustar la referencia estadística**, no entrenar con etiquetas.
 
----
+### Empresas nuevas: no volver a ajustar con el conjunto oculto
 
-## Objetivo del score
+Después de ejecutar limpieza/features sobre el nuevo dataset en otra raíz:
 
-El enunciado pide capturar **trayectoria**, no solo la foto del último mes. El ejemplo Northbrook (45→65) vs Velasco (82→68) muestra dos empresas con nivel similar en M24 pero riesgos opuestos.
+```bash
+python -X utf8 scripts/03_compute_scores.py predict --features-dir data/hidden/processed --reference data/processed/scores/_company_score_reference.json
+```
 
-El score debe responder:
+La ruta `data/hidden/processed` es un ejemplo, no un dataset presente. Se debe mantener el mismo contrato y adaptar coherentemente las fechas de extracción de limpieza/features cuando corresponda. `predict` obtiene la configuración del JSON y no vuelve a calcular cuantiles sobre las nuevas empresas. Pasar la historia mensual completa disponible: un mes aislado no permite reconstruir la tendencia ni verificar el soporte de una media móvil.
 
-| Pregunta | Componente |
+API: `fit_reference_bundle(panel, ScoreConfig(...))` y `score_panel(panel, reference)`. La inferencia devuelve scores y explicaciones largas. Claves: entidad, moneda, mes; `group_id` solo determina separación de grupos y balance de referencia, no es una señal financiera. El JSON registra columnas núcleo obligatorias y facturas opcionales: perder una columna bancaria núcleo produce error de esquema, no se disfraza como ausencia de ERP.
+
+## 1. Nivel
+
+Cuatro dimensiones, sin usar saldos retrospectivos, deuda final, texto reservado, ERP ni concentración:
+
+| Dimensión | Peso nominal | Señal |
+|---|---:|---|
+| Operación | 45% | `(entradas operativas − salidas operativas)/(entradas + salidas)` |
+| Servicio de deuda | 25% | `(principal pagado + intereses pagados)/entradas operativas` |
+| Cobros | 15% | Mediana de retraso AR realizado: pago − vencimiento |
+| Pagos | 15% | Mediana de retraso AP realizado: pago − vencimiento |
+
+No es margen contable ni apalancamiento de balance. Servicio observado cero no demuestra ausencia de deuda. Retrasos realizados tienen sesgo hacia facturas pagadas: no representan toda la cartera impagada.
+
+Margen y servicio usan media de tres meses completos cuando esos meses superan los filtros de calidad; si no, valor actual. Para AR/AP se usa el mes actual con **al menos cinco pagos con vencimiento válido**, acreditados por `inv_ar_delay_count` / `inv_ap_delay_count`, no por el total de pagos. La integración desactiva AR/AP si esos conteos faltan y no usa medias de retraso cuyo soporte temporal no está acreditado.
+
+### Anclas financieras propuestas, no calibradas contra el organizador
+
+Interpolación lineal y saturación en los extremos:
+
+| Señal | Puntos `(valor → nota)` |
 |---|---|
-| ¿Cómo está hoy? | **Nivel** |
-| ¿Hacia dónde va? | **Momentum** |
-| ¿Es un bache o una caída real? | **Estabilidad** |
+| Margen | −1→0; −0,25→20; 0→55; 0,10→75; 0,25→90; 0,50→100; 1→100 |
+| Servicio/entradas | 0→100; 0,05→90; 0,15→70; 0,30→40; 0,50→15; 1→0 |
+| Retraso AR/AP en días | ≤0→100; 7→85; 15→65; 30→40; 60→15; ≥90→0 |
 
----
+**Caso especial:** entradas cero con principal + intereses positivos y conocidos → nota de servicio 0, manteniendo su peso. La explicación registra `debt_service_without_inflow=1`, no un ratio ficticio o infinito. Entradas cero y servicio cero/desconocido → componente ausente, no deuda sana.
 
-## Arquitectura del score
+### Ajuste empírico acotado
 
-```
-company_monthly_features.parquet
-        │
-        ├─► Nivel (40%)      ── liquidez, cobros, operaciones, apalancamiento
-        ├─► Momentum (40%)   ── deltas, pendientes, cambio de régimen
-        └─► Estabilidad (20%) ── volatilidad, persistencia de señales negativas
-        │
-        ▼
-   score = 0.4×nivel + 0.4×momentum + 0.2×estabilidad
-        │
-        ▼
-   escala 0–100 (clamp + round)
-```
+Por componente se calculan q10/q90 sobre valores recortados al dominio de las anclas. Cada grupo pesa igual; dentro de grupo cada empresa pesa igual; dentro de empresa sus observaciones pesan igual. La parte empírica interpola 0–100 entre esos cuantiles, invirtiendo la orientación cuando menor es mejor.
 
-Los pesos `0.4 / 0.4 / 0.2` son el punto de partida; ajustar con el leaderboard y validación interna.
+`nota_componente = 0,70 × ancla + 0,30 × referencia_empírica`.
 
----
+Solo se activa con **≥100 observaciones válidas, ≥20 grupos conocidos y dispersión positiva**. Si falta soporte, se usan exclusivamente anclas. El JSON almacena cuantiles, soporte y `empirical_active`; los empates en cero no convierten ausencia de servicio observado en una mala nota.
 
-## Componente 1: Nivel
+Se renormalizan pesos entre dimensiones disponibles. `level_coverage` es la suma de sus pesos nominales, no confianza estadística. Un 80 con operación/deuda no equivale en evidencia a un 80 con las cuatro dimensiones; se muestran máscara y pesos efectivos.
 
-Foto de salud en el mes `t`. Usa features **normalizadas a percentil** (0–1) por mes, tal como se define en [feature-engineering.md](./feature-engineering.md).
+## 2. Referencia temporal y empresas no vistas
 
-### Sub-scores de nivel
+- Orden de grupos por SHA-256 con semilla fija; 20% de los grupos se reservan completos como holdout. En el dataset actual son 50 de 250, no filiales aleatorias.
+- Para puntuar t, cada referencia utiliza solo los grupos restantes y los **12 meses anteriores a t**, nunca el mes t ni su futuro.
+- Se guardan todas las referencias mensuales y una para el siguiente mes. Antes de la primera referencia se usan anclas; después del último mes se mantiene la última referencia disponible, sin aprender del batch nuevo.
+- La misma empresa y su misma historia deben dar el mismo resultado solas o acompañadas por otras empresas, usando el mismo JSON.
+- El holdout permite comprobar transferencia, cobertura y distribución. **No permite medir parecido al score oficial sin sus resultados.**
 
-| Sub-score | Features (percentil) | Peso | Lógica |
-|---|---|---:|---|
-| `level_liquidity` | `liquidity_score_raw`, `cash_runway_months`, `cash_balance` | 0.30 | Más liquidez → mejor |
-| `level_operations` | `operational_score_raw`, `tx_net_cashflow_ma3`, `inv_issued_amount_ma3` | 0.25 | Cashflow y facturación sanos → mejor |
-| `level_collection` | `collection_score_raw`, `inv_dso_median`, `inv_overdue_ratio` | 0.25 | DSO bajo, morosidad baja → mejor |
-| `level_leverage` | `leverage_score_raw`, `debt_utilization`, `debt_interest_to_inflow_ratio` | 0.20 | Menos apalancamiento → mejor (invertir signo) |
+La referencia puede cambiar entre meses y mover ligeramente el nivel. Por eso la tendencia se calcula con cambios financieros, **no con la diferencia de scores normalizados**. `delta_vs_prev` se conserva como diagnóstico, junto a máscara de componentes y avisos de cambios de cobertura/cuentas.
 
-### Cálculo
+## 3. Momentum: mejora y deterioro simétricos
 
-```python
-level_liquidity   = weighted_mean([pct(liquidity_score_raw), pct(cash_runway_months), pct(cash_balance)])
-level_operations  = weighted_mean([pct(operational_score_raw), pct(tx_net_cashflow_ma3), pct(inv_issued_amount_ma3)])
-level_collection  = weighted_mean([pct(collection_score_raw), 1 - pct(inv_dso_median), 1 - pct(inv_overdue_ratio)])
-level_leverage    = weighted_mean([1 - pct(leverage_score_raw), 1 - pct(debt_utilization), 1 - pct(debt_interest_to_inflow_ratio)])
+Cada señal pasa por `50 + 50 × tanh(orientación × cambio / escala)`:
 
-level = (
-    0.30 * level_liquidity +
-    0.25 * level_operations +
-    0.25 * level_collection +
-    0.20 * level_leverage
-)  # resultado en [0, 1]
-```
+| Señal | Peso | Escala | Mejora |
+|---|---:|---:|---|
+| Cambio 3m de margen operativo | 25% | 0,10 | Aumento |
+| Cambio 3m de servicio/entradas | 25% | 0,10 | Descenso |
+| Cambio 3m de retraso AR | 12,5% | 10 días | Descenso |
+| Cambio 3m de retraso AP | 12,5% | 10 días | Descenso |
+| Media 3m del crecimiento de entradas en cuentas comunes | 25% | 0,05 | Aumento |
 
----
+50 = neutral, >50 = mejora relativa de las señales, <50 = deterioro. Los pesos se renormalizan entre señales disponibles y se publica `momentum_coverage`.
 
-## Componente 2: Momentum
+Calendario completo por entidad y moneda, sin comprimir huecos. Cuatro meses consecutivos de soporte para deltas3; AR/AP requiere cinco pagos válidos en cada mes. Cuentas comunes exige tres tasas consecutivas y soporte bancario en el mes previo a cada una. Meses con menos de cinco movimientos útiles o rechazados por calidad interrumpen soporte y persistencia.
 
-Captura la **dirección del movimiento**. Es lo que diferencia a Northbrook (mejorando) de Velasco (empeorando) cuando el nivel en M24 es similar.
+### Clasificación
 
-### Sub-scores de momentum
+- **`improving`:** momentum ≥60 durante al menos dos meses, con alguna señal común que sostenga el signo.
+- **`deteriorating`:** momentum ≤40 con la misma confirmación.
+- **`watch`:** primer indicio o señales contrapuestas; no equivale a estable.
+- **`stable`:** dos meses neutrales con señales comunes sin direcciones significativas enfrentadas.
+- **`insufficient_history`:** falta evidencia temporal; no se rellena con 50.
 
-| Sub-score | Features | Peso | Lógica |
-|---|---|---:|---|
-| `mom_cashflow` | `tx_net_cashflow_delta3`, `tx_net_cashflow_slope6` | 0.30 | Pendiente positiva → mejorando |
-| `mom_invoicing` | `inv_issued_amount_delta3`, `inv_dso_delta3` | 0.25 | Más facturación, DSO bajando → mejorando |
-| `mom_debt` | `debt_interest_paid_ma3` delta, `debt_utilization` delta | 0.20 | Menos presión de deuda → mejorando |
-| `mom_level` | `level(t) - level(t-3)` | 0.25 | El propio nivel ya sube/baja |
+`direction`: up/down/flat/unknown. `trend_months` es firmado: positivo mejora, negativo deterioro. No se confirma un bache en t mirando la recuperación en t+1.
 
-### Normalización de deltas
+`stability = 100/(1 + dispersión ponderada de cambios estandarizados en tres meses)` es un **diagnóstico de regularidad**, no una nota de salud ni un tercer término del score: una empresa puede empeorar de forma muy estable.
 
-Los deltas en unidades crudas no son comparables entre empresas. Convertir a percentil cross-sectional por mes antes de combinar:
+## 4. Score y calidad
 
-```python
-mom_cashflow = weighted_mean([
-    pct(tx_net_cashflow_delta3),
-    pct(tx_net_cashflow_slope6),
-])
-mom_invoicing = weighted_mean([
-    pct(inv_issued_amount_delta3),
-    1 - pct(inv_dso_delta3),   # DSO subiendo es malo
-])
-mom_debt = weighted_mean([
-    1 - pct(debt_interest_paid_ma3 - debt_interest_paid_ma3.shift(3)),
-    1 - pct(debt_utilization - debt_utilization.shift(3)),
-])
-mom_level = pct(level - level.shift(3))
+`score = clip(level + 0,20 × (momentum − 50), 0, 100)`.
 
-momentum = (
-    0.30 * mom_cashflow +
-    0.25 * mom_invoicing +
-    0.20 * mom_debt +
-    0.25 * mom_level
-)  # [0, 1]
-```
+El ajuste de trayectoria está limitado a ±10 puntos y queda visible como `momentum_adjustment`. Si no hay momentum pero sí nivel utilizable, score = nivel y estado provisional; el campo momentum sigue nulo. La estabilidad no penaliza adicionalmente para evitar triple conteo.
 
-### Detección de las dos direcciones
+Filtros de evidencia del mes actual:
 
-| Condición | Clasificación | Score momentum |
-|---|---|---|
-| `momentum > 0.65` | Mejorando con fuerza | Alto |
-| `0.45 ≤ momentum ≤ 0.65` | Estable | Medio |
-| `momentum < 0.45` | Deteriorando | Bajo |
+- Al menos cinco movimientos bancarios utilizables.
+- Al menos 80% de filas bancarias utilizables y 10% del importe utilizable identificado como operativo.
+- Cobertura de filiales observadas igual a 1, en esa moneda.
+- Dimensión de operación disponible y peso disponible ≥0,4.
 
-Un detector de quiebras puro solo captura la cola inferior; este diseño reconoce **mejora excepcional** con la misma lógica.
+Estos son umbrales de calidad propuestos, no calibración de riesgo. Si fallan, `score=NaN`, `score_status=not_scored` y motivo explícito. Menos de seis meses de historia, falta de tendencia, componentes opcionales ausentes o moneda parcial → `provisional`, sin penalizar financieramente por falta de ERP. No se rellena un mes desconectado con el score anterior.
 
----
+**Limitaciones:** el score no mide caja real ni todos los aspectos de solvencia; un margen de flujos +1 puede reflejar salidas no observadas. El score primario cubre solo moneda declarada. Las referencias comunes tampoco corrigen automáticamente diferencias sectoriales. Debe iterarse con feedback real del organizador y revisión financiera, no con una distribución objetivo elegida para que resulte atractiva.
 
-## Componente 3: Estabilidad
+## 5. Artefactos y explicación
 
-Distingue un **bache puntual** de un **deterioro estructural**.
+En `data/processed/scores/`, con prefijo `company`, `company_currency` o `group_currency`:
 
-| Sub-score | Features | Peso | Lógica |
-|---|---|---:|---|
-| `stab_volatility` | `tx_volatility_ratio`, `tx_net_cashflow_std3` | 0.40 | Volatilidad baja → más estable |
-| `stab_persistence` | meses consecutivos con `inv_overdue_ratio` alto | 0.30 | Morosidad persistente → inestable |
-| `stab_recovery` | cashflow mes actual vs media 3m anterior | 0.30 | Recuperación tras caída → estable |
+| Artefacto | Contenido |
+|---|---|
+| `<prefijo>_monthly_scores.parquet` | Nivel, momentum, score, trayectoria, estabilidad diagnóstica, cobertura, estado, partición y referencia utilizada |
+| `<prefijo>_latest_scores.csv` | Universo entidad-moneda observado, incluido si falta su fila del mes final; score nulo sin imputación, `current_month_present`, última fecha puntuable y `staleness_status` current/stale/never_scored |
+| `<prefijo>_score_explanations.parquet` | Feature/valor, nota, peso efectivo, definición y contribución exacta al score |
+| `<prefijo>_score_examples.json` | Ejemplos ilustrativos del holdout y sus historiales; no son una validación estadística |
+| `_<prefijo>_score_reference.json` | Configuración y referencia congelada reutilizable para nuevas entidades |
+| `_<prefijo>_score_report.json` | Cobertura, distribuciones, causas de abstención y cohortes; métricas oficiales nulas |
+| `_<prefijo>_score_manifest.json` | Hashes, versión de código, configuración, fuentes y modo fit/predict |
 
-```python
-stab_volatility  = weighted_mean([1 - pct(tx_volatility_ratio), 1 - pct(tx_net_cashflow_std3)])
-stab_persistence = 1 - pct(consecutive_months_overdue_above_median)
-stab_recovery    = pct(tx_net_cashflow - tx_net_cashflow_ma3.shift(1))  # positivo si recupera
+Explicación aditiva: contribuciones del nivel + `0,2 × peso_efectivo × (nota_momentum − 50)` + ajuste de recorte a [0,100] = score. No se llaman SHAP: son contribuciones analíticas de esta fórmula. Si se incorpora posteriormente un modelo aprendido, necesitará su explicación propia.
 
-stability = (
-    0.40 * stab_volatility +
-    0.30 * stab_persistence +
-    0.30 * stab_recovery
-)  # [0, 1]
-```
+El CSV es un **export genérico de candidatos**, no una submission oficial validada: quedan por confirmar unidad, columnas, mes de corte, escala y tratamiento exigido para entidades sin cobertura suficiente. No se crea un fichero llamado submission para sugerir aceptación inexistente.
 
-### Regla bache vs caída
+## 6. Validación y siguiente iteración
 
-```
-SI caída de cashflow > 1 std EN un mes
-   Y cashflow del mes siguiente > 80% de la media pre-caída
-ENTONCES → bache (no penalizar estabilidad)
-SINO SI caída persiste 2+ meses
-ENTONCES → deterioro estructural (penalizar estabilidad)
-```
+Tests: monotonía financiera, simetría de mejora/deterioro, huecos, mínimo de muestra, cero entradas con deuda, fuente opcional ausente, cambios de composición, referencia congelada, prefijos, serialización, contribuciones exactas, publicación y hashes. El informe no inventa accuracy, probabilidad, correlación con el organizador ni lead time.
 
----
-
-## Score final
-
-```python
-score_raw = 0.4 * level + 0.4 * momentum + 0.2 * stability
-score     = round(clamp(score_raw * 100, 0, 100))
-delta     = score(t) - score(t - 1)
-```
-
-### Campos de salida
-
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `company_id` | string | Clave |
-| `group_id` | string | Para validación y vista de holding |
-| `month` | date | YYYY-MM-01 |
-| `score` | int | 0–100 |
-| `level` | float | Componente nivel [0, 1] |
-| `momentum` | float | Componente momentum [0, 1] |
-| `stability` | float | Componente estabilidad [0, 1] |
-| `delta_vs_prev` | int | Cambio vs mes anterior |
-| `trajectory` | string | `improving` / `stable` / `deteriorating` / `recovering` |
-
-### Clasificación de trayectoria
-
-```python
-if momentum > 0.60 and delta_vs_prev > 0:
-    trajectory = "improving"
-elif momentum < 0.40 and delta_vs_prev < 0:
-    trajectory = "deteriorating"
-elif delta_vs_prev > 0 and momentum < 0.50:
-    trajectory = "recovering"   # nivel aún bajo pero girando
-else:
-    trajectory = "stable"
-```
-
----
-
-## Entrega al leaderboard
-
-El script de scoring de los organizadores espera predicciones sobre empresas del **test oculto** (60–80 empresas no vistas). El pipeline debe:
-
-1. Cargar CSV de empresas a puntuar (formato que den los organizadores)
-2. Ejecutar feature engineering + scoring sobre esas empresas
-3. Exportar el score de **M24** (o el mes que indiquen)
-
-```csv
-company_id,score
-COMP_XXXX,68
-COMP_YYYY,72
-...
-```
-
-Script: `scripts/06_export_leaderboard.py`
-
----
-
-## Iteración de pesos
-
-| Parámetro | Rango a probar | Señal de ajuste |
-|---|---|---|
-| Peso nivel / momentum / estabilidad | 0.3–0.5 / 0.3–0.5 / 0.1–0.3 | Leaderboard + proxy interno |
-| Ventana momentum | 3m vs 6m | Anticipación en backtest |
-| Umbral trayectoria | ±0.05 sobre 0.40/0.60 | Balance mejora vs deterioro |
-
-No overfittear a empresas concretas. Validar siempre con group k-fold ([validation.md](./validation.md)).
-
----
-
-## Script de referencia
-
-```
-scripts/
-  02_compute_scores.py       # scoring principal
-  06_export_leaderboard.py   # CSV para test oculto
-```
-
-Dependencias: lee `company_monthly_features.parquet`, escribe `company_monthly_scores.parquet`.
-
----
-
-## Próximo paso
-
-Con scores calculados, generar explicaciones por empresa/mes → [explainability.md](./explainability.md).
+Siguiente iteración: revisar casos y cobertura; recibir formato/feedback del leaderboard; comparar variantes predefinidas manteniendo un holdout de grupos. No entrenar un GBM para reproducir nuestra propia fórmula y presentar ese ajuste como generalización a la puntuación oculta.

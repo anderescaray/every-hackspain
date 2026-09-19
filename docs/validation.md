@@ -1,6 +1,6 @@
 # Validación — X-Ray
 
-Estado y resultados comprobados: [decisiones.md](./decisiones.md). Esta revisión separa la **validación de datos/features ya implementada** de la **evaluación de modelo todavía pendiente**. Las métricas numéricas ilustrativas del diseño anterior no eran resultados experimentales y se han retirado.
+Estado y resultados comprobados: [decisiones.md](./decisiones.md). Se separan **validación de datos y mecánica del score ya implementadas** de **acierto frente al organizador y anticipación todavía no medidos**. El score v1 es heurístico, no un modelo entrenado contra etiquetas. Las métricas ilustrativas del diseño anterior no eran resultados experimentales.
 
 ## Implementado
 
@@ -8,6 +8,8 @@ Estado y resultados comprobados: [decisiones.md](./decisiones.md). Esta revisió
 python -m pytest -q
 python -X utf8 scripts/02_validate_features.py
 python -X utf8 scripts/02_validate_features.py --check-prefix 2026-02-01
+python -X utf8 scripts/04_validate_scores.py --check-prefix 2026-02-01
+python -X utf8 scripts/04_validate_scores.py --panel group_currency --check-prefix 2026-02-01
 ```
 
 La validación de ficheros comprueba:
@@ -23,6 +25,16 @@ Tests sintéticos adicionales: independencia respecto a futuros movimientos/fact
 
 El informe `_feature_quality.json` cuantifica missingness y cobertura. **No mide acierto predictivo**.
 
+### Score v1: qué se ha verificado
+
+La suite ampliada tiene 167 tests. Se comprueban monotonía financiera, mejora/deterioro simétricos, confirmación temporal, huecos, deuda positiva con entradas cero, conteos exactos de retrasos, cambio de componentes, columnas núcleo obligatorias, inferencia sin recalibrar y empresas nuevas independientes del batch. Las contribuciones suman el score, los hashes coinciden y un prefijo hasta febrero de 2026 reproduce los scores históricos de empresa y grupo-moneda.
+
+La referencia usa 200 grupos y reserva 50 completos (257 empresas). Cuantiles por mes solo con los 12 meses anteriores; soporte insuficiente implica anclas fijas. Los informes `data/processed/scores/*_score_report.json` muestran distribución, cobertura, causas de abstención y cohortes, con `official_score_agreement`, `predictive_accuracy` y `lead_time` nulos.
+
+El CSV más reciente conserva pares entidad-moneda observados aunque falte la fila del mes final; distingue current/stale/never_scored sin imputar scores. No detecta por sí solo IDs que nunca llegaron al panel: contrastar el universo con el maestro del test. Los hashes son trazabilidad/integridad accidental, no autenticación frente a la modificación coordinada de datos y manifiestos.
+
+La validación detecta fallos mecánicos, no certifica calidad del índice: hay 410 empresas sin score en agosto, muchos scores provisionales y saltos grandes entre meses. Los ejemplos de mejora/deterioro sirven para inspección, no para afirmar éxito frente a una etiqueta oculta.
+
 ## Lo que la validación temporal no demuestra
 
 El dataset contiene estados finales y carece de timestamps de ingestión/revisiones:
@@ -34,9 +46,9 @@ El dataset contiene estados finales y carece de timestamps de ingestión/revisio
 
 Por tanto, el test de prefijo protege los cálculos sobre `cleaned`; no certifica un backtest histórico de producción. Los artefactos retrospectivos están fuera de `model_features`.
 
-## Próximo paso: etiquetas y split
+## Para una futura variante supervisada: etiquetas y split
 
-Antes de modelar, registrar en decisiones:
+No es requisito para ejecutar el baseline. Si se desarrolla predicción de eventos, registrar antes en decisiones:
 
 1. Unidad que evalúa el leaderboard, formato, etiqueta, horizonte, métrica y desempate.
 2. Si no hay etiqueta oficial disponible: elegir 2–3 eventos observables y reglas fijas para t+3 / t+6.
@@ -61,4 +73,4 @@ Comparar momentum(t) con el futuro **score del mismo modelo** sirve como diagnó
 
 ## Criterio de comunicación
 
-No hay score entrenado, métrica del leaderboard, lead time ni tasa de falsas alarmas verificados todavía. No utilizar cifras de ejemplo en el pitch. Sí se puede mostrar el pipeline, las trayectorias de features, su trazabilidad y los límites de los datos sintéticos.
+Hay un score heurístico ejecutado y explicaciones verificadas aritméticamente. No hay modelo supervisado, métrica del leaderboard, lead time ni tasa de falsas alarmas comprobados. No utilizar cifras de ejemplo como resultados; sí mostrar los scores, trayectorias, cobertura y límites reales del baseline sobre datos sintéticos.
