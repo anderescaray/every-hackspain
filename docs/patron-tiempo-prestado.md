@@ -1,160 +1,117 @@
-# Tiempo prestado: el crédito que se esconde dentro de las fechas
+# Conclusiones del análisis y propuesta inicial: Tiempo prestado
 
-**Investigación y propuesta para X-Ray · Embat · HackSpain 2026**  
-**Fecha:** 19 de septiembre de 2026.  
-**Alcance:** análisis sin modificar el producto. Este documento es el único archivo creado en esta sesión. No se han añadido scripts, features, modelos, dependencias ni cambios de configuración.
+**Reto X-Ray · Embat · HackSpain 2026 · 19 de septiembre de 2026**
 
-## 1. Mi conclusión, sin venderte humo
+## Cómo leer este documento
 
-**No sustituiría Cash Truth. Lo ampliaría con una pregunta que el score actual no sabe contestar:**
+Este documento es un **punto de partida para construir el proyecto desde cero**. Reúne conclusiones del análisis de los datos, evidencias, hipótesis descartadas y una propuesta de features, score, producto y validación.
 
-> **¿Estás convirtiendo mejor tu actividad en dinero, o alguien está financiando la diferencia dándote más tiempo?**
+**No presupone ningún producto, motor de scoring, pantalla, pipeline ni feature implementados.** Todos los componentes descritos como propuesta están por construir y validar. No hace falta conocer otro informe, una rama de desarrollo ni archivos de investigación locales para entender las conclusiones.
 
-El patrón más interesante que he encontrado no es simplemente que una empresa pague tarde. Es que **puede mejorar su puntualidad mientras empeora el tiempo que tarda en liquidar sus facturas**, porque también ha cambiado el vencimiento contra el que medimos esa puntualidad.
+Distinguimos tres niveles:
 
-Y puede ocurrir al revés: liquidar antes desde la emisión, pero parecer más impuntual porque ahora el plazo es más corto.
+- **Observado:** un resultado descriptivo comprobado en los datos analizados.
+- **Exploratorio:** una asociación o sensibilidad que no equivale a validación externa.
+- **Propuesto:** algo que se podría construir a partir de las conclusiones; no es una capacidad entregada.
 
-El punto casi imperceptible es este:
-
-> **La regla con la que medimos el retraso también se mueve. Si solo miramos el retraso, podemos confundir una concesión de crédito comercial con una mejora de conversión de caja.**
-
-Hay evidencia concreta en estos datos. En una relación de clientes de `COMP_1171`, el retraso medio registrado pasa de **19,65 días a cero**, pero el tiempo emisión–liquidación pasa de **81,24 a 102,25 días**. No se está cobrando antes en esa población de documentos; se están liquidando documentos con plazos más largos. La comparación resiste ponderación monetaria, medianas y controles de deduplicación.
-
-**Lo que NO he encontrado:** un predictor extraordinario que permita prometer ganar el leaderboard o anticipar universalmente el deterioro. La contracción de plazos a proveedores tiene una asociación exploratoria modesta, intervalos amplios y no mejora de manera consistente un baseline de caja.
-
-Mi apuesta sería un producto de **diagnóstico y gestión del crédito comercial implícito**, apoyado en un score corregido. No otro indicador sofisticado al que asignarle un peso grande porque tiene una historia atractiva.
-
-### Las tres afirmaciones que sí defendería
-
-1. **Un buen comportamiento respecto al vencimiento y una buena velocidad de conversión no son lo mismo.** Pueden moverse en direcciones opuestas, incluso para la misma contraparte.
-2. **Los plazos contienen una dimensión de financiación que no aparece en `debt_products.csv`.** Son tiempo concedido o recibido, aunque no sepamos quién decidió cambiarlo ni por qué.
-3. **El producto puede convertir esa diferencia en una decisión concreta:** qué relación revisar, qué vencimientos han cambiado, qué importes quedan comprometidos durante más tiempo y qué negociación tendría sentido estudiar.
-
-No puedo garantizar que nadie más haya pensado en esto. El crédito comercial es un concepto conocido. La aportación diferencial sería **medirlo dentro de las mismas relaciones, separar tres relojes y demostrar cuándo una explicación del score sería equivocada**.
+El objetivo es decidir **qué merece la pena construir y qué no deberíamos prometer**.
 
 ---
 
-## 2. Qué rescato de tu ejemplo de los tokens de Claude
+## 1. Conclusión principal
 
-No sabemos por esta anécdota por qué un proveedor concede tokens a una empresa y no a otra. Puede influir su potencial como cliente, el uso esperado, un programa comercial, una integración o una relación estratégica. No permite concluir que el proveedor haya diagnosticado mejor salud financiera.
+> **Una empresa puede mejorar su puntualidad sin convertir sus facturas en dinero más rápido: ha cambiado el plazo contra el que medimos el retraso.**
 
-Pero la intuición útil es muy buena:
+El patrón no consiste simplemente en detectar que alguien paga tarde. Consiste en separar:
 
-> **Las condiciones que otros aceptan ofrecerte pueden contener información que aún no aparece en tus resultados.**
+1. cuánto tiempo se concede para pagar;
+2. cuánto tiempo transcurre hasta la liquidación registrada;
+3. cuánto se excede el vencimiento.
 
-En estos CSV no tenemos decisiones comerciales de Anthropic ni solicitudes de crédito aprobadas y rechazadas. El equivalente observable más cercano es:
+La diferencia es sutil porque un dashboard puede mostrar una mejora del retraso y atribuirla a una mejor conversión de caja. Pero si el plazo se ha ampliado todavía más, lo que ha cambiado es la financiación comercial concedida o recibida.
 
-- cuánto tiempo aparece concedido para pagar a un proveedor;
-- cuánto tiempo concede la empresa a sus clientes;
-- cómo cambian esas condiciones para una misma relación;
-- cuánto tiempo tarda realmente la liquidación registrada;
-- y cuánto de esa espera sucede antes o después del vencimiento.
+### Evidencia principal
 
-Hay una distinción esencial de dirección:
+En una relación de clientes de **COMP_1171**:
 
-| Lado | Qué observamos | Quién financia a quién |
+| Medida | Ago–oct 2025 | Nov 2025–ene 2026 |
+|---|---:|---:|
+| Retraso medio registrado | 19,65 días | **0 días** |
+| Tiempo emisión–liquidación | 81,24 días | **102,25 días** |
+| Plazo medio registrado | 61,59 días | **102,25 días** |
+
+La puntualidad mejora, pero la duración hasta liquidación aumenta. La comparación resiste ponderación por importe, medianas y controles de deduplicación.
+
+**Esto no demuestra insolvencia ni deterioro de toda la empresa.** Demuestra que puntualidad y velocidad de conversión no son la misma dimensión.
+
+### La oportunidad de producto
+
+> **Mostrar qué parte de la liquidez depende del tiempo que otros conceden a la empresa y qué financiación está concediendo la empresa a sus clientes.**
+
+Ese crédito comercial no aparece necesariamente como un préstamo en el fichero de deuda. Sin embargo, cambia la necesidad de circulante y puede dar lugar a decisiones concretas sobre clientes, proveedores y condiciones comerciales.
+
+### Lo que no se ha encontrado
+
+No se ha encontrado un predictor extraordinario que permita prometer ganar el leaderboard o anticipar universalmente el deterioro. Los cambios de plazo tienen valor explicativo, pero su mejora predictiva sobre un baseline de caja ha resultado pequeña e inconsistente en las pruebas exploratorias.
+
+**La recomendación es construir una medición defendible y un producto útil, no asignar un gran peso a una señal solo porque su narrativa es atractiva.**
+
+---
+
+## 2. La intuición: observar condiciones, no adivinar intenciones
+
+Un proveedor puede ofrecer recursos o condiciones mejores a unas empresas que a otras. Esa decisión puede reflejar expectativas, una relación comercial, potencial de crecimiento o una política interna. No permite concluir automáticamente que esté evaluando salud financiera.
+
+La parte útil de esa intuición es:
+
+> **Las condiciones que otros aceptan ofrecerte pueden contener información que todavía no aparece en tus resultados.**
+
+En estos datos no hay solicitudes de financiación aceptadas y rechazadas ni motivos de decisiones comerciales. Sí hay fechas de emisión, vencimiento y liquidación de facturas. Permiten observar condiciones registradas y su evolución.
+
+| Lado | Qué significa | Quién financia a quién |
 |---|---|---|
 | AP: facturas a pagar | Plazo recibido por la empresa | El proveedor financia a la empresa durante ese plazo |
 | AR: facturas a cobrar | Plazo concedido por la empresa | La empresa financia a su cliente durante ese plazo |
 
-**Un aumento de plazo AR no significa que otros confíen más en la empresa. Significa que la empresa está concediendo más tiempo a sus clientes.** Confundir esas dos direcciones destruiría la tesis.
+**Un aumento de plazo AR no significa que otros confíen más en la empresa. Significa que la empresa concede más tiempo a sus clientes.**
 
-Tampoco llamaría automáticamente «retirada de confianza» a una reducción de plazo AP. Puede ser una condición negociada, un cambio de producto, un descuento, una política de grupo, estacionalidad o una diferencia de registro.
+Tampoco una reducción de plazo AP demuestra retirada de confianza. Puede responder a negociación, descuentos, productos distintos, estacionalidad, política de grupo o registro del ERP.
 
-El nombre prudente de la señal es **cambio de condiciones observadas**, no «lo que el mercado sabe de ti».
+Por tanto, la señal debería llamarse **cambio de condiciones observadas**, no «confianza secreta del mercado».
 
----
-
-## 3. Qué he revisado de lo que ya tienes
-
-He leído el motor de features, el scoring, la limpieza de facturas, la documentación de producto y scoring, el informe de investigación anterior y los métodos que generan sus paneles y validaciones.
-
-### Conservaría
-
-- La separación entre Health, Momentum, Stability y Confidence.
-- La explicación por dimensiones y la navegación empresa–mes prevista.
-- La neutralización de circulación de dinero antes de interpretar generación operativa.
-- El análisis local de contrapartes: no hace falta inventar una red global.
-- La cobertura y las advertencias de datos como parte visible del producto.
-- El rigor del informe anterior al descartar predicciones que no se sostienen.
-
-### El hueco que veo
-
-En `src/xray/features/__init__.py`, las features de pagos se centran en `payment_date - due_date`. El score utiliza retrasos de clientes/proveedores y ratios de vencidos, pero no separa explícitamente:
-
-1. **el plazo registrado:** vencimiento menos emisión;
-2. **la duración hasta liquidación:** liquidación menos emisión;
-3. **el exceso sobre el plazo:** liquidación menos vencimiento.
-
-El panel de investigación ya contiene medianas de plazo por empresa, pero las 31 hipótesis y las 33 señales temporales del trabajo anterior no prueban el cambio de plazo dentro de la misma relación de la forma desarrollada aquí.
-
-Por tanto, esto no es renombrar supplier stretching. **Estirar unilateralmente un pago y recibir más plazo son hechos distintos.** Ambos pueden sostener caja, pero tienen consecuencias contractuales y explicaciones diferentes.
-
-### Antes de añadir una feature, corregiría estos problemas
-
-Los cinco primeros ya estaban señalados en la investigación anterior y siguen siendo relevantes:
-
-- Foto final de deuda distribuida por meses históricos.
-- Uso histórico de flags de vencimiento calculados con la extracción final.
-- Percentiles expansivos que dan el máximo a una serie constante.
-- Comparación transversal de importes absolutos sin normalizar tamaño.
-- Flujos que todavía mezclan circulación, operación y financiación.
-
-Además, he comprobado en memoria dos problemas concretos del código actual:
-
-**A. La trayectoria puede cambiar porque cambian los demás.**
-
-Al ejecutar `_dimension_score` con una única feature favorable, A conserva el valor 10 en dos meses. B pasa de 20 a 5. El componente de A pasa de **80 a 100**, aunque A no cambia. Es consecuencia de mezclar percentil propio con ranking transversal del mes.
-
-Eso puede ser válido como posición relativa. No debe explicarse como mejora propia. También obliga a definir una referencia estable para puntuar un lote oculto: el score absoluto no debería depender arbitrariamente de qué otras empresas vengan en la misma petición.
-
-**B. Hay una explicación con signo incorrecto en el fallback.**
-
-La llamada a `_row_drivers` con una feature favorable que baja de 100 a 90, sin cambio de dimensión disponible, devuelve una contribución **+0,1**. El fallback usa `direction * abs(delta)` y pierde el signo del cambio. No he modificado esa función.
-
-Además, sus contribuciones aproximadas no constituyen una descomposición exacta del cambio final del score. No las presentaría como puntos aditivos auditables sin revisar el cálculo.
-
-**Prioridad:** arreglar la validez del motor y de sus explicaciones tiene más valor que añadir una señal sutil encima de una medición inconsistente.
+El crédito comercial es un concepto conocido. La diferenciación del proyecto estaría en medirlo dentro de relaciones comparables, explicar su efecto y evitar interpretaciones falsas, no en afirmar que nadie lo ha pensado antes.
 
 ---
 
-## 4. Qué he analizado en esta sesión y qué he reutilizado
+## 3. Datos analizados y límites de lo observable
 
-### Recalculado desde los originales de Descargas
+El conjunto contiene **1.286 sociedades en 250 grupos** y 24 meses completos, de septiembre de 2024 a agosto de 2026, con extracción final alrededor del 1 de septiembre de 2026.
 
-- Las **897.894 filas** de `invoices.csv`.
-- Las **2.556.437 transacciones**, para la exploración de fechas contables y fechas valor, leyendo las columnas necesarias.
-- El maestro de sociedades y el diccionario original.
-- Comparaciones de plazos dentro de relaciones repetidas.
-- Descomposiciones del tiempo hasta liquidación.
-- Casos con identificadores de documentos originales.
-- Sensibilidades de población, tipos de documento, importes y deduplicación.
+Se analizaron:
 
-Los cálculos se han ejecutado en memoria. No se han guardado datasets derivados nuevos.
+- las **897.894 filas de facturas**;
+- las **2.556.437 transacciones**, en las columnas necesarias para la exploración de fechas contables y valor;
+- el maestro de sociedades y el diccionario de datos;
+- cambios de plazo dentro de relaciones repetidas;
+- descomposiciones de tiempo hasta liquidación;
+- sensibilidades por importe, tipo documental, deduplicación y población;
+- asociaciones exploratorias contra un panel auxiliar de caja depurada.
 
-### Reutilizado, con lectura del método
+**La entrega de este documento no incluye ese panel, scripts ejecutables ni modelos entrenados.** Los resultados predictivos se obtuvieron con un panel bancario auxiliar de la investigación local, con correcciones de circulación de liquidez. No se reconstruyó de nuevo toda su depuración en el análisis de plazos. Es una dependencia metodológica de esas métricas, no una implementación disponible para el equipo. Antes de usarlas como garantía del producto habría que reconstruirlas y verificarlas.
 
-Para contrastar si los nuevos plazos anticipan el proxy de deterioro de caja, he utilizado el panel existente:
+### Selección utilizada para facturas
 
-`research/sweep_corrected/temporal_signals.parquet`
+- Tipos `invoice` e `invoiceGroup`.
+- Estado distinto de `cancel`.
+- Importe no nulo y valor absoluto no superior a 100 millones en moneda nativa.
+- Emisión desde 2024-09-01 hasta antes de 2026-09-01.
+- Moneda de factura = moneda contable = moneda de la sociedad.
+- `exchange_rate = 1`.
+- Deduplicación candidata por sociedad, contraparte, tipo, emisión, vencimiento, importe y concepto.
 
-Contiene la caja corregida de barridos, las condiciones de calidad y las particiones de la investigación anterior. **No he reconstruido de nuevo toda esa depuración bancaria ni sus 35 tests.** Las métricas nuevas dependen de ese panel y de sus limitaciones, además de los nuevos cálculos de facturas.
+Resultado: **689.170 documentos**.
 
-### Selección de facturas
-
-Para hacer comparable la investigación con la anterior:
-
-- `document_type` en `invoice` / `invoiceGroup`;
-- `status != cancel`;
-- importe distinto de cero y valor absoluto no superior a 100 millones de moneda nativa;
-- emisión desde 2024-09-01 hasta antes de 2026-09-01;
-- moneda de factura = moneda contable = moneda de la sociedad;
-- `exchange_rate = 1`;
-- eliminación de duplicados candidatos por empresa, contraparte, tipo, emisión, vencimiento, importe y concepto.
-
-Resultado: **689.170 documentos**, coincidente con la selección anterior.
-
-Para explorar plazos añado contraparte explícita y plazo entre 0 y 180 días:
+Para estudiar plazos se exige además contraparte explícita y plazo entre 0 y 180 días:
 
 | Población | Documentos | Sociedades |
 |---|---:|---:|
@@ -162,13 +119,26 @@ Para explorar plazos añado contraparte explícita y plazo entre 0 y 180 días:
 | AP | 392.099 | 760 |
 | AR | 274.654 | 693 |
 
-Hay **257.105 documentos con plazo cero** en esa selección. No daría por hecho que todos son exigibles al contado: algunos pueden reflejar una convención o una carencia del ERP. Por eso hay controles adicionales sin esos plazos.
+La dirección AR/AP se deduce del signo del importe. Es un supuesto que debe confirmarse con la organización, no una columna contractual explícita.
 
-AR/AP se deduce del signo, como en el proyecto. No existe una columna contractual explícita de dirección. Los resultados heredan ese supuesto.
+Hay **257.105 documentos con plazo cero** en esta selección. No todos tienen por qué representar una exigencia real de pago inmediato: puede haber convenciones o valores por defecto del ERP. Por eso se aplicaron sensibilidades excluyéndolos.
+
+### Límites esenciales
+
+- Los datos son sintéticos; no describen empresas reales.
+- No hay historial de versiones de cada factura ni fecha de ingestión de cada cambio.
+- No sabemos si el vencimiento es el original o uno revisado posteriormente.
+- La fecha de liquidación registrada no tiene un enlace bancario completo y validado para todas las facturas.
+- El pendiente final no permite reconstruir todos los pagos parciales históricos.
+- Los saldos y condiciones finales de deuda no constituyen series históricas.
+- La cobertura del ERP y del banco puede ser diferente.
+- Varias facturas, agrupaciones o registros pueden representar partes de una misma obligación.
+
+Por tanto, se habla de **plazos y liquidaciones registrados**, no de contratos auditados ni de un replay histórico certificado.
 
 ---
 
-## 5. El mecanismo: tres relojes en lugar de uno
+## 4. El mecanismo: tres relojes
 
 Para un documento liquidado, con fechas comparables:
 
@@ -180,36 +150,34 @@ D = fecha_liquidación − fecha_vencimiento
 A = L + D
 ```
 
-- **L: tiempo concedido.** Condición registrada, no necesariamente contrato verificado.
-- **A: tiempo transcurrido hasta la liquidación registrada.** No es DSO/DPO contable exacto.
-- **D: retraso respecto al vencimiento.** Disciplina contractual registrada.
+- **L: tiempo concedido.** Condición comercial registrada.
+- **A: duración hasta liquidación.** Tiempo durante el que permanece abierta la operación según esas fechas.
+- **D: retraso.** Diferencia respecto al compromiso registrado.
 
-Con medias calculadas sobre los mismos documentos y los mismos pesos:
+Con medias sobre los mismos documentos y pesos:
 
 ```text
 ΔA = ΔL + ΔD
 ```
 
-La identidad no se puede trasladar sin más a tres medianas independientes. Las medianas sirven como sensibilidad, no como descomposición aditiva.
+La identidad no se puede aplicar sin más a medianas calculadas por separado. Las medianas son una sensibilidad, no una descomposición aditiva.
 
-### Cuatro estados que un único retraso no distingue
-
-| Cambio observado | Lectura razonable | Lectura que evitaría |
+| Cambio | Interpretación posible | Interpretación que debemos evitar |
 |---|---|---|
-| AR: A baja y D baja, con L estable | Conversión registrada más rápida y mejor puntualidad | «Seguro que no habrá problemas» |
-| AR: D baja, pero A sube porque L sube más | Mejor puntualidad con más tiempo de financiación concedida al cliente | «Estamos cobrando antes» |
-| AP: A sube, D no sube y L aumenta | Más financiación comercial dentro del plazo observado | «La empresa ha dejado de pagar» |
-| AP: D sube, pero A baja porque L cae más | Menos tiempo disponible aunque se liquide antes desde emisión | «Paga cada vez más despacio» |
+| AR: A y D bajan con L estable | Conversión más rápida y mejor puntualidad | «Ya no existe riesgo» |
+| AR: D baja, pero A sube porque L aumenta más | Mejor puntualidad con más financiación concedida | «Estamos cobrando antes» |
+| AP: A sube, D no sube y L aumenta | Más financiación comercial dentro de plazo | «La empresa ha dejado de pagar» |
+| AP: D sube, pero A baja porque L cae más | Menos margen contractual pese a liquidar antes desde emisión | «Paga cada vez más despacio» |
 
-**Una concesión legítima puede ser buena gestión.** El objetivo no es castigarla. Es no atribuirle una mejora de generación operativa que no demuestra.
+Una concesión legítima puede ser buena gestión. El propósito no es castigar los plazos largos, sino no atribuirles una mejora de generación operativa que no demuestran.
 
-Para implementación futura, normalizaría primero las fechas a un calendario coherente. En la exploración hay seis documentos liquidados donde truncar horas con `.dt.days` rompe la identidad en un día. No pertenecen a las sociedades de los diez casos que sobreviven todos los controles del apartado 7. No atribuiría significado financiero a diferencias horarias de ese tipo.
+Para construir estas features habría que normalizar las fechas a un calendario coherente. En la exploración, seis documentos liquidados presentaban una diferencia de un día en la identidad al truncar horas con `.dt.days`. No pertenecen a las sociedades de los casos que superaron todos los controles del apartado 6.
 
 ---
 
-## 6. El caso principal: puntualidad perfecta, conversión más lenta
+## 5. Caso demostrable: COMP_1171 y COUNTERPARTY_06105
 
-### Sociedad y relación
+### Identificación
 
 - Sociedad: **COMP_1171**.
 - Grupo: **GROUP_0139**.
@@ -218,25 +186,23 @@ Para implementación futura, normalizaría primero las fechas a un calendario co
 - Cliente: **COUNTERPARTY_06105**.
 - Documentos: `invoice`, AR.
 
-Comparo documentos con liquidación registrada en dos ventanas consecutivas. Se exige pago observado válido y duración emisión–liquidación entre 0 y 180 días.
+Se compararon documentos liquidados en dos ventanas consecutivas. El pago debe figurar como `paid`, no ser anterior a emisión y ser anterior al corte final. Se limitaron plazo y duración a 0–180 días.
 
-| Medida | Ago–oct 2025 | Nov 2025–ene 2026 | Cambio |
-|---|---:|---:|---:|
-| Documentos liquidados de la relación | 17 | 8 | — |
-| Plazo medio L | 61,59 días | 102,25 días | +40,66 días |
-| Duración media A | 81,24 días | 102,25 días | +21,01 días |
-| Retraso medio D | 19,65 días | 0,00 días | −19,65 días |
-| Duración mediana | 77 días | 114 días | +37 días |
-| Retraso mediano | 15 días | 0 días | −15 días |
-| Importe de los documentos de la ventana | 52.697,13 € | 27.171,18 € | Poblaciones de distinto volumen |
-
-La identidad explica la aparente paradoja:
+| Medida | Ago–oct 2025 | Nov 2025–ene 2026 |
+|---|---:|---:|
+| Documentos liquidados | 17 | 8 |
+| Plazo medio L | 61,59 días | 102,25 días |
+| Duración media A | 81,24 días | 102,25 días |
+| Retraso medio D | 19,65 días | 0,00 días |
+| Duración mediana | 77 días | 114 días |
+| Retraso mediano | 15 días | 0 días |
+| Importe de la población | 52.697,13 € | 27.171,18 € |
 
 ```text
-+21,01 días de duración = +40,66 de plazo − 19,65 de retraso
++21,01 días de duración = +40,66 días de plazo − 19,65 días de retraso
 ```
 
-Ponderando por importe tampoco desaparece:
+La conclusión no depende únicamente de contar igual cada documento:
 
 | Media ponderada por importe | Ago–oct | Nov–ene |
 |---|---:|---:|
@@ -244,15 +210,13 @@ Ponderando por importe tampoco desaparece:
 | Plazo | 61,38 días | 108,47 días |
 | Retraso | 22,94 días | 0,00 días |
 
-**Conclusión exacta:** mejora la puntualidad de los documentos liquidados de esa relación, pero no la velocidad emisión–liquidación. No estoy afirmando que se haya deteriorado toda la empresa ni que su banco haya cobrado exactamente esos importes en esas fechas.
+**Lo demostrado:** en esos documentos de esa relación mejora la puntualidad, pero no la velocidad emisión–liquidación. No demuestra deterioro de toda la sociedad ni certifica la fecha de cada cobro bancario.
 
-### La parte que puede verse antes de la liquidación
+### Qué condición aparece en las nuevas emisiones
 
-La comparación anterior usa documentos ya liquidados. Para buscar una señal anterior hay que mirar las facturas **por emisión**, no esperar a su pago.
+En junio–agosto de 2025 se observan **16 facturas emitidas** de la relación, con plazos entre 61 y 64 días y mediana **61,5 días**.
 
-En junio–agosto de 2025, esta relación tiene **16 facturas emitidas**, con plazos entre 61 y 64 días y mediana **61,5 días**.
-
-El **26 de septiembre de 2025** aparecen cuatro facturas nuevas con plazo **120 días** y vencimiento **24 de enero de 2026**:
+El **26 de septiembre de 2025** se emiten cuatro facturas con plazo **120 días**, vencimiento el **24 de enero de 2026** e importe total **19.519,91 €**:
 
 | `operation_id` | Importe |
 |---|---:|
@@ -260,75 +224,75 @@ El **26 de septiembre de 2025** aparecen cuatro facturas nuevas con plazo **120 
 | `a2ee944be742d0dc7916873e75361323` | 1.815,00 € |
 | `8289cdbcc553bc656f98d5f95399ca6c` | 2.420,00 € |
 | `1c16d5effaf74ce578225b5d3d2deea3` | 9.259,11 € |
-| **Total** | **19.519,91 €** |
 
-Todas figuran finalmente liquidadas el 24 de enero de 2026. Ese desenlace sirve para verificar la historia, **no para construir la señal en septiembre**.
+Todas figuran finalmente liquidadas el 24 de enero. Ese desenlace verifica la historia, pero no debe utilizarse para construir una alerta en septiembre.
 
-Respecto a la referencia de 61,5 días:
+Respecto a la referencia reciente:
 
 ```text
-Extensión de plazo: 120 − 61,5 = 58,5 días
-Exposición adicional de tiempo: 19.519,91 × 58,5
-                              = 1.141.914,74 euro-días
+Tiempo adicional = 120 − 61,5 = 58,5 días
+Exposición de tiempo = 19.519,91 × 58,5 = 1.141.914,74 euro-días
 ```
 
-Los euro-días no son euros de pérdida ni euros de ahorro. Expresan importe por tiempo adicional de financiación contractual respecto a una referencia. El vencimiento hipotético basado en una mediana tampoco es un vencimiento legal anterior.
+Los euro-días no son euros perdidos, ahorro ni caja desaparecida. Son importe por tiempo adicional de financiación respecto a una referencia. La mediana histórica no es un vencimiento legal anterior.
 
-**Acción comercial defendible:** revisar por qué esa relación pasa a necesitar más plazo, si el precio compensa la financiación y qué condiciones conviene proponer en la próxima operación.
+**Posible decisión del CFO:** revisar por qué se concede ese plazo, si el precio compensa la financiación y qué condiciones negociar en la siguiente operación.
 
-### El control que impide exagerar la historia
+### Qué impide exagerar el caso
 
-En septiembre–noviembre de 2024 esa misma relación ya tenía plazos largos: **7 facturas, mediana 93 días**. En septiembre–noviembre de 2025 hay **13 facturas, mediana 120 días**.
+En septiembre–noviembre de 2024, esa misma relación tenía **7 facturas con mediana de plazo 93 días**. En septiembre–noviembre de 2025 hay **13 facturas con mediana 120 días**.
 
-Por tanto:
+Por tanto, la comparación con el verano puede exagerar un cambio estacional. La diferencia de 58,5 días no es una estimación causal de deterioro. Incluso el contraste interanual tiene poca muestra y solo dos ciclos anuales.
 
-- comparar solo con el trimestre de verano puede exagerar un cambio estacional;
-- la diferencia de 58,5 días no es una estimación causal de deterioro;
-- incluso el contraste interanual tiene pocos documentos y solo dos ciclos anuales;
-- puede haber cambios de operaciones o condiciones no recogidos en los CSV.
+Además, la caja clasificada de la sociedad no muestra una caída posterior monotónica: el margen operativo del panel auxiliar es aproximadamente **+16,4% en enero de 2026**, **−1,5% en febrero** y **−1,4% en marzo**.
 
-Además, la caja agregada de COMP_1171 no muestra aquí una caída posterior monotónica: el margen operativo clasificado del panel es aproximadamente **+16,4% en enero de 2026**, **−1,5% en febrero** y **−1,4% en marzo**. No convertiría esta relación en una profecía de hundimiento de la sociedad.
+Este es un caso de **interpretación y exposición comercial**, no de anticipación demostrada de insolvencia.
 
-**Es una demostración de interpretación y de financiación comercial, no un caso de anticipación de insolvencia.**
+Una alerta a emisión solo habría sido posible si esos campos se conocían entonces y no fueron revisados después. Los CSV no permiten certificarlo.
 
 ---
 
-## 7. ¿Es una anécdota escogida? Qué sobrevivió y qué descarté
+## 6. Cobertura, controles y casos descartados
 
-### Exploración de los tres relojes
+### Cómo se compararon relaciones
 
-Usé relaciones definidas por:
+Clave de relación:
 
 ```text
 sociedad × contraparte explícita × AR/AP × tipo documental × moneda
 ```
 
-En cada cierre mensual, de febrero de 2025 a agosto de 2026, comparé los tres meses recientes de liquidaciones con los tres anteriores. Partí de la selección de plazos 0–180 días y acepté liquidaciones solo con `status = paid`, fecha no anterior a emisión y anterior a 2026-09-01. Limité también la duración emisión–liquidación a 0–180 días. Exigí al menos tres documentos en cada ventana por relación. Para las agregaciones de sociedad exigí al menos tres contrapartes; los cambios de medias por relación se ponderaron por `min(n_documentos_referencia, 30)`.
+En cada cierre mensual entre febrero de 2025 y agosto de 2026 se compararon los tres meses recientes de liquidaciones con los tres anteriores. Se exigieron:
 
-Hay **3.723 sociedad-mes AP de 392 sociedades** y **1.481 sociedad-mes AR de 185 sociedades** con esa cobertura agregada. Esto no significa que todas presenten el patrón.
+- plazo y duración entre 0 y 180 días;
+- estado `paid`, fecha de pago válida y anterior al corte;
+- al menos tres documentos en cada ventana por relación;
+- al menos tres contrapartes para agregar a sociedad;
+- peso por relación `min(n_documentos_referencia, 30)` para los cambios de medias agregados.
 
-Para seleccionar casos locales más exigentes utilicé:
+Cobertura: **3.723 sociedad-mes AP de 392 sociedades** y **1.481 sociedad-mes AR de 185 sociedades**. Tener cobertura no significa presentar el patrón.
 
-- solo `invoice`;
+### Selección más exigente de casos
+
+Se seleccionaron relaciones `invoice` con:
+
 - al menos cinco liquidaciones por ventana;
-- plazo medio de cada ventana de al menos siete días;
-- aumento medio de A de al menos siete días;
-- caída media de D de al menos siete días.
+- plazo medio de ambas ventanas ≥7 días;
+- aumento medio de duración ≥7 días;
+- descenso medio de retraso ≥7 días.
 
-Aparecen **38 relación-mes candidatas**.
+Aparecieron **38 relación-mes candidatas**.
 
-### Controles posteriores de sensibilidad
-
-Para cada candidata comprobé cuatro poblaciones:
+Para cada candidata se probaron cuatro poblaciones:
 
 1. `invoice`;
-2. `invoice` más `invoiceGroup` de la misma relación y dirección;
+2. `invoice` más `invoiceGroup`, manteniendo contraparte, dirección y moneda;
 3. solo facturas con plazo positivo;
-4. deduplicación más agresiva ignorando concepto y conservando una fila por emisión, vencimiento, liquidación e importe.
+4. deduplicación más agresiva por emisión, vencimiento, liquidación e importe, ignorando concepto.
 
-En cada población calculé media simple, media ponderada por importe y mediana. Exigí al menos tres documentos por ventana y que **A siguiera aumentando ≥3 días y D disminuyendo ≥3 días en todas las variantes**.
+En todas se calcularon media simple, media ponderada por importe y mediana. Se exigió un mínimo de tres documentos por ventana y que la duración siguiera subiendo ≥3 días y el retraso bajando ≥3 días en cada variante.
 
-Sobreviven **10 relación-mes, correspondientes a 8 sociedades y 7 grupos**:
+**Sobreviven 10 relación-mes de 8 sociedades y 7 grupos:**
 
 | Sociedad | Lado | Contraparte | Cierre |
 |---|---|---|---|
@@ -343,99 +307,79 @@ Sobreviven **10 relación-mes, correspondientes a 8 sociedades y 7 grupos**:
 | COMP_0042 | AP | COUNTERPARTY_68552 | 2026-07 |
 | COMP_0054 | AP | COUNTERPARTY_10037 | 2026-08 |
 
-Son controles exploratorios posteriores a la búsqueda, no una prueba estadística confirmatoria. Las ventanas se solapan: **diez filas no equivalen a diez eventos independientes**.
+Quitando GROUP_0139 quedan siete filas de siete sociedades y seis grupos.
 
-Quitando GROUP_0139 quedan siete filas de siete sociedades y seis grupos. El mecanismo no depende enteramente del caso principal.
+Son sensibilidades exploratorias posteriores a la búsqueda. Las ventanas se solapan: **no son diez eventos independientes ni una prueba confirmatoria**.
 
-### Un caso llamativo que NO usaría como prueba robusta
+### Un ejemplo que no pasó todos los controles
 
-`COMP_0665 / COUNTERPARTY_48839`, por el lado AP, parecía ideal: retraso medio de 20,55 a cero y duración de 37,82 a 79,94 días.
+`COMP_0665 / COUNTERPARTY_48839`, lado AP, parecía llamativo: retraso medio de 20,55 a cero y duración de 37,82 a 79,94 días.
 
-Pero al excluir los plazos cero y ponderar por importe, el aumento de duración se reduce a **0,89 días**, por debajo del mínimo de tres días exigido en los controles. La lectura fuerte no resiste todas las variantes.
+Pero al excluir los plazos cero y ponderar por importe, la duración solo aumenta **0,89 días**, por debajo del mínimo de tres días exigido. No sería el caso principal de la demo.
 
-Por eso no lo elegí como caso principal. No se debe seleccionar únicamente la ponderación que produce la historia más llamativa. Además, esa misma contraparte tiene documentos AR y AP: hay que mantenerlos separados incluso cuando comparten ID; mezclarlos cambia la pregunta financiera.
+Esa contraparte tiene documentos AR y AP. Hay que mantenerlos separados aunque compartan ID: mezclarlos cambia el sentido financiero del cálculo.
 
-### Qué todavía no resuelven estos controles
+### Lo que aún falta
 
-- Solo describimos documentos con liquidación registrada: falta la población todavía abierta para evaluar toda la cartera.
-- Un mismo cliente puede comprar productos distintos con condiciones diferentes; no hay SKU ni contrato homogéneo.
-- La concentración de liquidaciones en un día puede ser remesa, actualización del ERP o generación sintética.
-- Distintos documentos pueden representar fases de una misma obligación; no hay enlace completo entre factura, agrupación y banco.
-- No sabemos si un vencimiento fue revisado después de emitirse.
-
-La extensión imprescindible del producto sería combinar esta explicación con **cohortes completas de emisión y censura explícita**, no tratar a los documentos pagados como una muestra aleatoria de todas las facturas.
+Estos controles no eliminan el sesgo de observar solo documentos liquidados. Para evaluar toda la cartera habría que incluir los documentos abiertos con censura temporal explícita. Tampoco resuelven cambios de producto, condiciones contractuales no observadas o versiones del ERP.
 
 ---
 
-## 8. La hipótesis del mentor: cambios de plazo en las mismas relaciones
+## 7. Segunda conclusión: el plazo recibido o concedido también cambia
 
-Esta es la parte más cercana a «qué te concede otro que no concede a los demás», pero la mediría **contra la historia de esa misma relación**, no contra otra empresa de tamaño o sector desconocido.
+La hipótesis es observar cómo cambian las condiciones de la **misma relación**, en lugar de comparar empresas de tamaño o sector desconocido.
 
-### Diseño exploratorio
+### Método exploratorio
 
-Para cada cierre entre febrero de 2025 y agosto de 2026:
+En cada cierre de febrero de 2025 a agosto de 2026:
 
-- ventana reciente: tres meses de emisión;
-- referencia: tres meses inmediatamente anteriores;
-- misma sociedad, contraparte, dirección, tipo documental y moneda;
-- al menos tres documentos por ventana y relación;
-- mediana del plazo en cada ventana;
-- peso fijo por relación `min(n_documentos_referencia, 30)`;
-- al menos tres contrapartes para agregar a sociedad.
+- comparar los tres meses recientes de **emisión** con los tres anteriores;
+- mantener sociedad, contraparte, AR/AP, tipo documental y moneda;
+- exigir ≥3 documentos por relación en ambas ventanas;
+- calcular la mediana de plazo de cada ventana;
+- ponderar por `min(n_documentos_referencia, 30)`;
+- exigir ≥3 contrapartes para agregar a sociedad.
 
 ```text
 δL_relación = mediana(L_reciente) − mediana(L_referencia)
-
 δL_sociedad = Σ peso_referencia × δL_relación / Σ peso_referencia
 ```
 
-Se mantiene la misma cesta de relaciones comparables y se evita que una contraparte con miles de facturas domine por frecuencia. El peso no representa exposición monetaria: esta se muestra aparte.
+El peso controla frecuencia; no representa exposición monetaria. La cobertura por importe se mide aparte.
 
-Cobertura:
-
-| Lado | Sociedad-mes | Sociedades | Grupos |
+| Lado | Sociedad-mes comparables | Sociedades | Grupos |
 |---|---:|---:|---:|
 | AP | 5.011 | 490 | 143 |
 | AR | 2.496 | 286 | 113 |
 
-Regla descriptiva de contracción AP: cambio ponderado ≤−7 días y al menos la mitad de las relaciones comparables reducen su mediana ≥7 días.
+Una contracción AP se definió como cambio ponderado ≤−7 días y reducción ≥7 días en al menos la mitad de las relaciones comparables:
 
-- **74 sociedad-mes, 45 sociedades, 30 grupos.**
-- Si esas relaciones deben cubrir al menos el 50% del importe AP elegible reciente: **28 sociedad-mes de 18 sociedades**.
+- **74 sociedad-mes, 45 sociedades, 30 grupos**.
+- Exigiendo cobertura de esas relaciones ≥50% del importe AP elegible reciente: **28 sociedad-mes de 18 sociedades**.
 
-No son 74 retiradas de confianza demostradas. Son 74 ventanas con esa geometría de plazos.
+No son retiradas de confianza demostradas. Son cambios registrados con esa geometría.
 
-### Versión más conservadora
+### Versión conservadora
 
-Además de lo anterior, para admitir cada relación:
+Añadiendo `invoice` únicamente, medianas de plazo entre 7 y 120 días, ticket mediano reciente entre la mitad y el doble del anterior, ≥3 contrapartes y cobertura ≥30% del importe AP elegible:
 
-- solo `invoice`;
-- mediana de plazo de ambas ventanas entre 7 y 120 días;
-- ticket mediano reciente entre la mitad y el doble del anterior;
-- al menos tres contrapartes admitidas por sociedad;
-- cobertura de al menos el 30% del importe AP elegible reciente.
-
-El límite de 7–120 días se aplica a **las medianas de las relaciones**; no significa que cada documento individual tenga ese plazo. La población original de documentos sigue limitada a 0–180 días.
-
-Resultados:
-
-| Patrón conservador | Sociedad-mes | Sociedades | Grupos |
+| Patrón | Sociedad-mes | Sociedades | Grupos |
 |---|---:|---:|---:|
 | Contracción ≥7 días y amplitud ≥50% | 16 | 14 | 10 |
 | Expansión ≥7 días y amplitud ≥50% | 10 | 8 | 8 |
 
-La señal no solo detecta menos plazo; también encuentra ampliaciones. **No equipararía ampliación a mejora financiera sin más contexto.** Puede ser negociación favorable, estacionalidad o reestructuración.
+El límite 7–120 afecta a las medianas de relación. Los documentos de partida siguen limitados a 0–180 días.
 
-### Caso de contracción: COMP_0817
+### Ejemplo: COMP_0817
 
-En junio de 2026, comparando abril–junio con enero–marzo:
+Comparando abril–junio de 2026 con enero–marzo:
 
 - seis proveedores comparables;
-- todos reducen su mediana al menos siete días;
-- cambio agregado: **−28,94 días**;
-- cobertura monetaria de esas relaciones: **67,4%** del AP elegible reciente.
+- todos reducen su mediana ≥7 días;
+- cambio agregado **−28,94 días**;
+- cobertura **67,4%** del importe AP elegible reciente.
 
-| Contraparte | Documentos antes / después | Plazo mediano antes | Después |
+| Contraparte | Documentos antes / después | Plazo antes | Después |
 |---|---:|---:|---:|
 | COUNTERPARTY_01323 | 3 / 4 | 57 | 44 |
 | COUNTERPARTY_02245 | 9 / 4 | 95 | 35,5 |
@@ -444,391 +388,422 @@ En junio de 2026, comparando abril–junio con enero–marzo:
 | COUNTERPARTY_19182 | 5 / 4 | 44 | 23,5 |
 | COUNTERPARTY_24223 | 6 / 5 | 62 | 49 |
 
-Las seis relaciones tienen al menos dos fechas distintas de emisión en cada ventana. No son solo seis filas del mismo lote.
+Todas tienen al menos dos fechas distintas de emisión por ventana. Sin embargo, una contraparte concentra **551.879,11 €** del importe reciente emparejado. Seis proveedores no son seis exposiciones equilibradas.
 
-**Pero hay dos cautelas importantes:**
+Además, en junio las seis sociedades de GROUP_0070 con cobertura en la variante amplia contraen su plazo ≥7 días. Puede haber política de grupo, ERP o un patrón sintético común. No se debe interpretar como evidencia independiente de seis mercados.
 
-1. COUNTERPARTY_19182 concentra 551.879,11 € de los importes recientes emparejados. Seis proveedores no equivalen a seis exposiciones monetarias equilibradas.
-2. En junio de 2026, las seis sociedades de GROUP_0070 con cobertura en la variante amplia reducen el plazo agregado al menos siete días. Puede haber política de grupo, ERP o mecanismo sintético común. No son seis votos independientes de seis mercados.
+Excluyendo GROUP_0070 quedan **11 ventanas de 10 sociedades y 9 grupos** en la contracción conservadora.
 
-Excluyendo GROUP_0070, sobreviven **11 ventanas de 10 sociedades y 9 grupos** en la contracción conservadora. Hay otros casos, pero no convertiría la sincronía en causalidad.
+### Ejemplo de ambas direcciones: COMP_0521
 
-### Caso de las dos direcciones: COMP_0521
+Sociedad en **USD**, sin convertir sus importes a euros:
 
-Es una sociedad en **USD**, no en EUR. Las comparaciones siguientes son de días, sin mezclar importes entre monedas.
+- Septiembre de 2025: ampliación **+25,87 días**, ocho proveedores, cobertura 53,3%.
+- Agosto de 2026: contracción **−13,92 días**, cuatro proveedores, cobertura 72,2%.
 
-- Septiembre de 2025: ampliación conservadora **+25,87 días**, ocho proveedores, cobertura 53,3%.
-- Agosto de 2026: contracción conservadora **−13,92 días**, cuatro proveedores, cobertura 72,2%.
-
-Esto permite una historia de **margen contractual que se amplía y después se estrecha**. No demuestra por sí solo recuperación y posterior deterioro económico.
+Describe margen contractual que se amplía y después se estrecha. No demuestra por sí solo recuperación y posterior deterioro económico.
 
 ---
 
-## 9. La prueba predictiva: resultados modestos, no una señal mágica
+## 8. Qué dicen las pruebas predictivas
 
-He contrastado la contracción AP contra el mismo proxy de la investigación anterior:
+Se contrastó la contracción de plazo AP con un resultado futuro de caja clasificada, no con quiebra ni con las etiquetas oficiales del reto:
 
 ```text
-futuro = media del margen operativo de t+1, t+2 y t+3
+Margen mensual = (entradas_operativas − salidas_operativas)
+                 / (entradas_operativas + salidas_operativas)
 
-Deterioro = futuro < −10%
-            y futuro − media_actual_3m < −15 puntos porcentuales
+Futuro = media del margen de t+1, t+2 y t+3
+Actual_3m = media del margen de t, t−1 y t−2
+
+Deterioro = Futuro < −10% y Futuro − Actual_3m < −15 puntos
+Recuperación = Futuro > +10% y Futuro − Actual_3m > +15 puntos
 ```
 
-Es un resultado futuro de caja clasificada, **no impago, quiebra ni etiqueta oficial del reto**.
+El panel auxiliar separaba circulación bancaria identificada antes de calcular operación. Este proxy no es EBITDA ni un estado auditado de flujos de efectivo.
 
-Se conservan los filtros `evaluation_ok` y las particiones ya existentes: desarrollo hasta noviembre de 2025, validación temporal marzo–mayo de 2026 y reserva de grupos completos por la regla previa. Estas particiones son internas y ya inspeccionadas; no son un test externo intacto.
+### Particiones y calidad
 
-### Señal amplia AP, sin optimizar sus umbrales contra el resultado
+- Desarrollo hasta noviembre de 2025, excluyendo los grupos reservados.
+- Validación temporal de marzo a mayo de 2026.
+- Reserva de grupos completos cuyo número identificador es múltiplo de cinco.
+- Evaluación con margen reciente disponible, al menos seis meses observados y calidad suficiente en el mes analizado y los tres futuros.
+- Calidad bancaria del panel: ≥20 transacciones seleccionadas, ≥80% de filas en moneda nativa/FX=1, ≤40% de importe absoluto sin categoría, ≤10% de filas candidatas de resincronización y ninguna observación superior al umbral de 100 millones nominales.
 
-| Partición | Filas | Grupos | Positivos de deterioro | AUC deterioro | AUC recuperación, sentido inverso |
+Los umbrales son convenciones exploratorias, no fronteras económicas calibradas. Las particiones se han inspeccionado durante la investigación y no son un test externo intacto. Los IDs de grupo sirven para la partición, no como feature de salud.
+
+### Resultado para contracción AP
+
+| Partición | Filas | Grupos | Deterioros | AUC deterioro | AUC recuperación, orientación inversa |
 |---|---:|---:|---:|---:|---:|
 | Desarrollo | 822 | 52 | 154 | 0,498 | 0,518 |
 | Temporal | 432 | 57 | 39 | 0,592 | 0,487 |
 | Temporal + grupos reservados | 101 | 21 | 11 | 0,592 | 0,375 |
 
-Bootstrap por grupos, 600 remuestreos, semilla 73:
+Bootstrap por grupos, 600 remuestreos y semilla 73:
 
-- Temporal, IC exploratorio 95% de AUC: **0,481–0,685**.
-- Temporal + grupos, IC: **0,371–0,831**.
-- Los positivos están en 21 y 6 grupos, respectivamente.
+- AUC temporal, intervalo exploratorio 95%: **0,481–0,685**.
+- AUC temporal + grupos: **0,371–0,831**.
+- Los positivos pertenecen a 21 y 6 grupos, respectivamente.
 
-No hay precisión extraordinaria. Tampoco evidencia de una señal simétrica potente de recuperación.
+No hay precisión extraordinaria ni evidencia de una señal simétrica potente de recuperación.
 
-### ¿Aporta algo sobre mirar ya la caja?
+### ¿Añade valor frente a un baseline de caja?
 
-Comparé una ridge para margen futuro con y sin cambio de plazo. Baseline: margen reciente de tres meses, cambio de margen y volatilidad de seis meses. Normalización y recorte 1%–99% aprendidos solo en desarrollo; penalización 10, intercepto sin penalizar. Cada comparación usa exactamente las mismas filas.
+Se comparó una ridge para margen futuro con y sin cambio de plazo:
+
+- baseline: margen reciente, cambio de margen y volatilidad de seis meses;
+- normalización y recorte 1%–99% aprendidos solo en desarrollo;
+- penalización 10 e intercepto sin penalizar;
+- comparación sobre exactamente las mismas filas.
 
 | Partición | Train / test | MAE baseline | MAE con plazo |
 |---|---:|---:|---:|
 | Temporal | 815 / 432 | 0,156814 | 0,157165 |
 | Temporal + grupos | 815 / 100 | 0,148867 | 0,148291 |
 
-Empeora ligeramente en una partición y mejora muy poco en la otra. **No hay ganancia consistente que justifique incorporarlo con peso material al score predictivo.**
+Empeora ligeramente en una partición y mejora muy poco en la otra. **No hay ganancia consistente que justifique un peso importante en el score.**
 
-También exploré expansión AR: AUC de deterioro 0,493 en desarrollo, 0,462 temporal y 0,696 en temporal + grupos; este último resultado tiene solo siete filas positivas. No seleccionaría ese 0,696 aislado como un descubrimiento validado.
+La expansión AR también se exploró: AUC de deterioro 0,493 en desarrollo, 0,462 temporal y 0,696 en temporal + grupos. Ese último resultado tiene solo siete filas positivas; no debe seleccionarse aisladamente como prueba de éxito.
 
-### Qué significa para la decisión
+### Decisión derivada
 
-- **Mantener:** interpretación de financiación comercial, evidencia y escenarios.
-- **Investigar:** incremento predictivo, con más datos y objetivos oficiales.
-- **No hacer:** asignar un 20% del score a «confianza de proveedores» basándose en estas cifras.
-- **No afirmar:** «lo anticipamos dos/tres meses» sin medir episodios completos, falsas alarmas y cobertura.
+- Construir la explicación y la medición de exposición comercial.
+- Mantener la hipótesis predictiva como experimental.
+- Reproducir la depuración y las métricas con el pipeline que se construya.
+- Exigir mejora incremental frente a objetivos oficiales antes de modificar el score por esta señal.
+- No prometer meses de anticipación a partir de ejemplos elegidos retrospectivamente.
 
 ---
 
-## 10. Las features que plantearía, en este orden
+## 9. Qué construir: un motor mínimo, no solo esta señal
 
-No implementaría treinta señales nuevas. Haría una capa pequeña con procedencia y capacidad de abstención.
+El reto exige un score de salud financiera para el conjunto de empresas. Una feature contractual con cobertura parcial no basta.
 
-| Feature propuesta | Qué mide | Uso inicial |
+La arquitectura propuesta sería:
+
+```text
+CSV originales
+    ↓
+Validación, moneda, dirección, cobertura y fechas
+    ↓
+Clasificación de movimientos y separación de circulación de liquidez
+    ↓
+Panel sociedad–mes + relaciones locales de clientes y proveedores
+    ↓
+Features de generación, obligaciones, trayectoria y crédito comercial
+    ↓
+Score de salud + dirección + estabilidad + cobertura
+    ↓
+Explicaciones, alertas y pantalla de decisiones para el CFO
+```
+
+Todos esos componentes son **trabajo propuesto**, no entregables incluidos en este documento.
+
+### A. Separar dinero generado de dinero que circula
+
+Antes de puntuar, habría que distinguir:
+
+- cobros y pagos operativos identificados;
+- transferencias entre cuentas propias;
+- circulación automática de tesorería o cash pooling;
+- transferencias intragrupo identificables;
+- financiación e inversión;
+- movimientos inciertos.
+
+Un cash pool puede vaciar y reponer una cuenta automáticamente. Contar cada retorno como un gasto nuevo fabricaría actividad o deterioro. A la inversa, una transferencia entrante no prueba ventas ni generación propia.
+
+La detección de esos mecanismos requeriría evidencia de cuenta, moneda, importe, fecha y secuencia. No bastaría una etiqueta ni una palabra en la descripción. Donde no hubiera evidencia, el sistema debería abstenerse.
+
+Este es un requisito de medición para construir el motor, no una funcionalidad que se presuponga disponible.
+
+### B. Baseline de salud
+
+Empezaría por un modelo simple y explicable con:
+
+- generación operativa normalizada por actividad;
+- evolución de cobros y pagos depurados;
+- obligaciones registradas y cohortes de liquidación;
+- persistencia de deterioro o mejora;
+- variabilidad adversa, no castigo indiscriminado a toda volatilidad;
+- concentración de relaciones cuando exista cobertura;
+- dependencia observada de financiación o apoyo;
+- calidad de observación por dimensión.
+
+Separaría **nivel**, **dirección**, **estabilidad** y **cobertura**. Una empresa puede mejorar y seguir débil; otra puede estar fuerte y empezar a deteriorarse.
+
+No asignaría aquí pesos supuestamente óptimos ni una probabilidad de insolvencia. Primero hay que conocer la salida y métrica oficiales y validar el baseline.
+
+### C. La capa diferencial: tiempo prestado
+
+| Feature propuesta | Definición | Uso inicial |
 |---|---|---|
-| `matched_ap_term_change` | Cambio de plazo recibido, misma relación y tipo documental | Diagnóstico; predictor experimental |
+| `matched_ap_term_change` | Cambio de plazo recibido en relaciones comparables | Diagnóstico; predictor experimental |
 | `matched_ar_term_change` | Cambio de plazo concedido a clientes | Diagnóstico y exposición comercial |
-| `settlement_clock_decomposition` | Δduración = Δplazo + Δretraso en población comparable | Explicación y detección de falsas lecturas |
-| `term_change_amount_days` | Importe × diferencia de plazo frente a referencia explícita | Materialidad de la negociación; no pérdida prevista |
-| `unsettled_at_fixed_age` | Sin liquidación registrada a 60/90 días desde emisión | Complemento a cohortes relativas al vencimiento |
-| `contractual_maturity_scenario` | Calendario de obligaciones/cobros bajo plazos observados y de referencia | Escenario comercial trazable |
+| `settlement_clock_decomposition` | Δduración = Δplazo + Δretraso, misma población | Explicación |
+| `term_change_amount_days` | Importe × diferencia de plazo frente a referencia explícita | Materialidad de la condición comercial |
+| `unsettled_at_fixed_age` | Sin liquidación registrada a 60/90 días desde emisión | Conversión a edad comparable |
+| `contractual_maturity_scenario` | Calendario observado frente a un escenario explícito de plazos | Apoyo a decisiones, no predicción causal |
 
-### El detalle más importante: dos anclas para las cohortes
+Inicialmente estas features explicarían el número y sus límites. Su incorporación como predictores dependería de validación incremental.
 
-La investigación anterior usa cohortes a vencimiento +15/+30/+60. Es útil para puntualidad, pero **su fecha de evaluación también cambia cuando cambia el plazo**.
+---
 
-Una factura a 30 días alcanza vencimiento +30 a los 60 días de emitirse. Una a 120 alcanza ese mismo punto a los 150 días. Compararlas solo por «pagó antes de vencimiento +30» no compara el mismo tiempo de financiación.
+## 10. El detalle de diseño más importante: dos anclas para las cohortes
 
-Por eso combinaría:
+Medir una factura a «vencimiento +30 días» sirve para puntualidad. Pero el instante de evaluación cambia cuando cambia el plazo:
+
+- factura a 30 días: vencimiento +30 se alcanza a los **60 días de emisión**;
+- factura a 120 días: el mismo horizonte se alcanza a los **150 días de emisión**.
+
+No representan el mismo tiempo de financiación.
+
+Por eso se propone combinar:
 
 ```text
-Cohorte de disciplina:
-  ¿Se liquidó antes de vencimiento +30?
-
-Cohorte de conversión a edad fija:
-  ¿Se liquidó antes de emisión +60 o emisión +90?
-
-Condición comercial:
-  ¿Qué plazo tenía y cómo cambió frente a la misma relación?
+Disciplina: ¿se liquidó antes de vencimiento +30?
+Conversión: ¿se liquidó antes de emisión +60 o emisión +90?
+Condición: ¿qué plazo tenía y cómo cambió en esa relación?
 ```
 
-No llamaría morosa a una factura a 120 días por seguir abierta a los 90. **Está dentro de plazo, pero mantiene dinero financiando al cliente.** Esa es precisamente la diferencia que queremos mostrar.
+Una factura a 120 días abierta a los 90 **no es morosa por ese motivo**. Sigue dentro de plazo, pero mantiene dinero financiando al cliente.
 
-Cada cohorte solo entra cuando ha alcanzado su horizonte al cierre analizado. No se trata a las facturas jóvenes como pagadas ni impagadas. Para liquidaciones parciales falta historial suficiente: deben quedar como limitación, no reconstruirse desde el `pending_amount` final.
+Cada cohorte solo puede evaluarse cuando alcanza su horizonte al corte analizado. Las facturas jóvenes no son ni aciertos ni impagos. Para pagos parciales, la limitación del histórico debe mostrarse expresamente.
 
-### Reglas de activación propuestas, no validadas
+### Condiciones de activación propuestas
 
-- Referencia de relaciones suficientemente antiguas y mínimo de documentos y fechas distintas.
+- Mínimo de documentos y de fechas distintas por relación.
 - Separación por dirección, moneda y tipo documental.
-- Cobertura por importe, número de relaciones y concentración del mayor proveedor/cliente.
-- Alerta local inmediata de cambio de condición, distinta de alerta de deterioro de toda la sociedad.
-- Confirmación en dos cierres para elevar una tendencia, registrando el segundo como fecha de confirmación.
-- No tratar dos ventanas solapadas como dos muestras independientes.
-- Contraste interanual cuando sea posible; si no, mostrar que falta.
-- Si cambia simultáneamente el patrón de muchas filiales con mismo ERP, marcar posible cambio común de registro o política.
-- Cuando una variante de deduplicación o documento invierta el signo, abstenerse de la conclusión fuerte.
+- Cobertura por importe y número de relaciones.
+- Concentración del principal cliente o proveedor visible.
+- Contraste interanual cuando haya datos.
+- Alerta local de condición comercial separada de alerta de deterioro empresarial.
+- Confirmación en dos cierres para elevar una tendencia; el segundo sería la fecha de confirmación.
+- Advertencia de cambio común de ERP o política cuando varias filiales cambien a la vez.
+- Abstención si variantes razonables de población invierten la conclusión.
+
+Son reglas a implementar y probar, no umbrales comerciales validados.
 
 ---
 
-## 11. Cómo lo integraría con Cash Truth y con el score
+## 11. Producto propuesto: Tiempo prestado
 
-La investigación anterior separa:
+### Comprador
 
-```text
-Dinero generado / dinero que circula / dinero procedente de apoyo
-```
+**CFO o responsable de tesorería de la empresa o grupo que conecta sus datos.** Embat podría ser canal, integrador o comprador de la capacidad. No hay todavía validación de disposición a pagar.
 
-Esta propuesta añade:
+### Problema concreto
 
-```text
-Tiempo de financiación concedido / recibido / excedido
-```
+> «Dime qué condiciones comerciales están cambiando mi necesidad de financiación aunque mi saldo o mi ratio de morosidad parezcan normales.»
 
-No sustituye una por otra. Una empresa puede:
+### Pantalla mínima a construir
 
-- generar caja y conceder demasiado crédito a un cliente;
-- tener caja estable gracias a un plazo AP legítimamente negociado;
-- parecer excelente en puntualidad porque los vencimientos son muy largos;
-- parecer peor en retrasos porque pierde margen contractual;
-- mejorar operativamente sin haber recuperado todavía autonomía financiera.
+Para cada señal:
 
-### Separaría tres juicios que hoy se pueden mezclar
+1. **Qué cambió:** relación, dirección AR/AP, periodo y plazos.
+2. **Cuánto representa:** importe y días, sin confundir euro-días con pérdidas.
+3. **Qué sostiene la conclusión:** documentos, fechas y alternativas de ponderación.
+4. **Qué puede explicarla:** negociación, estacionalidad, tipo de operación o registro; hipótesis, no causas afirmadas.
+5. **Qué falta:** cobertura, revisiones, conciliación, precio o contrato.
+6. **Qué decisión estudiar:** próxima negociación, anticipo, hitos, descuento o alternativa de circulante.
 
-1. **Generación:** qué produce la operación depurada.
-2. **Disciplina:** qué ocurre respecto a los compromisos registrados.
-3. **Dependencia y exposición:** cuánto depende del grupo, de financiación o del tiempo concedido por proveedores; cuánto concede a sus clientes.
+Para el caso principal: cuatro facturas por 19.519,91 € a 120 días, referencia reciente 61,5 y referencia interanual 93. La pantalla debería enseñar ambas referencias, no ocultar la menos espectacular.
 
-Un plazo AP más largo puede mejorar disciplina y liquidez sin mejorar generación. Un plazo AR más largo puede responder a una venta rentable y no ser una mala decisión. Sin margen comercial, precio y contrato no podemos resolver esa evaluación completa.
+### Qué no debería hacer
 
-**No diseñaría una penalización universal por plazo largo.** Mostraría el efecto y evaluaría la capacidad para sostenerlo.
+- Llamar «mal cliente» a alguien solo por tener plazo largo.
+- Recomendar retrasar pagos fuera de contrato.
+- Ejecutar cambios de ERP, correos o movimientos de dinero automáticamente.
+- Afirmar ahorro anual, pérdida esperada o aprobación de financiación sin datos adicionales.
+- Usar un LLM para inventar explicaciones financieras.
 
-### Qué alimentaría inicialmente el número
+Un LLM podría redactar a partir de evidencia estructurada, pero no es necesario para detectar ni calcular el patrón.
 
-- Un baseline de caja, obligaciones y trayectoria normalizadas, temporalmente válido.
-- Las señales nuevas como explicaciones y banderas de interpretación.
-- Solo incorporaría su componente predictivo después de una prueba incremental consistente.
+### Escenario comercial honesto
 
-Sin etiquetas oficiales no inventaría pesos «óptimos». Tampoco entrenaría un modelo contra un score que nosotros mismos hemos fabricado y lo presentaría como validación externa.
+Comparar las mismas emisiones e importes bajo:
 
-### Unidad del reto: pregunta obligatoria a organización
+- fechas de vencimiento observadas;
+- una referencia de plazo seleccionada y visible.
 
-El enunciado alterna «250 empresas» con **250 grupos y 1.286 sociedades**. Antes de exportar, confirmaría si la unidad evaluada es `group_id`, `company_id` o ambas, así como el formato, la escala, el horizonte y las etiquetas del script oficial.
+Para documentos abiertos al corte, mostrar los importes que caen dentro de cada horizonte en ambos escenarios. No utilizar pagos posteriores ni pendientes finales como si fueran históricos.
 
-No promediaría sin más scores de filiales para inventar salud de grupo. Hay que distinguir consolidación de flujos externos, concentración de exposición y cobertura del perímetro. El dinero intragrupo no crea generación externa al consolidar.
+No es una predicción causal: se desconoce si el cliente aceptaría otra condición, si se perdería una venta o si existe un descuento. Para convertir tiempo en coste financiero se necesita un tipo y una convención explícitos.
 
----
+### Cómo comprobar el valor comercial
 
-## 12. El producto que vendería
+Enseñar alertas trazables a un tesorero y medir:
 
-### Nombre funcional: Cash Truth · Tiempo prestado
+- cuántas merecen revisión;
+- si ya conocía los cambios;
+- qué trabajo de búsqueda o conciliación evitan;
+- qué decisiones producen;
+- qué condiciones se obtienen después;
+- y si ese valor justifica la suscripción.
 
-**Comprador principal:** CFO o responsable de tesorería de la propia empresa o grupo que conecta los datos. Embat puede ser canal, integrador o comprador de la capacidad; no confundirlo con el usuario que necesita tomar la decisión.
-
-**Trabajo concreto que resuelve:**
-
-> «Dime qué condiciones comerciales están cambiando mi necesidad de financiación, aunque mi saldo y mi ratio de morosidad todavía parezcan normales.»
-
-### Una pantalla, no seis productos
-
-Para una alerta:
-
-1. **Qué cambió:** este cliente pasó de una referencia de 61,5 días a 120 en cuatro nuevas facturas.
-2. **Cuánto representa:** 19.519,91 € y 58,5 días adicionales frente a esa referencia.
-3. **Qué sabemos:** sociedad, contraparte, moneda, documentos y fechas.
-4. **Qué no sabemos:** motivo, fecha de ingestión, posibles revisiones y si cambia el precio o el tipo de operación.
-5. **Contexto:** el otoño anterior también tenía plazos largos; referencia interanual 93 días.
-6. **Qué revisar:** próxima negociación, política de crédito comercial y coherencia entre margen de venta y coste de financiación.
-7. **Evidencia:** abrir las cuatro facturas; alternar referencia reciente e interanual.
-
-No hace falta un LLM para detectar ni cuantificar el patrón. Un LLM podría ayudar a redactar una explicación a partir de evidencia estructurada, pero no debe inventar condiciones, causalidad ni acciones ejecutadas.
-
-### Acciones sugeridas, no automatizadas
-
-- Confirmar si el cambio era intencionado y si corresponde a la misma clase de operación.
-- Pedir al comercial/CFO que revise el plazo de la próxima venta.
-- Estudiar anticipo parcial, hitos o descuento por pronto pago.
-- Revisar concentración de vencimientos de proveedores si se reduce el plazo recibido.
-- Evaluar alternativas de circulante con datos adicionales, sin emitir una aprobación de crédito automática.
-
-El sistema no enviaría correos, modificaría ERP ni retrasaría pagos por su cuenta.
-
-### Qué sería un escenario honesto
-
-Comparar el calendario de los documentos observados bajo dos conjuntos explícitos de fechas:
-
-```text
-Escenario observado: plazos registrados actualmente.
-Escenario de referencia: mismas emisiones e importes, plazo histórico elegido.
-```
-
-Para documentos abiertos a fecha t, se puede mostrar qué importes caen dentro de cada horizonte bajo esos supuestos. Esto exige no usar pagos posteriores a t ni saldos pendientes finales como si fueran históricos.
-
-**No es una predicción causal.** No sabemos si un cliente aceptaría el nuevo plazo, si se perdería una venta, si existe descuento, si un proveedor permite aplazar o si el registro refleja toda la obligación.
-
-Tampoco convertiría euro-días en «ahorro» dividiendo por un número arbitrario. Para valorar el coste de financiación hace falta un tipo, una convención temporal y un escenario explícitos.
-
-### Cómo demostraría que alguien pagaría
-
-Todavía no está validado. Propondría enseñar alertas trazables a un tesorero y comprobar:
-
-- cuántas relaciones detectadas merecían revisión;
-- si ya conocía el cambio y cuánto tardó en reconocerlo;
-- cuánto trabajo de conciliación y búsqueda le evita;
-- si las decisiones posteriores consiguen condiciones distintas;
-- y si el beneficio observado justifica la suscripción.
-
-No inventaría ahorro anual ni disposición a pagar. La propuesta tiene una unidad de valor verificable: **decisiones sobre relaciones e importes concretos**, no un semáforo genérico.
+La unidad de valor sería una **decisión concreta sobre una relación y un importe**, no un semáforo genérico.
 
 ---
 
-## 13. Demo propuesta: una sorpresa que se puede auditar
+## 12. Demo que habría que construir
 
-### Apertura
+### 1. Pregunta inicial
 
-> «Esta relación parece haber mejorado: el retraso baja de veinte días a cero. ¿Eso significa que cobramos antes?»
+> «El retraso de esta relación baja de veinte días a cero. ¿Eso significa que estamos cobrando antes?»
 
-### Revelación
+### 2. Mostrar los tres relojes
 
-Mostrar la comparación de COMP_1171 / COUNTERPARTY_06105:
+COMP_1171 / COUNTERPARTY_06105:
 
-- duración 81 → 102 días;
-- plazo 62 → 102;
-- retraso 20 → 0;
-- selector de media simple, importe y mediana.
+- duración: 81 → 102 días;
+- plazo: 62 → 102;
+- retraso: 20 → 0.
 
-> «No. Ha mejorado la puntualidad, pero el dinero permanece más tiempo financiando a este cliente. Son dos cosas distintas.»
+> «Ha mejorado la puntualidad, pero la duración hasta liquidación ha aumentado. Son dos cosas distintas.»
 
-### Evidencia anterior
+Permitir alternar media, ponderación por importe y mediana.
 
-Abrir las cuatro facturas del 26 de septiembre por 19.519,91 €, todas con plazo 120 días. Mostrar la referencia reciente y la interanual.
+### 3. Abrir la evidencia
 
-> «La condición estaba escrita antes de la liquidación. Si la recibimos entonces y no fue revisada, podemos avisar al emitirse, sin esperar a que venza.»
+Mostrar las cuatro facturas de septiembre a 120 días, junto con las referencias reciente e interanual.
 
-La condicional es importante: no hay historial de ingestión ni versiones para certificar ese conocimiento histórico.
+> «Esta condición permite revisar la financiación concedida antes de esperar al pago, siempre que se conozca a emisión y no haya sido revisada después.»
 
-### Acción
+### 4. Terminar en una decisión
 
-> «El CFO no necesita que le digamos que tiene un cliente malo. Necesita saber qué financiación está concediendo, cuánto dura y qué relación conviene revisar.»
+> «El CFO necesita saber qué financiación está concediendo y qué relación conviene revisar, no que le prometamos una quiebra que no podemos demostrar.»
 
-### Cierre con Cash Truth
+La demo debería incluir también el score general y su trayectoria para cumplir el reto. El ejemplo de facturas es una explicación diferencial, no un sustituto del motor.
 
-> «Primero distinguimos dinero que se genera, circula o viene de apoyo. Después distinguimos cuánto tiempo te financian otros y cuánto financias tú. Así evitamos explicar una mejora que los datos no demuestran.»
-
-**No diría:** «Predijimos la caída cuatro meses antes». Este caso no lo demuestra.
-
-Si la señal nueva no está lista o su cobertura resulta insuficiente, mantendría la demo de cash pooling anterior como pieza principal y esta como segunda lectura. No destruiría un mecanismo bien demostrado por perseguir una narrativa más ambiciosa.
+**No afirmar:** «Predijimos la caída cuatro meses antes». Este caso no lo demuestra.
 
 ---
 
-## 14. Validación que exigiría antes de convertirlo en promesa comercial
+## 13. Errores que debemos evitar al construir desde cero
 
-### A. Validación de significado
+### Confundir foto final con historia
 
-- Confirmar con el especialista del reto qué representa `due_date`: compromiso original, último vencimiento, fecha operativa o campo reconstruido.
-- Confirmar la dirección por signo y la relación entre `invoice` e `invoiceGroup`.
-- Verificar si `payment_date` es fecha de liquidación económica o de registro administrativo.
-- No adjudicar intención a clientes, proveedores o bancos sin evidencia externa.
+No distribuir la deuda final, el saldo final o un flag de vencimiento calculado al final por todos los meses históricos. Cada feature necesita una fecha de disponibilidad coherente.
 
-### B. Validación temporal
+### Confundir tamaño con salud
 
-- Construir cada mes con lo que sería conocido a ese corte.
-- No adelantar la fecha de alerta al primer mes después de comprobar que persistió.
-- Cortar datos y comprobar invariancia de features anteriores.
-- Comparar dos anclas de cohortes y no usar pendientes finales como históricos.
-- Separar capacidad de observar una condición antes del pago de capacidad de predecir un deterioro.
+Más euros de cobro no hacen automáticamente más sana a una empresa grande. Usar ratios y escalas razonables, con cobertura y denominadores explícitos.
 
-### C. Generalización
+### Fabricar trayectoria con rankings
 
-- Separar grupos completos, no filas ni filiales hermanas.
-- Mantener hueco temporal equivalente al horizonte de evaluación.
-- Definir escalas con desarrollo, no con el lote oculto que llega a la API.
-- Evaluar por cobertura, ERP, moneda y tamaño cuando haya muestra suficiente.
-- Probar exclusión de los grupos que concentran los ejemplos y de las relaciones dominantes.
-- No usar IDs, alta en plataforma, nombres de bancos o ausencia de ERP como atajos de salud.
+Si A no cambia y B empeora, A puede subir en un ranking relativo sin haber mejorado su negocio. No explicarlo como mejora propia. Definir referencias estables para que un score absoluto no dependa arbitrariamente de las empresas incluidas en la petición.
 
-### D. Métrica correcta
+Tratar empates de forma neutral: una serie constante no debe recibir sistemáticamente el máximo de su percentil propio.
 
-Con el objetivo oficial: medir mejora incremental frente al baseline en exactamente las mismas empresas y fechas.
+### Explicar cambios con signos incorrectos
 
-Para alertas: registrar todos los episodios, positivos y negativos, con seguimiento suficiente; informar precisión, sensibilidad, falsas alarmas por empresa-año y lead time. Una mediana de anticipación solo entre aciertos no resume utilidad.
+Las contribuciones deben conservar la dirección real del cambio. Si se muestran como puntos aditivos, deben reconciliar con el cambio del score. Una aproximación narrativa no debe presentarse como descomposición exacta.
 
-Para esta propuesta: añadir una métrica de **corrección de explicación**. ¿Cuántas veces el sistema evita decir «cobra antes» cuando solo ha cambiado el plazo? Es un valor distinto del AUC y debe medirse como tal.
+### Confundir financiación con generación
 
-### E. Pruebas de coherencia del producto
+Un plazo AP más largo puede mejorar liquidez y disciplina sin aumentar generación. Una entrada de apoyo tampoco es automáticamente una venta. Mantener separados ambos juicios.
 
-- Una empresa constante no mejora porque empeore otra, salvo en una vista explícitamente relativa.
-- Añadir empresas ajenas al lote no debe cambiar un score absoluto ya emitido.
-- Cambiar de EUR a otra unidad equivalente no debe cambiar salud.
-- Un traspaso propio no crea ingresos.
-- Cambiar un plazo no puede reescribir silenciosamente el histórico.
-- Una feature desconocida debe producir «no observable», no una cifra tranquilizadora.
-- Las contribuciones declaradas al cambio del score deben reconciliar con ese cambio si se presentan como exactas.
+### Interpretar fecha valor como confianza del banco
+
+En la exploración bancaria, **293.464 transacciones de 1.161 sociedades** tienen distinta fecha contable y valor. La diferencia depende de categoría; las devoluciones de cobros tienen mediana de −4 días.
+
+Eso no demuestra retención de fondos por desconfianza. Fecha valor no equivale a disponibilidad. Sin reglas de producto y banco, no se propone como rating implícito del financiador.
+
+### Interpretar pagos anticipados como caja sobrante
+
+Pueden responder a descuento, domiciliación, condiciones o registro del ERP. No prueban liquidez libre ni capacidad de pago sin conocer alternativas.
+
+### Afirmar manipulación del vencimiento
+
+Se observan condiciones distintas en documentos distintos. No existe historial suficiente para afirmar que se reescribió una misma factura, que se ocultó mora o que hubo maquillaje contable.
+
+### Construir complejidad antes de tener un baseline
+
+Grafos globales, modelos profundos o muchas señales nuevas no sustituyen cobertura, etiquetas y validación. Para esta propuesta bastan inicialmente relaciones locales y cálculos explicables.
 
 ---
 
-## 15. Líneas que exploré o consideré y no convertiría en producto ahora
+## 14. Plan de construcción desde cero
 
-### Fecha valor como supuesta confianza del banco
+| Orden | Trabajo | Entregable esperado |
+|---|---|---|
+| 1 | Aclarar unidad y métrica oficiales | Contrato de salida del score y evaluación |
+| 2 | Ingestar los CSV sin alterar originales | Tablas tipadas, controles y reporte de cobertura |
+| 3 | Definir qué se conoce en cada fecha | Política temporal y tratamiento de snapshots |
+| 4 | Separar operación, circulación, apoyo e incertidumbre | Flujos interpretables por sociedad–mes |
+| 5 | Construir un baseline sencillo | Salud, dirección, estabilidad y cobertura |
+| 6 | Calcular los tres relojes | Explicaciones por relación con documentos trazables |
+| 7 | Comparar condiciones y cohortes | Señales locales y materialidad comercial |
+| 8 | Construir una pantalla de decisión | Demo navegable con el caso principal y sus límites |
+| 9 | Evaluar temporalmente y por grupos | Métricas, falsas alarmas e incremento sobre baseline |
+| 10 | Preparar entrega y pitch | Predicciones oficiales y demostración comercial honesta |
 
-Revisé las fechas contables y valor de las 2.556.437 transacciones. **293.464 tienen fechas distintas**, distribuidas en 1.161 sociedades. El signo y la magnitud dependen mucho de la categoría: por ejemplo, las devoluciones de cobros tienen mediana de diferencia de −4 días.
+### Preguntas que hay que resolver antes de programar el score
 
-Eso no demuestra que el banco retenga dinero por desconfiar de la empresa. La fecha valor puede afectar liquidación o cálculo de intereses y no equivale a fecha de disponibilidad. Sin reglas de producto y banco, la descartaría como «rating implícito del financiador». Esta fue una exploración de factibilidad, no una validación predictiva.
+- ¿La unidad evaluada es `group_id`, `company_id` o ambas? El reto menciona 250 empresas, pero los datos contienen 250 grupos y 1.286 sociedades.
+- ¿Qué escala, meses y horizonte exige el script oficial?
+- ¿Qué representa exactamente `due_date`: condición original o última revisión?
+- ¿Cómo se relacionan `invoice` e `invoiceGroup`?
+- ¿La fecha de pago es económica o administrativa?
+- ¿Qué garantías hay sobre la dirección por signo y las monedas?
 
-### Pagar antes del vencimiento como prueba de caja sobrante
+No promediar sin más scores de filiales para inventar salud de grupo. Al consolidar, los traspasos internos no generan caja externa y la cobertura del perímetro importa.
 
-Puede ser descuento, domiciliación, condición comercial o convención del ERP. No lo llamaría liquidez libre ni capacidad de pago revelada sin conocer alternativas y restricciones.
+### Qué priorizar
 
-### Un grafo de confianza transversal
+Primero, un score general válido. Después, una explicación diferencial pequeña y verificable. Solo tras medir incremento predictivo, incorporar los nuevos plazos con peso en el motor.
 
-La investigación anterior ya demuestra que la red compartida de clientes no tiene cobertura suficiente. Esta propuesta necesita relaciones locales, no rescatar ese grafo con menciones ambiguas del texto.
-
-### Aprender veinte señales nuevas porque son sutiles
-
-No hay motivo para pensar que más sofisticación estadística resolverá falta de etiquetas, cobertura, contratos o versiones. La ridge exploratoria de plazos ya muestra lo pequeño e inestable del incremento.
-
-### Diagnosticar manipulación del vencimiento
-
-Vemos distintas condiciones registradas en diferentes documentos. **No vemos un historial de la misma factura cambiando su vencimiento.** No podemos afirmar reaging deliberado, ocultación de mora ni maquillaje contable.
-
----
-
-## 16. Orden en que lo plantearía, sin implementar todavía
-
-### P0 — Que el número sea defendible
-
-1. Aclarar unidad y métrica de evaluación oficial.
-2. Corregir leakage, empates, tamaño y dependencia del lote.
-3. Separar circulación operativa y apoyo con los mecanismos ya demostrados.
-4. Corregir explicaciones, faltantes y significado de Confidence.
-5. Retirar del pitch afirmaciones no medidas de anticipación; en la documentación actual aparecen ejemplos de «2–3 meses» y «2.8m» que no son una validación de esta propuesta.
-
-### P1 — Una capacidad nueva pequeña y visible
-
-6. Añadir los tres relojes a la explicación local de facturas.
-7. Comparar plazos dentro de la misma relación, con cobertura y contraste de población.
-8. Mostrar el caso COMP_1171 y los documentos originales.
-9. Añadir una referencia interanual para evitar la historia fácil pero engañosa.
-10. Mostrar un escenario de calendario comercial, sin vender ahorro ni causalidad.
-
-### P2 — Solo si supera la prueba incremental
-
-11. Cohortes de emisión a edad fija con censura.
-12. Alertas confirmadas y métricas completas de episodios.
-13. Evaluar si alguna señal aporta a la puntuación oficial, sin elegir por el mejor resultado aislado.
-14. Ampliar a supervivencia de liquidaciones o modelos jerárquicos solo si lo justifican muestra, tiempo y evaluación.
-
-**Decisión de producto:** una pantalla excelente y verificable sobre condiciones comerciales es preferible a una segunda familia de puntuaciones sin calibrar.
+No hace falta construir seis productos. Una pantalla que ayuda a una decisión real puede ser suficiente como producto sobre el score.
 
 ---
 
-## 17. Trazabilidad y cómo reproducir las cifras sin crear nuevos artefactos
+## 15. Validación necesaria para la entrega
 
-### Fuentes
+### Temporal
 
-- Originales: `/Users/alvaro/Downloads/output/`.
-- Convenciones: `data_dictionary.md` de esa carpeta.
-- Código actual: `src/xray/features/__init__.py`, `src/xray/scoring/__init__.py`, `src/xray/clean/invoices.py`.
-- Investigación anterior: `research/astra_findings.md`, `research/hypotheses_results.csv`, `research/02_build_research_panel.py`, `research/04_signal_investigation.py`.
-- Resultado bancario reutilizado: `research/sweep_corrected/temporal_signals.parquet`.
+- Construir cada mes con lo conocido al corte.
+- Truncar datos y comprobar que no cambia el pasado.
+- No usar vencimientos revisados como originales sin avisar.
+- No adelantar retrospectivamente la fecha de confirmación de una alerta.
+- Evaluar cohortes solo cuando maduran.
 
-### Huellas de los dos CSV principales
+### Generalización
+
+- Separar grupos completos, no filas o filiales hermanas.
+- Mantener separación temporal compatible con el horizonte futuro.
+- Aprender escalas en desarrollo, no con el lote oculto.
+- Evaluar sensibilidad a ERP, moneda, tamaño y relaciones dominantes.
+- No usar identificadores o ausencia de datos como atajos de salud.
+
+### Utilidad de las alertas
+
+Registrar todos los episodios y su seguimiento, no solo los aciertos. Informar precisión, sensibilidad, falsas alarmas por empresa-año, cobertura y anticipación. Una mediana de lead time entre aciertos no resume por sí sola utilidad.
+
+Separar tres cosas:
+
+1. observar un cambio de condiciones antes de su vencimiento;
+2. predecir un deterioro futuro;
+3. ayudar al CFO a tomar una decisión útil.
+
+Son objetivos diferentes y requieren métricas diferentes.
+
+### Coherencia
+
+- Un traspaso propio no crea ventas.
+- Un cambio de unidad monetaria equivalente no cambia salud.
+- Un dato desconocido produce «no observable», no una cifra tranquilizadora.
+- Una empresa constante no mejora solo porque empeoren otras, salvo en una vista relativa explícita.
+- Las explicaciones no contradicen los documentos ni el signo de las features.
+
+No convertir el índice de cobertura en una supuesta probabilidad de acierto.
+
+---
+
+## 16. Trazabilidad de las conclusiones
+
+Las evidencias de facturas proceden de los CSV completos facilitados para el reto, no de las pequeñas muestras del repositorio. Los identificadores incluidos permiten localizar los documentos en cualquier copia de esos originales.
+
+### Huellas de los dos CSV principales analizados
 
 ```text
 invoices.csv
@@ -838,42 +813,36 @@ transactions.csv
 000a6820a7500c66aa70a17b3e813d0c57a8270b3c58f6f2f006708a20228f2b
 ```
 
-Los 25 bytes NUL del CSV bancario se sustituyeron únicamente en el buffer de lectura en memoria para la exploración de fechas. El archivo original no se reescribió.
+El CSV bancario contiene 25 bytes NUL, sustituidos solo en el buffer de lectura en memoria para la exploración de fechas. Los originales no se reescribieron.
 
-### Receta exacta para el caso principal
+### Cómo verificar el caso principal
 
-1. Aplicar la selección del apartado 4.
-2. Filtrar `company_id = COMP_1171`, `counterparty_id = COUNTERPARTY_06105`, `document_type = invoice`, importe positivo y moneda EUR.
-3. Para plazos, mantener 0–180 días.
-4. Aceptar liquidación observada solo si `status = paid`, fecha de pago no anterior a emisión y anterior a 2026-09-01.
-5. Para el cuadro de documentos liquidados, exigir duración 0–180 días y comparar `[2025-08-01, 2025-11-01)` con `[2025-11-01, 2026-02-01)`.
-6. Calcular L, A y D sobre exactamente las mismas filas. Usar pesos `abs(amount)` para la versión monetaria.
-7. Para la señal por emisión, usar todas las facturas elegibles de la relación, no solo las pagadas. Referencia `[2025-06-01, 2025-09-01)`; nuevas facturas emitidas 2025-09-26.
-8. Para estacionalidad, comparar emisiones de septiembre–noviembre de 2024 y 2025.
-9. Para sensibilidades, aplicar las variantes y umbrales del apartado 7 sin cambiar ventanas.
+1. Aplicar la selección de facturas del apartado 3.
+2. Filtrar COMP_1171, COUNTERPARTY_06105, `invoice`, AR y EUR.
+3. Mantener plazos 0–180 días.
+4. Aceptar liquidación solo con estado `paid`, fecha no anterior a emisión y anterior a 2026-09-01.
+5. Para el cuadro de liquidaciones, limitar duración a 0–180 y comparar `[2025-08-01, 2025-11-01)` con `[2025-11-01, 2026-02-01)`.
+6. Calcular L, A y D sobre las mismas filas y usar `abs(amount)` para ponderar.
+7. Para la condición a emisión, no limitarse a pagadas: comparar emisiones de junio–agosto de 2025 con las cuatro del 26 de septiembre.
+8. Contrastar emisiones de septiembre–noviembre de 2024 y 2025 para estacionalidad.
+9. Aplicar las sensibilidades del apartado 6 sin cambiar ventanas.
 
-Los apartados 8 y 9 especifican ventanas, claves, pesos, mínimos, filtros, particiones y modelo de las otras pruebas. No se ha guardado un ejecutable nuevo: este documento deja el protocolo y los resultados, respetando la restricción de no construir nada más.
+Los apartados 6–8 describen el protocolo de los otros contrastes. Las métricas predictivas dependen también del panel bancario auxiliar descrito en el apartado 3 y deben reproducirse al construir el proyecto. Este Markdown no es una entrega de código de reproducción ni un test automatizado.
 
-### Límites generales que acompañan a todas las cifras
+Excluir facturas finalmente canceladas y utilizar estados finales bajo fechas de evento requiere supuestos. Sin ingestión ni versiones no se puede certificar qué información estaba disponible históricamente.
 
-Los datos son sintéticos. La extracción es final, sin `ingested_at` ni historial de versiones. Excluir facturas finalmente canceladas y aceptar estados finales bajo fechas de evento introduce supuestos de replay. La señal a emisión solo habría sido disponible entonces si esos campos ya existían y no fueron revisados.
-
-Las identidades son descriptivas, las sensibilidades son exploratorias y los ejemplos están seleccionados retrospectivamente. No hay una probabilidad calibrada de insolvencia, una prueba causal de confianza ni una evaluación sobre el test oculto.
+No se ha evaluado esta propuesta en el test oculto ni se ha validado comercialmente el producto.
 
 ---
 
-## 18. La decisión que tomaría
+## 17. Decisión recomendada
 
-**No intentaría ganar diciendo que hemos descubierto una inteligencia secreta del mercado. Intentaría ganar demostrando que no confundimos puntualidad, liquidez y financiación.**
+**Construir un score sencillo, temporalmente válido y explicable; encima, un producto que muestre financiación comercial escondida en los plazos.**
 
-El hallazgo anterior dice:
+La idea diferencial no sería «sabemos lo que piensan tus proveedores». Sería:
 
-> «Ese dinero no se ha generado de nuevo: está circulando.»
+> **Distinguimos si estás generando mejor caja, cumpliendo mejor tus compromisos o simplemente financiándote —o financiando a otros— durante más tiempo.**
 
-Este añade:
+El patrón de los tres relojes tiene evidencia concreta. La capacidad de anticipar deterioro general todavía no está demostrada. Esa frontera debe mantenerse visible en el producto y en el pitch.
 
-> «Ese retraso ha mejorado, pero no estás convirtiendo más rápido: ha cambiado el tiempo que financias.»
-
-Ambos atacan el mismo fallo de muchos dashboards: atribuir una mejora al negocio cuando se ha movido el mecanismo que la mide o la sostiene.
-
-**Mi recomendación final:** corregir el score, conservar Cash Truth y añadir una explicación comercial de los tres relojes con documentos trazables. Mantener la contracción de plazos como hipótesis predictiva, no como verdad aprendida. Vender al CFO una decisión concreta sobre su circulante, no una promesa de adivinar el futuro.
+**Punto de partida para el equipo:** los datos, estas conclusiones y el plan anterior. El motor, las features, la validación y la demo son el trabajo que queda por construir.
