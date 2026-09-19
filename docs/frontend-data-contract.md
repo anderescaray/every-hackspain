@@ -2,14 +2,14 @@
 
 ## Versión y fuente únicas
 
-El contrato vigente es **CompanyDetail 3.0**, **Portfolio 2.0** y **GroupDetail 2.0**, alimentado exclusivamente por resultados `PulseFourPillars-v1.0`. Los ejemplos e instrucciones anteriores, conservados al final como LEGACY, **no son contratos aceptados por el loader actual**.
+El contrato vigente es **CompanyDetail 3.0**, **Portfolio 2.0** y **GroupDetail 2.0**, alimentado exclusivamente por el run Pulse publicado (`PulseFourPillars-v1.2` en esta rama). La configuración histórica v1.1 permanece registrada, pero su run anterior a D32 no es el snapshot vigente. Los ejemplos v1.0 y el contrato 2.0 conservados más abajo son **históricos**, no la muestra del run actual.
 
 ```text
 run Pulse inmutable → exporter de presentación → snapshot web inmutable
 → current.json → loader Next fijado por petición → componentes existentes
 ```
 
-El exporter copia `health_score`, pilares, pesos y contribuciones: no calcula scores ni completa ausencias. `cash_generation` es el alias de `generation` y `debt` el de `debt_obligations`. El objeto `pulse` conserva íntegramente el resultado y su trazabilidad; `canonical_cash_truth` conserva la clasificación económica original. Next no lee CSV/Parquet, ajusta pesos, suma pilares ni utiliza V2 como fallback.
+El exporter copia `operating_health`, `extended_health`, `health_level`, pilares, pesos y contribuciones: no calcula scores ni completa ausencias. `health_score` queda como alias histórico de **Extended Health** en Company Detail; el score principal de Portfolio es **Operating Health**. `cash_generation` es el alias de `generation` y `debt` el de `debt_obligations`. El objeto `pulse` conserva íntegramente el resultado y su trazabilidad; `canonical_cash_truth` conserva la clasificación económica original. Next no lee CSV/Parquet, ajusta pesos, suma pilares ni utiliza V2 como fallback.
 
 ## Procedencia y publicación
 
@@ -27,13 +27,13 @@ frontend/public/generated/snapshots/<snapshot_id>/groups/<group_id>.json
 
 ## Semántica de disponibilidad
 
-- `null` significa no evaluable, nunca 0, 50 ni 100. `complete` tiene Health; `partial` conserva los pilares disponibles; `insufficient_evidence` identifica los cuatro pilares nulos sin cambiar el `status` del objeto Pulse original.
+- `null` significa no evaluable, nunca 0, 50 ni 100. Operating Health requiere G/M/R; Extended requiere G/M/R/D, con Debt `verified` o `bounded`. `health_level` distingue `operating_only`, `extended_verified`, `extended_bounded`; `status` distingue `complete_verified`, `complete_bounded`, `partial`, `insufficient_evidence`. Faltantes no renormalizan pesos.
 - Los límites de identificación se copian del motor; no son intervalos de confianza. La confianza no multiplica Health.
-- La vista publicada es EUR explícita. Otros paneles y empresas sin EUR se registran como exclusiones de moneda, no como empresas descartadas por score.
+- La vista publicada es EUR explícita. D32 convierte importes de moneda conocida a EUR con tipos fijos fechados; el run v1.2 versiona esta semántica. Los importes sin moneda verificable no se completan ni se descartan silenciosamente. La cobertura del run v1.0 por moneda, detallada a continuación, es histórica.
 - Grupo no agrega ni promedia Health. Relación candidata no equivale a apoyo confirmado. Sin datos de histórico, escenarios, AR/AP o emparejamiento de transferencias, se presenta ausencia explícita, no un ejemplo inventado.
 - `cash_truth` agrupa clases canónicas sólo para presentación; `canonical_cash_truth` mantiene su desglose. La categoría visual de otros flujos no implica que toda financiación/deuda/inversión sea desconocida.
 
-## Snapshot real publicado
+## Snapshot histórico v1.0, no vigente
 
 - Run: `pulse-9debd4f61f356501d9d171d8c114b35fe5d715e0c9434d7444c3200779ddfa05`.
 - Snapshot: `web-86e651dd87e159be5bd06c32a668a5112b3d57e5a3c55a7028faefe6165612b4`.
@@ -42,7 +42,7 @@ frontend/public/generated/snapshots/<snapshot_id>/groups/<group_id>.json
 
 El siguiente ejemplo es una copia completa del JSON real de COMP_1084 de ese snapshot, con indentación para lectura. Su Health y Deuda permanecen `null`; los ceros observados de Generación y Resiliencia permanecen ceros.
 
-## Ejemplo completo vigente: COMP_1084
+## Ejemplo histórico v1.0: COMP_1084
 
 ```json
 {

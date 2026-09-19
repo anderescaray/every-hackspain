@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue, compositionFields } from "./pulse";
+import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue, compositionFields, isDualHealthVersion } from "./pulse";
 
 const text = z.string().min(1).max(5000);
 const id = z.string().min(1).max(100);
@@ -107,7 +107,7 @@ export const groupDetailSchema = z.object({
   evidence: z.array(evidenceSchema).max(50),
 }).strict().superRefine((group, ctx) => {
   const issue = (message: string, path: (string | number)[]) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path });
-  if (group.score_version === "PulseFourPillars-v1.1" && group.composition_version !== "operating-extended-health-v1") issue("Falta versión de composición", ["composition_version"]);
+  if (isDualHealthVersion(group.score_version) && group.composition_version !== "operating-extended-health-v1") issue("Falta versión de composición", ["composition_version"]);
   const unique = (ids: string[], path: (string | number)[]) => { if (new Set(ids).size !== ids.length) issue("Identificadores duplicados", path); };
   unique(group.members.map((member) => member.company_id), ["members"]);
   for (const key of ["relations", "recommendations", "evidence", "insights", "alerts", "concentration", "recent_changes"] as const) unique(group[key].map((item) => item.id), [key]);
@@ -127,7 +127,7 @@ export const groupDetailSchema = z.object({
   group.members.forEach((member, index) => {
     const invalid = identificationIssue(group.score_version, member);
     if (invalid) issue(invalid, ["members", index]);
-    if (group.score_version === "PulseFourPillars-v1.1") {
+    if (isDualHealthVersion(group.score_version)) {
       const operatingValid = [member.dimensions.cash_generation, member.dimensions.momentum, member.dimensions.resilience].every((value) => value !== null);
       const expectedLevel = !operatingValid ? null : member.dimensions.debt === null ? "operating_only" : member.health_evidence === "bounded" ? "extended_bounded" : "extended_verified";
       if (group.composition_version !== "operating-extended-health-v1" || member.composition_version !== group.composition_version || member.operating_health === undefined || member.extended_health === undefined || member.health_level === undefined || member.insights_available === undefined || member.missing_modules === undefined) issue("Falta composición Operating/Extended", ["members", index]);

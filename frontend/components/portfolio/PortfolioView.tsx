@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Portfolio } from "@/types/portfolio";
+import { isDualHealthVersion } from "@/types/pulse";
 import { trajectoryLabels, confidenceLabel, numberLabel } from "@/lib/companyFormat";
 import { attentionLabels, filterItems, primaryPortfolioScore, sortItems, sortLabels, statusLabels, summarize, SORT_KEYS, type PortfolioQuery } from "@/lib/portfolioPresentation";
 import base from "@/components/insights/insights.module.css";
@@ -19,7 +20,7 @@ function Delta({ value }: { value: number | null }) {
 }
 
 export function PortfolioView({ portfolio, query, page }: { portfolio: Portfolio; query: PortfolioQuery; page: number }) {
-  const dualHealth = portfolio.score_version === "PulseFourPillars-v1.1";
+  const dualHealth = isDualHealthVersion(portfolio.score_version);
   const totals = summarize(portfolio);
   const filtered = sortItems(filterItems(portfolio.items, query), query.sort, query.order);
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));

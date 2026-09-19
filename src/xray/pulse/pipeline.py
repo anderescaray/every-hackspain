@@ -28,9 +28,10 @@ from xray.artifacts import (
     verify_run,
 )
 from xray.clean import clean_all
+from xray.fx import FX_ASOF, FX_KNOWLEDGE_DATE, FX_SOURCE, REPORTING_CURRENCY
 from xray.io import TABLES, read_raw
 from xray.ledger.classify import classification_metadata, classify_transactions
-from xray.ledger.contracts import CLEANING_VERSION
+from xray.ledger.contracts import CLEANING_VERSION, FACTS_VERSION
 from xray.ledger.monthly import build_monthly_facts
 from xray.pulse.config import PulseConfig, load_config
 from xray.pulse.scorer import score_company
@@ -79,7 +80,7 @@ def _source_code() -> dict[str, Any]:
     Every file used by cleaning, canonical facts or Pulse is included.
     """
     package = Path(__file__).resolve().parents[1]
-    paths = [package / name for name in ("__init__.py", "io.py", "paths.py", "artifacts.py")]
+    paths = [package / name for name in ("__init__.py", "io.py", "paths.py", "artifacts.py", "fx.py")]
     for folder in ("clean", "ledger", "pulse"):
         paths.extend((package / folder).rglob("*.py"))
     hashes = {path.relative_to(package).as_posix(): sha256(path) for path in sorted(paths)}
@@ -132,9 +133,14 @@ def _cut_raw(raw: dict[str, pd.DataFrame], cutoff: pd.Timestamp) -> dict[str, pd
 
 
 def _company_currencies(raw: dict[str, pd.DataFrame], requested: list[str]) -> pd.DataFrame:
-    frames = [raw[name][["company_id", "currency"]] for name in ("companies", "banking_products", "debt_products")]
-    result = pd.concat(frames, ignore_index=True).dropna().drop_duplicates()
-    return result.loc[result.company_id.isin(requested)].sort_values(["company_id", "currency"]).reset_index(drop=True)
+    """One reporting-currency panel per company after canonical D32 FX conversion.
+
+    Source account currencies survive in ledger.source_currency and source lineage;
+    iterating them here would create empty ghost panels and miss EUR for non-EUR firms.
+    """
+    companies = raw["companies"].loc[raw["companies"].company_id.isin(requested), ["company_id"]]
+    return (companies.drop_duplicates().assign(currency=REPORTING_CURRENCY)
+            .sort_values("company_id").reset_index(drop=True))
 
 
 def _frame_hash(frame: pd.DataFrame) -> str:
@@ -246,11 +252,20 @@ def run(raw_dir: Path, out_dir: Path, *, as_of: str | pd.Timestamp, data_vintage
     cache_hash = sha256(cache_path) if cache_path else None
     classification = classification_metadata(cache_path, ai_min_confidence)
     classification_policy = classification["config"]
+    if configuration.classification_version != classification_policy["classification_version"]:
+        raise ValueError("Pulse score configuration is incompatible with the canonical classification version")
+    if configuration.to_dict()["facts_version"] != FACTS_VERSION:
+        raise ValueError("Pulse score configuration is incompatible with the monthly facts version")
+    if configuration.to_dict().get("cleaning_version", "cleaning-v1") != CLEANING_VERSION:
+        raise ValueError("Pulse score configuration is incompatible with the cleaning version")
     classification_config = {"ai_categories_path": cache_path, "ai_min_confidence": ai_min_confidence}
     cutoff_date, vintage = _date(as_of, "as_of"), _date(data_vintage, "data_vintage")
     if vintage < cutoff_date:
         raise ValueError("data_vintage cannot predate as_of")
+    if vintage < pd.Timestamp(FX_KNOWLEDGE_DATE):
+        raise ValueError("data_vintage cannot predate the fixed FX rates' knowledge date")
     economic_cutoff = _complete_cutoff(cutoff_date)
+    post_hoc_fx = pd.Timestamp(FX_KNOWLEDGE_DATE) > economic_cutoff
     inputs = {f"{name}.csv": sha256(raw_dir / f"{name}.csv") for name in TABLES}
     code, runtime = _source_code(), _runtime()
     raw, requested = _load_raw(raw_dir, company_ids)
@@ -298,9 +313,13 @@ def run(raw_dir: Path, out_dir: Path, *, as_of: str | pd.Timestamp, data_vintage
                    "data_vintage": vintage.date().isoformat(), "knowledge_cutoff": vintage.date().isoformat(),
                    "economic_cutoff": economic_cutoff.date().isoformat(),
                    "history_mode": "retrospective_restatement", "cleaning_version": CLEANING_VERSION,
+                   "fx_reporting_currency": REPORTING_CURRENCY, "fx_rate_as_of": FX_ASOF,
+                   "fx_knowledge_date": FX_KNOWLEDGE_DATE, "fx_source": FX_SOURCE,
+                   "fx_temporal_basis": "post_hoc_conversion" if post_hoc_fx else "known_at_economic_cutoff",
                    "temporal_limitations": ["source_snapshot_has_no_row_known_at_history",
                                             "catalog_created_at_is_connection_not_account_opening",
-                                            "invoices_and_debt_snapshots_are_not_scoring_inputs"],
+                                            "invoices_and_debt_snapshots_are_not_scoring_inputs",
+                                            *(["fixed_fx_rates_observed_after_economic_cutoff"] if post_hoc_fx else [])],
                    "ledger_ref": "ledger.parquet", "facts_ref": "monthly_facts.parquet"}
         prior_facts = prior_ledger = None
         prior_lineage = None

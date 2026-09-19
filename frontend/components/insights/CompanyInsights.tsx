@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CompanyDetail, EvidenceRef, TransactionEvidenceRef } from "@/types/companyDetail";
 import { confidenceLabel, dateLabel, numberLabel, severityLabels, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { HEALTH_DIMENSIONS } from "@/lib/healthScore";
+import { isDualHealthVersion } from "@/types/pulse";
 import { TrajectoryChart } from "./TrajectoryChart";
 import { CashTruthSection } from "./CashTruthSection";
 import { TimeBorrowedSection } from "./TimeBorrowedSection";
@@ -19,7 +20,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
   const openEvidence = (refs: EvidenceRef[], title: string, records?: TransactionEvidenceRef[]) => setEvidence({ refs, title, records });
   const alerts = [...company.alerts].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
   const debt = company.pulse.pillars.debt_obligations;
-  const dualHealth = company.score_version === "PulseFourPillars-v1.1";
+  const dualHealth = isDualHealthVersion(company.score_version);
   const primaryHealth = dualHealth ? company.operating_health : company.health_score;
   const primaryLabel = dualHealth ? "Operating Health" : "Extended Health histórico";
   const isMock = company.source === "fixture";

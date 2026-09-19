@@ -3,6 +3,7 @@
 import { AnalysisLink as Link } from "@/components/navigation/AnalysisLink";
 import { useId, useRef, useState } from "react";
 import type { GroupDetail, GroupMember, GroupRelation } from "@/types/groupDetail";
+import { isDualHealthVersion } from "@/types/pulse";
 import { dateLabel, numberLabel, severityLabels, trajectoryLabels } from "@/lib/companyFormat";
 import { groupMoney, groupScore, relationChangeLabels, relationKindLabels, relationName, relationStatusLabels, roleLabels } from "@/lib/groupPresentation";
 import { Confidence, EvidenceButton, type OpenEvidence } from "@/components/insights/InsightPrimitives";
@@ -11,7 +12,7 @@ import styles from "./groups.module.css";
 
 function MemberDetail({ member, group, onOpen }: { member: GroupMember; group: GroupDetail; onOpen: OpenEvidence }) {
   const alerts = group.alerts.filter((alert) => alert.company_refs.includes(member.company_id));
-  const dualHealth = group.score_version === "PulseFourPillars-v1.1";
+  const dualHealth = isDualHealthVersion(group.score_version);
   return <>
     <span className={base.eyebrow}>Sociedad seleccionada</span><h3>{member.company_id}</h3><span className={styles.roleBadge}>{roleLabels[member.role]}</span>
     <dl className={styles.selectionMetrics}><div><dt>{dualHealth ? "Operating Health" : "Extended Health histórico"}</dt><dd>{groupScore(dualHealth ? member.operating_health ?? null : member.health_score)}</dd></div>{dualHealth && <><div><dt>Debt &amp; Obligations</dt><dd>{groupScore(member.dimensions.debt)}</dd></div><div><dt>Extended Health</dt><dd>{groupScore(member.extended_health ?? null)}</dd></div></>}<div><dt>Momentum</dt><dd>{groupScore(member.dimensions.momentum)}</dd></div><div><dt>Resiliencia</dt><dd>{groupScore(member.dimensions.resilience)}</dd></div><div><dt>Trayectoria</dt><dd>{member.trajectory ? trajectoryLabels[member.trajectory] : "Sin evaluar"}</dd></div><div><dt>Liquidez disponible</dt><dd>{groupMoney(member.available_liquidity)}</dd></div><div><dt>Obligaciones próximas</dt><dd>{groupMoney(member.obligations_due)}</dd></div></dl>
@@ -35,7 +36,7 @@ function RelationDetail({ relation, group, onOpen }: { relation: GroupRelation; 
 }
 
 export function GroupNetwork({ group, onOpen, initialRelation, initialCompany }: { group: GroupDetail; onOpen: OpenEvidence; initialRelation?: string; initialCompany?: string }) {
-  const dualHealth = group.score_version === "PulseFourPillars-v1.1";
+  const dualHealth = isDualHealthVersion(group.score_version);
   const [selection, setSelection] = useState<{ kind: "company" | "relation"; id: string } | null>(initialRelation ? { kind: "relation", id: initialRelation } : initialCompany ? { kind: "company", id: initialCompany } : null);
   const [status, setStatus] = useState("all");
   const [kind, setKind] = useState("all");

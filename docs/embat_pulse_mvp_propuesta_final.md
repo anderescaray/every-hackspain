@@ -513,37 +513,34 @@ Es una herramienta de análisis, no una predicción causal.
 
 ---
 
-## 12. Vista de Grupo — MVP Lite
+## 12. Vista de Grupo — escenario mecánico intragrupo (implementado el 19-09)
 
-La estructura de grupos empresariales es interesante, pero no debería retrasar el MVP principal.
+> **Actualización 19-09-2026.** Este apartado decía «no generar “transfiere 110.000 € de Filial B a Filial A”». Se ha sustituido por la fórmula del What-if (§11): el módulo `treasury_advisor_v1` (`src/xray/group_advisor/`, spec en `group-optimization.md`, decisiones §14) calcula **escenarios mecánicos bajo supuestos explícitos** sobre la función de nivel exacta de V2, con los supuestos en pantalla. No es una instrucción ejecutable ni una predicción. Decisión GA-00.
 
-Si hay tiempo, añadir una vista sencilla:
-
-```text
-GROUP_XXXX
-
-Company A      Pulse 78     Stable
-Company B      Pulse 54     Deteriorating
-Company C      Pulse 71     Improving
-```
-
-Y una señal:
+La vista de grupo aparece **solo si el grupo tiene ≥2 filiales puntuadas** (71 de 250 grupos son unipersonales y no la ven). Muestra:
 
 ```text
-Internal Support Dependency
+GROUP_0067                                   G (utilidad por tramos) 60,1 → 67,7 en régimen
+
+COMP_1048   nivel 88  verde   donante
+COMP_1275   nivel 31  rojo    receptora   → 66,7 en régimen (rojo → ámbar)
+COMP_0216   nivel 32  rojo    receptora (25 %)
+COMP_0407   nivel 48  ámbar   estructural: margen 6m −0,27
+...
+
+Paso 1 · COMP_1048 asume el 100 % de las cuotas de deuda de COMP_1275 (12.340 EUR/mes, 6 meses).
+         El servicio externo del grupo no cambia; se traslada a quien puede llevarlo.
+         Efecto k=1 / k=6 · evidencia ev_0019, ev_0026 · restricción activa · alternativas rechazadas
+Supuestos: estacionariedad · crédito intragrupo no liquidado por banco · sin fiscalidad, legal, covenants ni precio intragrupo
 ```
 
-Esto sirve para detectar dependencia de apoyo, filiales receptoras y filiales con autonomía operativa.
+Dos palancas, ambas con evidencia directa en los datos: **D1** (la filial fuerte asume el servicio de deuda de la débil; el nivel de la receptora sube por `debt_service_w`, el del donante baja algo, el consolidado no cambia) y **P** (financiar el pago a proveedores en plazo, solo si la receptora está restringida por liquidez; si paga tarde teniendo caja se etiqueta «retraso no explicado por liquidez» y no se propone nada). El objetivo es una utilidad cóncava por tramos (un punto en rojo vale tres en verde): «ayudar a la que se hunde» sale de la fórmula. Restricciones: caja reconstruida fiable, colchón del donante de dos meses, no sobrefinanciar, suelo de nivel del donante; lo no observable (fiscalidad, legal, covenants, precio intragrupo) se lista, no se modela.
 
-### Lo que NO debemos hacer todavía
+### Lo que sigue sin hacerse
 
-No generar automáticamente una instrucción como:
-
-> “Transfiere 110.000 € de Filial B a Filial A.”
-
-Para recomendar una transferencia real faltan elementos como restricciones legales, fiscalidad, covenants, moneda, necesidades futuras y condiciones reales del préstamo intragrupo.
-
-La **tesorería prescriptiva intragrupo** puede ser la visión futura del producto, pero no debe ser una promesa no validada del MVP.
+- Cancelación anticipada de deuda con caja del grupo (D2): V2 la penaliza seis meses aunque ahorre intereses; descartada y documentada.
+- Recomendaciones ejecutables a un clic, contratos intercompany, ahorro en euros con tipos/comisiones inventados.
+- Cobertura: en agosto 2026 solo 19 grupos tienen plan; 160 no tienen palanca factible (caja del donante no fiable, receptora sin deuda ni AP, colchón) y la vista lo dice filial por filial. Es un resultado honesto de palancas estrictas, no un fallo a esconder.
 
 ---
 
@@ -589,6 +586,11 @@ La propuesta compartida por el equipo tiene ideas interesantes que podemos integ
 - **Producto accionable:** no quedarnos en “Score = 63”; terminar cada análisis con “esto es lo que deberías revisar”.
 - **Capa de grupo:** mostrar dependencia o soporte entre filiales cuando exista evidencia.
 - **Copilot como interfaz:** evolución natural para preguntar “¿por qué está empeorando?” o “¿qué evidencia hay?”.
+
+### Incorporado el 19-09 (ver §12 y `group-optimization.md`)
+
+- **Capa de grupo con escenarios mecánicos** (D1, P) y **bloque «Qué mueve tu nivel» en la ficha de cada empresa**: pendiente por palanca, hasta dónde vale (siguiente nudo de las anclas) y cuánto hace falta para cambiar de tramo, con palancas de tesorería y de negocio etiquetadas (las de negocio son sensibilidad, nunca recomendación de recortar).
+- **Copiloto determinista**: la narrativa sale de plantillas sobre el JSON del motor y un validador comprueba que cada número y cada id del texto existen en el JSON; hay nueve preguntas cerradas (`why_not_more`, `what_moves_most`, `how_to_reach_tramo`…). El LLM es opcional, parafrasea con temperatura 0 y cae a la plantilla si inventa un número. No hay proveedor conectado.
 
 ### Dejar para una fase posterior
 
@@ -716,14 +718,15 @@ Versión más agresiva:
 
 ### SHOULD HAVE
 
-- Vista ligera de grupo
+- **Bloque «Qué mueve tu nivel» en la ficha** (sensibilidad de empresa; motor implementado, `company_sensitivity/`)
+- **Vista de grupo con plan mecánico** solo si ≥2 filiales puntuadas (motor implementado, `group_plans/`)
 - Internal support dependency
 - filtros y búsqueda
-- casos demo seleccionados
+- casos demo seleccionados (`group-optimization.md` §15: GROUP_0067, GROUP_0022, GROUP_0064, COMP_0007, COMP_1275)
 
 ### NICE TO HAVE
 
-- chat LLM sobre el JSON
+- chat LLM sobre el JSON (interfaz `Completer` y validador de anclaje listos; falta proveedor)
 - briefing ejecutivo generado
 - export PDF
 - escenarios más avanzados
@@ -731,10 +734,10 @@ Versión más agresiva:
 
 ### FUTURO
 
-- recomendaciones prescriptivas intragrupo;
-- optimización de cash pooling;
+- optimización de cash pooling y palancas cruzadas de moneda con FX diario (hoy tipo fijo, panel 100 % EUR);
+- cancelación anticipada de deuda (D2) si el score deja de penalizar el pico de principal;
+- aceleración de cobros con coste de factoring observado;
 - selección óptima de financiación;
-- ahorro financiero estimado;
 - generación documental;
 - acciones 1-click;
 - integración operativa con Embat.

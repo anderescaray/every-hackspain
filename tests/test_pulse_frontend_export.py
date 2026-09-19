@@ -21,7 +21,7 @@ from xray.pulse import score_company
 from xray.pulse.config import load_config
 
 
-def _source(debt=3.0, observed=True, *, patch=False, composition=False, uncertainty=0.0):
+def _source(debt=3.0, observed=True, *, patch=False, composition=False, current=False, uncertainty=0.0):
     rows = []
     for month in pd.date_range("2026-03-01", periods=6, freq="MS"):
         rows.append({"company_id": "COMP_1084", "currency": "EUR", "month": month,
@@ -40,7 +40,8 @@ def _source(debt=3.0, observed=True, *, patch=False, composition=False, uncertai
     score = score_company(pd.DataFrame(rows), company_id="COMP_1084", currency="EUR",
                           as_of="2026-08-31", run_id="pulse-contract-fixture",
                           config=load_config(Path(__file__).parents[1] / "src/xray/pulse/configs" /
-                                             ("pulse_four_pillars_v1_1.json" if composition else
+                                             ("pulse_four_pillars_v1_2.json" if current else
+                                              "pulse_four_pillars_v1_1.json" if composition else
                                               "pulse_four_pillars_v1_0_1.json" if patch else
                                               "pulse_four_pillars_v1.json"))).to_dict()
     cash = {"schema_version": "1.0", "company_id": "COMP_1084", "currency": "EUR", "as_of": score["as_of"],
@@ -67,6 +68,18 @@ def test_complete_health_and_contributions_are_copied_without_rounding():
     assert detail["health_score"] != round(detail["health_score"])
     assert detail["canonical_cash_truth"] == cash
     assert detail["health_score_model"]["version"] == "PulseFourPillars-v1.0"
+
+
+def test_v1_2_composition_exports_both_health_levels_without_recalculation():
+    score, cash, envelope = _source(current=True)
+    detail = company_detail(score, cash, "GROUP_0001", envelope)
+    item = portfolio_export({"COMP_1084": detail}, envelope)["items"][0]
+    assert score["score_version"] == "PulseFourPillars-v1.2"
+    assert detail["operating_health"] == score["operating_health"]
+    assert detail["extended_health"] == score["extended_health"]
+    assert item["operating_health"] == score["operating_health"]
+    assert item["extended_health"] == score["extended_health"]
+    assert detail["canonical_cash_truth"] == cash
 
 
 def test_comp1084_unknown_debt_preserves_partial_company_and_portfolio():

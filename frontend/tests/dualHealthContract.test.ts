@@ -45,6 +45,17 @@ test("v1.1 conserva Operating y Extended distintos con Debt bounded y trazabilid
   assert.equal(Object.values(company.pulse.contributions).reduce<number>((sum, value) => sum + (value ?? 0), 0), company.extended_health);
 });
 
+test("v1.2 conserva composición dual y exige config versionada nueva", () => {
+  const older = dualCompany();
+  const versioned = { ...older, score_version: "PulseFourPillars-v1.2", config_version: "pulse-config-v1.2",
+    health_score_model: { ...older.health_score_model, version: "PulseFourPillars-v1.2" },
+    pulse: { ...older.pulse, score_version: "PulseFourPillars-v1.2", config_version: "pulse-config-v1.2" } };
+  const parsed = companyDetailSchema.parse(versioned);
+  assert.equal(parsed.operating_health, older.operating_health);
+  assert.equal(parsed.extended_health, older.extended_health);
+  assert.equal(companyDetailSchema.safeParse({ ...versioned, config_version: "pulse-config-v1.1", pulse: { ...versioned.pulse, config_version: "pulse-config-v1.1" } }).success, false);
+});
+
 test("Debt ausente deja Operating identificado y Extended null; no acepta fallback", () => {
   const complete = dualCompany();
   const debt = complete.pulse.pillars.debt_obligations;

@@ -1,10 +1,31 @@
 # Pulse → frontend: integración de contrato V1
 
+**Estado de la rama `score_v2` (19-09-2026):** `scripts/09_export_frontend.py`
+publica el run versionado `PulseFourPillars-v1.2` en un snapshot web atómico;
+Next.js consume exclusivamente ese snapshot. El exportador `financial_smoothed_v2`
+permanece en `src/xray/product/legacy_frontend_export.py` para investigación;
+no existe fallback V2 en el loader. Los números, runs y snapshots v1.0/v1.0.1
+de las secciones históricas de abajo **no describen** el nuevo run D32.
+
+V1.2 conserva sin cambios las fórmulas de G/M/R/D y ambas composiciones Health
+de v1.1. Versiona aparte `cleaning-v2`, `cash-truth-v2` y
+`monthly-facts-v2`, porque D32 convirtió todas las monedas conocidas a EUR,
+eliminó exclusiones por importe extremo/`exchange_rate` y cambió el
+perímetro de los hechos mensuales. El manifiesto del run incluye el hash
+de `xray/fx.py`; el metadata de clasificación incluye fecha de tasa, fecha
+de conocimiento (2026-09-19), fuente y hash de la tabla de tipos fijos. El
+pipeline rechaza un `data_vintage` anterior a esa fecha: `as_of=2026-08-31`
+con vintage 2026-09-19 es un **restate retrospectivo**, no información conocida
+al cierre de agosto ni al 1 de septiembre. Un salto v1.1→v1.2 no debe
+etiquetarse como mejora/deterioro económico comparable. La composición
+histórica v1.1 sigue registrada,
+pero reproducirla exactamente requiere el código previo a D32.
+
 ## Fuente única y flujo
 
 ```text
 CSV reales → limpieza → ledger Cash Truth → monthly facts
-→ PulseFourPillars-v1.0.1 → run inmutable verificado
+→ PulseFourPillars-v1.2 → run inmutable verificado
 → exporter de presentación → snapshot web inmutable → Next.js
 ```
 
@@ -17,7 +38,7 @@ El exporter **no calcula, ajusta, redondea ni completa** Health o pilares. Tampo
 - `health_score` y `dimensions` copian valores **nullable** del motor. Los alias `cash_generation ← generation` y `debt ← debt_obligations` sólo cambian nombres.
 - Cada empresa conserva `pulse` y `canonical_cash_truth` completos: features, contribuciones, límites, evidencia, confidence, flags, sensibilidad y trazabilidad originales.
 - V1.0.1 distingue `complete_verified`, `complete_bounded`, `partial` e `insufficient_evidence`; muestra los puntos e intervalos recibidos, sin completar ni recalcular nada. Los snapshots V1.0 conservan sus estados `complete`, `partial` e `insufficient_evidence`. Este último identifica cuatro pilares nulos. Cero no equivale a `null`.
-- La UI actual es una vista **EUR explícita**, sin conversión FX. El batch incluye todas las empresas/monedas; el manifiesto web registra los paneles de otra moneda y las empresas sin panel EUR. Ninguna empresa se excluye por Health nulo.
+- La UI actual es una vista **EUR explícita**. Desde D32, el ledger convierte movimientos de moneda conocida a EUR con tipo fijo; los importes sin moneda verificable permanecen no evaluables. La política de conversión es parte de la versión del run; ninguna empresa se excluye por Health nulo.
 - No se inventan Health de grupo, histórico, pronósticos, emparejamientos de transferencias, apoyo confirmado ni confianza escalar. Los apartados sin producto de datos quedan vacíos o no evaluables.
 - La columna heredada «Cobertura» consume una confianza escalar que este motor no define: aparece «No evaluable». El objeto `pulse.confidence` sí conserva cobertura histórica, clasificación, incertidumbre, perímetro, moneda y evidencia de deuda; no se confunde una de esas métricas con un índice compuesto.
 
@@ -41,15 +62,15 @@ Desde `/Users/pablo/every.hackspain`:
 
 ```bash
 /tmp/pulse_four_pillars_venv/bin/python -m xray.pulse \
-  --raw-dir data --out-dir data/processed/pulse \
-  --as-of 2026-08-31 --data-vintage 2026-09-01
+  --raw-dir data/raw --out-dir data/processed/pulse \
+  --as-of 2026-08-31 --data-vintage 2026-09-19
 
 /tmp/pulse_four_pillars_venv/bin/python scripts/09_export_frontend.py \
   --run-dir data/processed/pulse/runs/<run_id> \
   --currency EUR --out-dir frontend/public/generated
 ```
 
-El catálogo declara 1.286 empresas y 1.790 paneles empresa/moneda: 1.208 EUR y 582 de otras monedas; 78 empresas no tienen panel EUR. La fecha económica no se confunde con la fecha de conocimiento: los artefactos indican `retrospective_restatement`, no reconstrucción histórica de información disponible entonces. Los CSV originales no se modifican.
+La materialización histórica v1.1 pre-D32 tenía 1.286 empresas y 1.790 paneles empresa/moneda: 1.208 EUR y 582 de otras monedas. La nueva materialización v1.2 debe recalcularse con el ledger EUR consolidado, no reutilizar ese run. La fecha económica no se confunde con la fecha de conocimiento: los artefactos indican `retrospective_restatement`, no reconstrucción histórica de información disponible entonces. Los CSV originales no se modifican.
 
 Para contener memoria se liberan las copias de tablas raw/cleaned únicamente después de persistir snapshots y hashes, sin cambiar cálculos ni contenido. El ledger ya se indexaba por empresa/moneda; no se vuelve a recorrer todo por empresa.
 
@@ -73,7 +94,7 @@ Quedan fuera de esta entrega una UI multimoneda, conexión API adicional y nueva
 
 ## Patch Debt V1.0.1
 
-La configuración y los artefactos V1.0 se conservan. El patch añade evaluación financiera conservadora de salidas inciertas y publica intervalos de identificación; no modifica G/M/R ni la caja canónica. La política exacta y sus límites están en la sección 14 de `pulse-four-pillars-v1-implementation.md`.
+La configuración y los artefactos V1.0 y v1.0.1 se conservan. La composición Operating/Extended de v1.1 también permanece inmutable; v1.2 conserva las mismas fórmulas pero versiona el cambio upstream D32 de FX/limpieza/clasificación/facts. El patch añade evaluación financiera conservadora de salidas inciertas y publica intervalos de identificación; no modifica G/M/R ni la caja canónica. La política exacta y sus límites están en la sección 14 de `pulse-four-pillars-v1-implementation.md`.
 
 Una empresa `complete_bounded` tiene un punto explícitamente estimado, no evidencia de deuda `verified`. El intervalo Health sólo propaga el intervalo Debt con los demás pilares/hechos fijos: **no es un intervalo de confianza ni toda la incertidumbre de clasificación**. La UI usa el estimador, motivo e intervalos calculados por Python.
 

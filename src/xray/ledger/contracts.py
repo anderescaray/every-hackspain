@@ -13,9 +13,9 @@ from xray.ledger.debt_uncertainty import (
 )
 
 SCHEMA_VERSION = "1.0"
-CLEANING_VERSION = "cleaning-v1"
-CLASSIFICATION_VERSION = "cash-truth-v1"
-FACTS_VERSION = "monthly-facts-v1.1"
+CLEANING_VERSION = "cleaning-v2"
+CLASSIFICATION_VERSION = "cash-truth-v2"
+FACTS_VERSION = "monthly-facts-v2"
 ECONOMIC_CLASSES = (
     "operating", "own_account_circulation", "group_or_internal", "external_financing",
     "debt_service", "investment", "uncertain",

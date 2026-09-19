@@ -1,6 +1,7 @@
 import pandas as pd
 
 from xray.features.temporal import divide
+from xray.fx import REPORTING_CURRENCY, to_eur
 
 
 INVOICE_AMOUNTS = ["inv_issued_amount", "inv_received_amount"]
@@ -10,8 +11,11 @@ for _direction in ("ar", "ap"):
 
 def prepare_invoices(tables, config):
     f = tables["invoices"].copy()
-    f["amount"] = f.amount.astype(float)
-    f = f.loc[f.issuance_date.lt(config.stop)]
+    f = f.loc[f.issuance_date.lt(config.stop)].rename(columns={"currency": "source_currency"})
+    # D32: importes en EUR con tipo fijo según la moneda de la factura.
+    f["amount"] = to_eur(f.amount.astype(float), f.source_currency)
+    f["currency"] = REPORTING_CURRENCY
+    f["currency"] = f.currency.where(f.source_currency.notna())
     f["group_id"] = f.company_id.map(tables["companies"].set_index("company_id").group_id)
     f["absolute"] = f.amount.abs()
     f["valid_document"] = f.document_type.eq("invoice") & ~f.is_possible_duplicate

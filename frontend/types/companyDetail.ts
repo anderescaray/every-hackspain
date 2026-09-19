@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { canonicalCashTruthSchema, compositionFields, operatingValuesSchema, operatingWeightsSchema, pulseEnvelopeShape, pulsePillarSchema, pulseSchema, pulseStatusSchema } from "./pulse";
+import { canonicalCashTruthSchema, compositionFields, isDualHealthVersion, operatingValuesSchema, operatingWeightsSchema, pulseEnvelopeShape, pulsePillarSchema, pulseSchema, pulseStatusSchema } from "./pulse";
 
 const text = z.string().min(1).max(5000);
 const score = z.number().finite().min(0).max(100);
@@ -134,7 +134,7 @@ export const companyDetailSchema = z.object({
   const expectedStatus = Object.values(source.pillars).every((pillar) => pillar.score === null) ? "insufficient_evidence" : source.status;
   if (company.status !== expectedStatus) issue("Estado de identificación incoherente", ["status"]);
   if (company.health_score !== source.health || company.health_score_model.version !== source.score_version) issue("El alias histórico Health debe copiar Extended Health de Pulse", ["health_score"]);
-  if (company.score_version === "PulseFourPillars-v1.1") {
+  if (isDualHealthVersion(company.score_version)) {
     for (const key of ["composition_version", "operating_health", "extended_health", "health_level"] as const) {
       if (company[key] !== source[key]) issue("Composición distinta del resultado Pulse", [key]);
     }

@@ -17,14 +17,14 @@ def fee_only(start, month, product="P1"):
 
 def test_states_over_a_typical_onboarding_and_disconnection():
     rows = (fee_only(1, 1) + fee_only(2, 2)                 # ene-feb: solo comisión -> pre_activity
-            + active_month(10, 3) + active_month(20, 4)     # mar-abr: primera actividad real -> onboarding
+            + active_month(10, 3) + active_month(20, 4)     # mar: primera actividad real -> onboarding (D33: 1 mes); abr -> ok
             + active_month(30, 5)                           # may: comparable -> ok
             + fee_only(40, 6))                              # jun: vuelve a solo comisión -> dormant
     panel = company(build(fixture_tables(rows)))
-    assert panel.coverage_state.tolist() == ["pre_activity", "pre_activity", "onboarding", "onboarding", "ok", "dormant"]
+    assert panel.coverage_state.tolist() == ["pre_activity", "pre_activity", "onboarding", "ok", "ok", "dormant"]
     assert panel.tx_dormant_accounts.tolist() == [1, 1, 0, 0, 0, 1]
     assert panel.months_since_first_activity.tolist()[2:] == [0, 1, 2, 3]
-    assert panel.is_coverage_comparable.tolist() == [False, False, False, False, True, False]
+    assert panel.is_coverage_comparable.tolist() == [False, False, False, True, True, False]
     # C2 no tiene movimientos: todo no_data y nunca se etiqueta como dormida
     assert (company(build(fixture_tables(rows)), "C2").coverage_state == "no_data").all()
 
@@ -35,7 +35,7 @@ def test_new_account_and_dropped_account_are_account_change():
             + active_month(50, 5) + active_month(60, 5, product="P2")               # may: las dos -> ok
             + active_month(70, 6))                                                  # jun: desaparece P2
     panel = company(build(fixture_tables(rows)))
-    assert panel.coverage_state.tolist() == ["onboarding", "onboarding", "ok", "account_change", "ok", "account_change"]
+    assert panel.coverage_state.tolist() == ["onboarding", "ok", "ok", "account_change", "ok", "account_change"]
     assert panel.tx_new_active_accounts.tolist() == [1, 0, 0, 1, 0, 0]
     assert panel.tx_dropped_active_accounts.tolist() == [0, 0, 0, 0, 0, 1]
 

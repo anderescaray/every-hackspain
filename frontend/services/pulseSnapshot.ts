@@ -73,3 +73,9 @@ export async function readPulseDocument(relative: string, makeError: () => Error
     throw makeError();
   }
 }
+
+export async function listPulseDocuments(prefix: "companies/" | "groups/") {
+  const snapshot = await getSnapshot();
+  if (!snapshot) return null;
+  return Object.keys(snapshot.manifest.outputs_sha256).filter((relative) => relative.startsWith(prefix)).sort();
+}

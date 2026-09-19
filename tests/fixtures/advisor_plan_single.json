@@ -1,0 +1,194 @@
+{
+  "schema_version": 1,
+  "method": "group_treasury_advisor_v1",
+  "group_id": "GROUP_0200",
+  "month": "2026-08-01",
+  "config": {
+    "month": "2026-08-01",
+    "levers": [
+      "D1",
+      "P"
+    ],
+    "fractions": [
+      0.25,
+      0.5,
+      0.75,
+      1.0
+    ],
+    "donor_buffer_months": 2.0,
+    "donor_level_floor_drop": 5.0,
+    "horizon_months": 6,
+    "report_k": [
+      1,
+      6
+    ],
+    "utility_knots": [
+      [
+        0,
+        3.0
+      ],
+      [
+        40,
+        2.0
+      ],
+      [
+        70,
+        1.0
+      ]
+    ],
+    "tramo_bounds": [
+      40.0,
+      70.0
+    ],
+    "subsidiary_weighting": "equal",
+    "min_gain_utility": 0.25,
+    "max_steps": 10,
+    "exhaustive_max_subsidiaries": 6,
+    "liquidity_constrained_runway": 1.0,
+    "rejected_alternatives_kept": 5,
+    "sensitivity_grid": [
+      0.01,
+      0.05,
+      0.1,
+      0.25
+    ],
+    "sensitivity_r_max": {
+      "cut_outflow": 0.5,
+      "raise_inflow": 1.0,
+      "debt_service_cut": 1.0,
+      "ap_on_time": 1.0,
+      "ar_faster": 1.0
+    },
+    "finite_difference_eps": 0.0001,
+    "bisection_tol": 0.0001,
+    "reporting_currency": "EUR",
+    "fx_rates_to_eur": {
+      "EUR": 1.0,
+      "USD": 1.17,
+      "GBP": 0.86
+    },
+    "fx_source": "approximate",
+    "fx_asof": "2026-09-01"
+  },
+  "status": "single_subsidiary",
+  "reporting_currency": "EUR",
+  "coverage": {
+    "subsidiaries": 1,
+    "optimizable": 1,
+    "not_scored": 0,
+    "with_reliable_cash": 1,
+    "with_debt_component": 1,
+    "with_ap_component": 0,
+    "currencies": [
+      "EUR"
+    ]
+  },
+  "baseline": {
+    "group_utility_0_100": 86.5,
+    "min_level": 71.7,
+    "mean_level": 71.7,
+    "levels_by_tramo": {
+      "red": 0,
+      "amber": 0,
+      "green": 1
+    },
+    "consolidated_group_currency_score": {
+      "EUR": 74.0
+    },
+    "subsidiaries": [
+      {
+        "company_id": "COMP_0555",
+        "currency": "EUR",
+        "level": 71.7,
+        "score": 74.0,
+        "momentum_adjustment": 2.3,
+        "tramo": "green",
+        "score_status": "scored",
+        "score_reason": null,
+        "components": {
+          "operations": 59.3,
+          "debt": 94.0,
+          "collections": null,
+          "payments": null
+        },
+        "signals": {
+          "op_margin_w": 0.021,
+          "debt_service_w": 0.03,
+          "ar_delay_w": null,
+          "ap_delay_w": null,
+          "level_inflow_sum": 720000.0,
+          "window_outflow_sum": 690000.0,
+          "monthly_debt_service": 3600.0
+        },
+        "liquidity": {
+          "reconstructed_cash": 95000.0,
+          "reliable": true,
+          "runway_months": 0.8,
+          "buffer": 237200.0,
+          "excess_cash": 0.0
+        },
+        "ap": {
+          "overdue_amount": null,
+          "due_30": null,
+          "due_60": null,
+          "gap": null
+        }
+      }
+    ]
+  },
+  "diagnosis": {
+    "bottleneck": {
+      "company_id": "COMP_0555",
+      "level": 71.7,
+      "weakest_components": [
+        "operations"
+      ]
+    },
+    "structural_flags": [],
+    "unexplained_ap_delays": [],
+    "donor_candidates": [],
+    "recipient_candidates": []
+  },
+  "levers_evaluated": [],
+  "plan": {
+    "steps": [],
+    "totals": {
+      "k1": {
+        "group_utility_after": 86.5,
+        "min_level_after": 71.7
+      },
+      "k6": {
+        "group_utility_after": 86.5,
+        "min_level_after": 71.7
+      }
+    },
+    "cash_committed_by_donor": {},
+    "stopped_because": "single_subsidiary"
+  },
+  "rejected_alternatives": [],
+  "certificate": {
+    "checked": false,
+    "best_single_utility": null,
+    "best_pair_utility": null,
+    "greedy_utility": 86.5,
+    "greedy_gap": null
+  },
+  "assumptions": [
+    "estacionariedad de flujos y servicio en la ventana",
+    "el credito intragrupo no se liquida por banco en el horizonte",
+    "no se modelan fiscalidad, legal, covenants ni precio intragrupo"
+  ],
+  "limitations": [
+    "caja reconstruida retrospectivamente; no saldo observado",
+    "momentum no simulado",
+    "el consolidado grupo-moneda no cambia con D1 y no se recalcula con P"
+  ],
+  "evidence": {},
+  "generated_at": "2026-09-19T18:00:00+00:00",
+  "inputs_sha256": {
+    "company_monthly_features.parquet": "3f9a1c0e7b2d4a5f6c8e9d0b1a2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4",
+    "scores_v2/company_monthly_scores.parquet": "a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e",
+    "scores_v2/_company_score_reference.json": "0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d",
+    "company_currency_liquidity_context.parquet": "9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d"
+  }
+}

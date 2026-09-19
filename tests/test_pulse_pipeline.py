@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from xray.artifacts import publish_immutable_run, recursive_hashes, sha256, verify_run
+from xray.fx import FX_TO_EUR
 from xray.pulse.pipeline import _source_code, run
 
 
@@ -51,7 +52,7 @@ def raw_fixture(path: Path, *, currencies=("EUR",), future=False) -> Path:
 
 
 def _run(raw: Path, out: Path, **kwargs):
-    return run(raw, out, as_of="2026-07-31", data_vintage="2026-09-01", verbose=False, **kwargs)
+    return run(raw, out, as_of="2026-07-31", data_vintage="2026-09-19", verbose=False, **kwargs)
 
 
 def _score(out: Path, manifest: dict, currency="EUR") -> dict:
@@ -73,10 +74,16 @@ def test_raw_to_immutable_run_reconciles_and_repeats(tmp_path):
     assert score["status"] == "complete_verified"
     assert score["health"] == sum(p["health_contribution"] for p in score["pillars"].values())
     assert score["lineage"]["history_mode"] == "retrospective_restatement"
-    assert score["lineage"]["knowledge_cutoff"] == "2026-09-01"
+    assert score["lineage"]["knowledge_cutoff"] == "2026-09-19"
+    assert score["lineage"]["fx_temporal_basis"] == "post_hoc_conversion"
+    assert "fixed_fx_rates_observed_after_economic_cutoff" in score["lineage"]["temporal_limitations"]
     assert score["change"]["previous_health"] is not None
-    assert first["versions"]["facts_version"]
-    assert first["versions"]["config_version"]
+    assert first["versions"] == {
+        "schema_version": "1.0", "cleaning_version": "cleaning-v2",
+        "classification_version": "cash-truth-v2", "facts_version": "monthly-facts-v2",
+        "score_version": "PulseFourPillars-v1.2", "config_version": "pulse-config-v1.2",
+    }
+    assert {key: score[key] for key in first["versions"]} == first["versions"]
     assert _run(raw, out) == first
     assert hashes == recursive_hashes(run_dir)
     other = tmp_path / "other_destination"
@@ -103,17 +110,43 @@ def test_future_raw_twin_does_not_change_past_facts_or_pillars(tmp_path):
     assert "EUR_future" not in set(ledger.transaction_id)
 
 
-def test_currency_runs_do_not_overwrite_or_mix(tmp_path):
+def test_source_currencies_consolidate_once_into_eur_reporting_panel(tmp_path):
     raw = raw_fixture(tmp_path / "raw", currencies=("EUR", "USD"))
     out = tmp_path / "out"
     manifest = _run(raw, out)
-    eur, usd = _score(out, manifest, "EUR"), _score(out, manifest, "USD")
-    assert eur["currency"] == "EUR" and usd["currency"] == "USD"
-    assert eur["health"] == usd["health"]
+    eur = _score(out, manifest, "EUR")
+    assert eur["currency"] == "EUR"
+    assert not (out / "runs" / manifest["run_id"] / "companies" / "COMP_1084" / "USD").exists()
+    ledger = pd.read_parquet(out / "runs" / manifest["run_id"] / "ledger.parquet")
+    assert set(ledger.source_currency) == {"EUR", "USD"}
+    assert set(ledger.currency) == {"EUR"}
+    usd_collection = ledger.loc[ledger.transaction_id.eq("USD_1_collection")].iloc[0]
+    assert usd_collection.amount == pytest.approx(usd_collection.amount_source / FX_TO_EUR["USD"])
     portfolio = json.loads((out / "runs" / manifest["run_id"] / "portfolio.json").read_text())
-    assert {r["currency"] for r in portfolio["companies"]} == {"EUR", "USD"}
-    assert len(portfolio["companies"]) == 2
+    assert {r["currency"] for r in portfolio["companies"]} == {"EUR"}
+    assert len(portfolio["companies"]) == 1
     assert all("evidence" not in row for row in portfolio["companies"])
+
+
+def test_company_with_only_usd_sources_still_has_eur_reporting_panel(tmp_path):
+    raw = raw_fixture(tmp_path / "raw", currencies=("USD",))
+    companies = pd.read_csv(raw / "companies.csv")
+    companies["currency"] = "USD"
+    companies.to_csv(raw / "companies.csv", index=False)
+    out = tmp_path / "out"
+    manifest = _run(raw, out)
+    assert _score(out, manifest, "EUR")["company_id"] == "COMP_1084"
+    assert not (out / "runs" / manifest["run_id"] / "companies" / "COMP_1084" / "USD").exists()
+    assert manifest["rows"]["scores"] == 1
+
+
+def test_historical_v11_config_cannot_be_relabelled_with_d32_facts(tmp_path):
+    raw = raw_fixture(tmp_path / "raw")
+    out = tmp_path / "out"
+    old_config = Path(__file__).parents[1] / "src/xray/pulse/configs/pulse_four_pillars_v1_1.json"
+    with pytest.raises(ValueError, match="incompatible with the canonical classification version"):
+        _run(raw, out, config_path=old_config)
+    assert not out.exists()
 
 
 def test_tampered_run_rejected_before_previous_comparison(tmp_path):
@@ -170,12 +203,15 @@ def test_code_identity_has_no_git_or_docs_dependency():
     assert all(not name.endswith(".md") for name in source["source_sha256"])
     assert "pulse/scorer.py" in source["source_sha256"]
     assert "ledger/classify.py" in source["source_sha256"]
+    assert "fx.py" in source["source_sha256"]
 
 
 def test_source_vintage_required_and_invalid_dates_fail(tmp_path):
     raw = raw_fixture(tmp_path / "raw")
     with pytest.raises(ValueError, match="predate"):
         run(raw, tmp_path / "out", as_of="2026-07-31", data_vintage="2026-01-01")
+    with pytest.raises(ValueError, match="fixed FX rates' knowledge date"):
+        run(raw, tmp_path / "out", as_of="2026-07-31", data_vintage="2026-09-01")
     frame = pd.read_csv(raw / "transactions.csv")
     frame.loc[0, "date"] = "not-a-date"
     frame.to_csv(raw / "transactions.csv", index=False)
@@ -193,7 +229,7 @@ def test_cached_classification_evidence_is_explicit_and_snapshotted(tmp_path):
     stored = out / "runs" / manifest["run_id"] / "classification_evidence" / "template_categories.parquet"
     assert sha256(stored) == sha256(cache)
     assert manifest["classification_evidence_hash"] == sha256(cache)
-    assert _score(out, manifest)["classification_version"].startswith("cash-truth-v1+jev-")
+    assert _score(out, manifest)["classification_version"].startswith("cash-truth-v2+jev-")
     assert "classification_evidence/template_categories.parquet" in manifest["outputs_sha256"]
 
 

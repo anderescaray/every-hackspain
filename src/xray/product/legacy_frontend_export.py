@@ -1,5 +1,8 @@
-"""Research-only legacy V2 exporter. Never used by the active web pipeline."""
-"""Exporta los artefactos de `xray.product` al contrato del frontend (docs/frontend-data-contract.md).
+"""Research-only legacy V2 exporter. Never used by the active Pulse web pipeline.
+
+Exporta los artefactos de ``xray.product`` al antiguo contrato frontend 2.0.
+Por defecto escribe fuera de ``frontend/public`` para evitar datos sueltos
+que parezcan el snapshot Pulse canónico.
 
 Empresa: `schema_version 2.0` -> frontend/public/generated/companies/<company_id>.json
 Grupo:   `schema_version 1.0` -> frontend/public/generated/groups/<group_id>.json
@@ -19,9 +22,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from xray.paths import PROCESSED_DIR, ROOT
+from xray.paths import PROCESSED_DIR
 
-FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
+FRONTEND_GENERATED = PROCESSED_DIR / "frontend_legacy_v2"
 MODEL_VERSION = "financial_smoothed_v2+frontend-export-1"
 # Pesos efectivos de V2 traducidos a las cuatro dimensiones del contrato (suman 1):
 # score = level + 0.2·(momentum−50); level = 0.45 operación + 0.25 deuda + 0.15 cobros + 0.15 pagos.
@@ -213,22 +216,38 @@ def _evidence_group(evidence_rows, period):
              "confidence": None, "total_count": int(evidence_rows.attrs.get("total_count", len(rows))), "rows": rows}]
 
 
-def _simulation():
-    inputs = [
-        {"key": "customer_term", "label": "Plazo concedido a clientes", "unit": "days", "baseline": 30, "min": -30, "max": 60, "step": 5,
-         "explanation": "Ajuste relativo del plazo medio concedido a clientes."},
-        {"key": "collection_delay", "label": "Retraso de cobro", "unit": "days", "baseline": 0, "min": 0, "max": 60, "step": 5,
-         "explanation": "Días adicionales de retraso sobre vencimiento."},
-        {"key": "supplier_term", "label": "Plazo recibido de proveedores", "unit": "days", "baseline": 30, "min": -30, "max": 60, "step": 5,
-         "explanation": "Ajuste relativo del plazo recibido de proveedores."},
-        {"key": "internal_support", "label": "Apoyo interno", "unit": "%", "baseline": 100, "min": -100, "max": 0, "step": 10,
-         "explanation": "Porcentaje del apoyo intragrupo actual que se mantiene."},
-    ]
-    return {"inputs": inputs, "scenarios": [], "example_id": None,
-            "methodology": "Los escenarios precalculados todavía no se exportan: el simulador muestra ausencia en lugar de estimar. Escenario, no predicción."}
+def _simulation(scenarios=None, health_score=None, has_invoices=True):
+    from xray.product.whatif import LEVERS, METHODOLOGY
+    inputs = [{"key": key, "label": spec["label"], "unit": spec["unit"], "baseline": spec["baseline"], "min": spec["min"],
+               "max": spec["max"], "step": spec["step"], "explanation": spec["explanation"]} for key, spec in LEVERS.items()]
+    if scenarios is None or not len(scenarios):
+        return {"inputs": inputs, "scenarios": [], "example_id": None,
+                "methodology": "Los escenarios precalculados todavía no están disponibles para esta empresa: el simulador muestra ausencia en lugar de estimar. Escenario, no predicción."}
+    out, best = [], None
+    for r in scenarios.itertuples(index=False):
+        lever = None if r.scenario_id == "base" else r.scenario_id.split(":")[0]
+        points = round(float(r.delta), 1)
+        label = "Situación actual" if lever is None else f"{LEVERS[lever]['label']}: {getattr(r, lever):+d} {'%' if LEVERS[lever]['unit'] == '%' else 'días'}"
+        if lever is None:
+            explanation = "Sin cambios: coincide con el Health Score publicado."
+        elif points == 0 and lever in ("collection_delay", "supplier_term") and not has_invoices:
+            explanation = "Sin efecto: la empresa no tiene facturas en la ventana, así que el retraso de cobro/pago no forma parte de su score."
+        elif points == 0:
+            explanation = "Sin efecto apreciable sobre el score con la referencia actual."
+        else:
+            explanation = f"Cambio sostenido seis meses; el Health Score pasa de {int(round(r.base_score))} a {int(round(r.score))} ({points:+.1f} puntos)."
+        out.append({"id": r.scenario_id, "label": label,
+                    "inputs": {k: int(getattr(r, k)) for k in ("customer_term", "collection_delay", "supplier_term", "internal_support")},
+                    "health_score": _score(r.score), "impacts": [] if lever is None else [{"key": lever, "label": LEVERS[lever]["label"], "points": points}],
+                    "explanation": explanation})
+        if lever is not None and (best is None or abs(points) > abs(best[1])):
+            best = (r.scenario_id, points)
+    if health_score is not None:
+        out = [s for s in out if s["id"] != "base" or s["health_score"] == health_score]
+    return {"inputs": inputs, "scenarios": out, "example_id": best[0] if best and best[1] != 0 else None, "methodology": METHODOLOGY}
 
 
-def company_detail(company, cash_summary_row, evidence_rows):
+def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
     """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno."""
     currency = "EUR"
     block = (company.get("currencies") or {}).get(currency)
@@ -257,7 +276,9 @@ def company_detail(company, cash_summary_row, evidence_rows):
         "drivers_period": f"{_month_label(last['month'])} · cambio frente al mes anterior",
         "drivers": _drivers(block.get("why_changed")),
         "cash_truth": cash, "time_borrowed": {"ar": None, "ap": None}, "alerts": [],
-        "evidence": _evidence_group(evidence_rows, cash["period"]), "simulation": _simulation(),
+        "evidence": _evidence_group(evidence_rows, cash["period"]),
+        "simulation": _simulation(scenarios, _score(last["score"]), has_invoices=_num(last.get("level_collections")) is not None
+                                  or _num(last.get("level_payments")) is not None),
     }
 
 
@@ -386,6 +407,13 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     evidence_path = product_dir / "evidence" / "cash_truth_tx.parquet"
     evidence = pd.read_parquet(evidence_path) if evidence_path.exists() else pd.DataFrame(columns=["company_id", "currency", "month", "bucket", "transaction_id", "date", "amount", "category", "description"])
     evidence = evidence[evidence.currency.eq("EUR")]
+    whatif_path = product_dir / "whatif_scenarios.parquet"
+    whatif = pd.read_parquet(whatif_path) if whatif_path.exists() else None
+    if whatif is not None:
+        whatif = whatif[whatif.month.eq(latest)]
+        whatif_groups = {cid: frame for cid, frame in whatif.groupby("company_id", sort=False)}
+    else:
+        whatif_groups = {}
     details, written, skipped = {}, 0, 0
     for file in sorted((product_dir / "companies").glob("COMP_*.json")):
         company = json.loads(file.read_text(encoding="utf-8"))
@@ -393,7 +421,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
         window = [pd.Timestamp(m) for m in (block.get("cash_truth") or {}).get("window_months", [])]
         rows = _sample_evidence(evidence, company["company_id"], window) if window else evidence.iloc[:0]
         summary_row = summary.loc[company["company_id"]].to_dict() if company["company_id"] in summary.index else None
-        detail = company_detail(company, summary_row, rows)
+        detail = company_detail(company, summary_row, rows, whatif_groups.get(company["company_id"]))
         if detail is None:
             skipped += 1
             continue
@@ -410,6 +438,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     _write_json(out_dir / "portfolio.json", portfolio_export(portfolio, details, cash_by_company))
     manifest = {"model_version": MODEL_VERSION, "latest_month": portfolio["latest_month"], "companies_written": written,
                 "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
+                "companies_with_scenarios": len(whatif_groups),
                 "product_manifest_sha256": _sha(product_dir / "_product_manifest.json")}
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)
     say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} · portfolio {len(portfolio['companies'])} -> {out_dir}")

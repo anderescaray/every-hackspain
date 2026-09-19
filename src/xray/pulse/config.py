@@ -8,7 +8,7 @@ from typing import Any
 
 from xray.pulse.contracts import canonical_json
 
-DEFAULT_CONFIG = "pulse_four_pillars_v1_1.json"
+DEFAULT_CONFIG = "pulse_four_pillars_v1_2.json"
 
 
 @dataclass(frozen=True)

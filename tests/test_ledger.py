@@ -5,12 +5,15 @@ from dataclasses import fields
 import pandas as pd
 import pytest
 
+from xray.fx import FX_TO_EUR
+
 from xray.ledger import (
     CashTruthResult,
     LedgerTransaction,
     MonthlyFacts,
     build_cash_truth_result,
     build_monthly_facts,
+    classification_metadata,
     classify_transactions,
 )
 from xray.product.cash_truth import classify as classify_product
@@ -61,7 +64,7 @@ def test_debt_once_even_own_settlement_and_only_verified_financing_fees():
 
 def test_uncertain_stays_explicit_and_coverage_reconciles_eligible_ledger():
     ledger, monthly = facts([tx(1, 100), tx(2, -30, "uncategorized"), tx(3, 50, "transfer"),
-                            tx(4, 99999, status="pending"), tx(5, -1000, "payment", is_extreme_amount=True)])
+                            tx(4, 99999, status="pending"), tx(5, -1000, "payment", is_sync_duplicate=True)])  # D32: fuera por calidad, no por tamaño
     jan = monthly.iloc[0]
     assert jan.uncertain_amount == 80
     assert jan.classified_amount == 100
@@ -152,12 +155,29 @@ def test_empty_company_and_multicurrency_do_not_invent_facts():
     units = pd.DataFrame({"company_id": ["EMPTY"], "currency": ["EUR"]})
     monthly = build_monthly_facts(ledger, as_of="2026-06-30", company_currencies=units)
     jan = monthly.loc[monthly.month.eq("2026-01-01")].set_index(["company_id", "currency"])
-    assert jan.loc[("COMP_1084", "EUR"), "operating_inflows"] == 100
-    assert jan.loc[("COMP_1084", "USD"), "operating_inflows"] == 200
+    # D32: la cuenta en USD se convierte a EUR con tipo fijo y se consolida, no forma otra unidad.
+    assert jan.loc[("COMP_1084", "EUR"), "operating_inflows"] == pytest.approx(100 + 200 / FX_TO_EUR["USD"])
+    assert ("COMP_1084", "USD") not in jan.index
     assert pd.isna(jan.loc[("EMPTY", "EUR"), "operating_inflows"])
     empty = ledger.iloc[:0]
     out = build_monthly_facts(empty, as_of="2026-06-30", company_currencies=units)
     assert len(out) == 6 and not out.history_observed.any()
+
+
+def test_fx_policy_is_versioned_in_cash_truth_metadata():
+    meta = classification_metadata()
+    policy = meta["config"]
+    assert policy["reporting_currency"] == "EUR"
+    assert policy["fx_as_of"] == "2026-09-18"
+    assert policy["fx_knowledge_date"] == "2026-09-19"
+    assert len(policy["fx_rates_sha256"]) == 64
+    ledger = classify_transactions(pd.DataFrame([tx(1, 100, currency="USD")]))
+    row = ledger.iloc[0]
+    assert row.source_currency == "USD"
+    assert row.currency == "EUR"
+    assert row.amount_source == 100
+    assert row.amount == pytest.approx(100 / FX_TO_EUR["USD"])
+    assert ledger.attrs["classification_metadata"]["config"] == policy
 
 
 def test_invalid_ids_or_amounts_fail_loudly():
@@ -183,7 +203,7 @@ def test_static_enrichment_is_shared_versioned_and_cannot_override_financing(tmp
     pd.testing.assert_frame_equal(a, legacy.drop(columns="bucket"))
     assert a.category_source.eq("ai").all()
     assert a.classification_evidence_hash.str.len().eq(64).all()
-    assert a.classification_version.str.startswith("cash-truth-v1+jev-").all()
+    assert a.classification_version.str.startswith("cash-truth-v2+jev-").all()
     b = classify_transactions(frame, ai_categories_path=path, ai_min_confidence=.99)
     assert a.classification_config_hash.iloc[0] != b.classification_config_hash.iloc[0]
     assert a.classification_evidence_hash.iloc[0] == b.classification_evidence_hash.iloc[0]

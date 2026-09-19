@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from xray.fx import FX_ASOF, FX_KNOWLEDGE_DATE, FX_SOURCE, FX_TO_EUR, REPORTING_CURRENCY, to_eur
 from xray.ledger.contracts import CLASSIFICATION_VERSION
 from xray.ledger.debt_uncertainty import assess_debt_uncertainty
 from xray.ledger.enrichment import apply_ai_categories, load_template_categories
@@ -22,8 +23,8 @@ INFLOW = frozenset({"collection", "bulk_collection", "pos_settlement", "cash_set
 OUTFLOW = frozenset({"payment", "bulk_payment", "utility", "salary", "social_security",
                      "tax", "collection_refund"})
 FIXED = frozenset({"salary", "social_security", "tax", "utility"})
-QUALITY_FLAGS = ("is_extreme_amount", "is_relative_outlier", "is_sync_duplicate",
-                 "is_unknown_product", "has_invalid_exchange_rate")
+# D32: ningún movimiento se excluye por su tamaño (D01/D02 retiradas) ni por `exchange_rate`, que no se usa.
+QUALITY_FLAGS = ("is_sync_duplicate", "is_unknown_product")
 UNPAIRED = frozenset({"transfer", "cash_withdrawal", "pos_withdrawal"})
 
 
@@ -36,9 +37,13 @@ def classification_metadata(ai_categories_path: str | Path | None = None,
     """Explicit method/evidence identities, including for an empty ledger."""
     if not 0 <= ai_min_confidence <= 1:
         raise ValueError("ai_min_confidence must be in [0, 1]")
+    rates_hash = hashlib.sha256(json.dumps(FX_TO_EUR, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     classification_config = {"classification_version": CLASSIFICATION_VERSION,
         "enrichment_version": "jev-static-v1", "enrichment_enabled": ai_categories_path is not None,
-        "ai_min_confidence": ai_min_confidence if ai_categories_path is not None else None}
+        "ai_min_confidence": ai_min_confidence if ai_categories_path is not None else None,
+        "reporting_currency": REPORTING_CURRENCY, "fx_as_of": FX_ASOF,
+        "fx_knowledge_date": FX_KNOWLEDGE_DATE,
+        "fx_source": FX_SOURCE, "fx_rates_sha256": rates_hash}
     config_hash = hashlib.sha256(json.dumps(classification_config, sort_keys=True).encode()).hexdigest()
     evidence_hash = hashlib.sha256(Path(ai_categories_path).read_bytes()).hexdigest() if ai_categories_path is not None else None
     method_version = CLASSIFICATION_VERSION + ("+jev-" + config_hash[:12] if ai_categories_path is not None else "")
@@ -89,6 +94,11 @@ def classify_transactions(transactions: pd.DataFrame, *, as_of: Any = None,
         t["category_bank"] = t.category
         t["category_source"] = np.where(t.category.eq("uncategorized"), "none", "bank")
         t["category_ai_confidence"] = np.nan
+    # D32: importes en EUR con tipo fijo por moneda (xray.fx); moneda desconocida -> sin importe ni moneda.
+    # Después del enriquecimiento AI, que usa el signo del importe original.
+    t["amount_source"] = t.amount
+    t["amount"] = to_eur(t.amount, t.currency.astype(object).where(t.currency.notna()))
+    t["currency"] = pd.Series(REPORTING_CURRENCY, index=t.index, dtype="string").where(t.amount.notna())
     t["month"] = t.date.dt.to_period("M").dt.to_timestamp()
     t["classification_version"] = method_version
     t["classification_config_hash"] = config_hash
@@ -96,9 +106,7 @@ def classify_transactions(transactions: pd.DataFrame, *, as_of: Any = None,
     t["is_internal_candidate"] = _bool(t, "is_internal_transfer")
     t["is_group_candidate"] = _bool(t, "is_intragroup")
     quality = pd.DataFrame({name: _bool(t, name) for name in QUALITY_FLAGS}, index=t.index)
-    fx_ok = pd.to_numeric(t.exchange_rate, errors="coerce").eq(1)
-    t["eligible"] = (t.status.eq("booked") & fx_ok & t.currency.notna()
-                     & t.currency.str.fullmatch(r"[A-Z]{3}").fillna(False) & ~quality.any(axis=1))
+    t["eligible"] = t.status.eq("booked") & t.amount.notna() & t.currency.notna() & ~quality.any(axis=1)
     t["economic_class"] = "uncertain"
     t["economic_subclass"] = "unidentified"
     t["classification_rule"] = "CT99-insufficient-evidence"
@@ -155,7 +163,7 @@ def classify_transactions(transactions: pd.DataFrame, *, as_of: Any = None,
     t["included_in_debt_service"] = t.eligible & t.economic_class.eq("debt_service") & neg
     flag_arrays = {name: series.to_numpy() for name, series in quality.items()}
     flag_arrays.update({"not_booked": ~t.status.eq("booked").to_numpy(),
-                        "ambiguous_currency_or_fx": (~fx_ok | t.currency.isna()).to_numpy(),
+                        "unknown_currency": t.currency.isna().to_numpy(),
                         "uncertain_classification": t.is_uncertain.to_numpy(),
                         "internal_mirror_candidate": t.is_internal_candidate.to_numpy(),
                         "group_mirror_candidate": t.is_group_candidate.to_numpy(),

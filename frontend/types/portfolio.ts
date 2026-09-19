@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue, compositionFields } from "./pulse";
+import { pulseEnvelopeShape, pulseStatusSchema, identificationFields, identificationIssue, compositionFields, isDualHealthVersion } from "./pulse";
 
 const text = z.string().min(1).max(2000);
 const score = z.number().finite().min(0).max(100);
@@ -43,13 +43,13 @@ export const portfolioSchema = z.object({
   summary: text,
   items: z.array(itemSchema).max(5000),
 }).strict().superRefine((portfolio, ctx) => {
-  if (portfolio.score_version === "PulseFourPillars-v1.1" && portfolio.composition_version !== "operating-extended-health-v1") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Falta versión de composición", path: ["composition_version"] });
+  if (isDualHealthVersion(portfolio.score_version) && portfolio.composition_version !== "operating-extended-health-v1") ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Falta versión de composición", path: ["composition_version"] });
   const ids = portfolio.items.map((item) => item.company_id);
   if (new Set(ids).size !== ids.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Identificadores duplicados", path: ["items"] });
   portfolio.items.forEach((item, index) => {
     const invalid = identificationIssue(portfolio.score_version, item);
     if (invalid) ctx.addIssue({ code: z.ZodIssueCode.custom, message: invalid, path: ["items", index] });
-    if (portfolio.score_version === "PulseFourPillars-v1.1") {
+    if (isDualHealthVersion(portfolio.score_version)) {
       const operatingValid = [item.dimensions.cash_generation, item.dimensions.momentum, item.dimensions.resilience].every((value) => value !== null);
       const expectedLevel = !operatingValid ? null : item.dimensions.debt === null ? "operating_only" : item.health_evidence === "bounded" ? "extended_bounded" : "extended_verified";
       if (portfolio.composition_version !== "operating-extended-health-v1" || item.composition_version !== portfolio.composition_version || item.operating_health === undefined || item.extended_health === undefined || item.health_level === undefined || item.insights_available === undefined || item.missing_modules === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Falta composición Operating/Extended", path: ["items", index] });

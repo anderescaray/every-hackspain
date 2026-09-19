@@ -1,19 +1,24 @@
 import { readdir } from "node:fs/promises";
-import path from "node:path";
 import { CompanyDataError, getCompanyDetail } from "../services/companyData";
 import { getGroupDetail, GroupDataError } from "../services/groupData";
 import { getPortfolio, PortfolioDataError } from "../services/portfolioData";
+import { listPulseDocuments } from "../services/pulseSnapshot";
 
 async function main() {
   if (process.argv.includes("--portfolio")) {
     const portfolio = await getPortfolio();
-    if (!portfolio) throw new Error("No hay portfolio.json que validar.");
-    console.log(`portfolio.json: contrato válido (${portfolio.items.length} empresas, corte ${portfolio.as_of}).`);
+    if (!portfolio) throw new Error("No hay snapshot Pulse de cartera que validar.");
+    console.log(`Snapshot Pulse de cartera: contrato válido (${portfolio.items.length} empresas, corte ${portfolio.as_of}).`);
     return;
   }
   const groups = process.argv.includes("--groups");
-  const directory = groups ? process.env.GROUP_ANALYSIS_DIR || path.join(process.cwd(), "public/generated/groups") : process.env.COMPANY_ANALYSIS_DIR || path.join(process.cwd(), "public/generated/companies");
-  const files = (await readdir(directory)).filter((name) => name.endsWith(".json"));
+  const directory = groups ? process.env.GROUP_ANALYSIS_DIR : process.env.COMPANY_ANALYSIS_DIR;
+  const fixtureFiles = process.env.COMPANY_DATA_MODE === "fixtures" && directory
+    ? (await readdir(directory)).filter((name) => name.endsWith(".json"))
+    : null;
+  const prefix = groups ? "groups/" : "companies/";
+  const snapshotFiles = fixtureFiles ? null : await listPulseDocuments(prefix);
+  const files = fixtureFiles ?? snapshotFiles?.map((relative) => relative.slice(prefix.length)) ?? [];
   if (!files.length) throw new Error("No hay archivos JSON de análisis para validar.");
   for (const filename of files) {
     if (!(groups ? /^GROUP_\d{4,10}\.json$/ : /^COMP_\d{4,10}\.json$/).test(filename)) throw new Error(`Nombre de archivo no válido: ${filename}`);

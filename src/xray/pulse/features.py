@@ -175,7 +175,7 @@ def extract_features(facts: pd.DataFrame, *, company_id: str, currency: str,
                   "classification_coverage": coverage, "uncertain_amount_share": None if coverage is None else 1 - coverage,
                   "perimeter_consistency": perimeter,
                   "currency_consistency": {"status": "partial" if currency_issue else "unverified_source_coverage", "currency": currency,
-                                           "method": "separate_currency_panel_no_conversion",
+                                           "method": "fixed_rate_eur_conversion_d32",
                                            "unknown_currency_count": unknown_currency, "ambiguous_currency_count": ambiguous_currency},
                   "debt_evidence": {"status": debt_status, "reason": debt_reason,
                                     "scope": "observed_cash_service_not_total_contractual_obligations"}}

@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from xray.pulse import load_config, score_company
 from xray.pulse.debt import UNCERTAINTY_COLUMNS
@@ -16,7 +17,7 @@ def facts(*, principal=2., interest=1., uncertain=0., outflows=100.):
                        "debt_service_paid": principal + interest, "uncertain_outflows": uncertain,
                        "uncertain_inflows": 0., "uncertain_amount": uncertain, "classified_amount": 220.,
                        "excluded_outflows": 0., "unknown_currency_count": 0, "ambiguous_currency_count": 0,
-                       "facts_version": "monthly-facts-v1.1", "debt_uncertainty_version": "debt-uncertainty-v1"}.items():
+                       "facts_version": "monthly-facts-v2", "debt_uncertainty_version": "debt-uncertainty-v1"}.items():
         frame[key] = value
     for col in UNCERTAINTY_COLUMNS:
         frame[col] = uncertain if col in ("debt_unresolved_uncertain_outflows",
@@ -32,7 +33,8 @@ def score(frame=None, **kwargs):
 
 def test_operating_only_when_debt_is_not_identified():
     result = score(facts(principal=0., interest=0.))
-    assert result.score_version == "PulseFourPillars-v1.1"
+    assert result.score_version == "PulseFourPillars-v1.2"
+    assert result.cleaning_version == "cleaning-v2"
     assert result.composition_version == "operating-extended-health-v1"
     assert result.operating_health is not None
     assert result.extended_health is result.health is None
@@ -86,10 +88,32 @@ def test_new_debt_evidence_is_not_an_economic_health_delta():
 
 def test_historical_v101_replay_omits_new_composition_fields_and_preserves_pillars():
     old_config = load_config(Path(__file__).parents[1] / "src/xray/pulse/configs/pulse_four_pillars_v1_0_1.json")
-    old = score(config=old_config)
+    old_facts = facts()
+    old_facts["facts_version"] = "monthly-facts-v1.1"
+    old = score(old_facts, config=old_config)
     new = score()
     assert old.score_version == "PulseFourPillars-v1.0.1"
     assert "operating_health" not in old.to_dict()
     assert "extended_health" not in old.to_dict()
     assert old.pillars == new.pillars
     assert old.health == new.extended_health
+
+
+def test_v11_composition_config_remains_registered_for_historical_results():
+    previous_config = load_config(Path(__file__).parents[1] / "src/xray/pulse/configs/pulse_four_pillars_v1_1.json")
+    old_facts = facts()
+    old_facts["facts_version"] = "monthly-facts-v1.1"
+    previous = score(old_facts, config=previous_config)
+    current = score()
+    assert previous.score_version == "PulseFourPillars-v1.1"
+    assert previous.config_version == "pulse-config-v1.1"
+    assert previous.cleaning_version == "cleaning-v1"
+    assert previous.operating_health == current.operating_health
+    assert previous.extended_health == current.extended_health
+    assert previous.pillars == current.pillars
+
+
+def test_direct_scoring_rejects_mislabelling_v2_facts_as_historical_v11():
+    previous_config = load_config(Path(__file__).parents[1] / "src/xray/pulse/configs/pulse_four_pillars_v1_1.json")
+    with pytest.raises(ValueError, match="facts version is incompatible"):
+        score(facts(), config=previous_config)

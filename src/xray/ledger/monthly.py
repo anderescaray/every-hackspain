@@ -89,14 +89,15 @@ def build_monthly_facts(ledger: pd.DataFrame, *, as_of: Any,
         t.debt_uncertainty_status.isin(("debt_possible", "debt_unresolved")), 0.)
     t["uncertain_amount"] = eligible_abs.where(t.is_uncertain, 0.)
     t["classified_amount"] = eligible_abs.where(~t.is_uncertain, 0.)
-    # Pending rows are not cash. Booked quality exclusions remain diagnostics;
-    # FX-ambiguous amounts are not valid currency amounts and are counted only.
-    valid_currency = pd.to_numeric(t.exchange_rate, errors="coerce").eq(1) & t.currency.notna()
+    # Pending rows are not cash. Booked quality exclusions remain diagnostics.
+    # D32: every known currency is converted to EUR in the ledger, so there is no
+    # FX ambiguity left; only rows with unknown currency have no valid amount.
+    valid_currency = t.currency.notna()
     excluded = t.status.eq("booked") & ~eligible
     t["excluded_inflows"] = pos.where(excluded & valid_currency, 0.)
     t["excluded_outflows"] = neg.where(excluded & valid_currency, 0.)
     t["excluded_row_count"] = excluded.astype(int)
-    t["ambiguous_currency_count"] = (t.status.eq("booked") & ~valid_currency).astype(int)
+    t["ambiguous_currency_count"] = 0   # D32; unknown currency is added below as unknown_currency_count
     grouped = t.groupby(KEYS, observed=True)
     amounts = grouped[list(FLOW_COLUMNS) + ["excluded_inflows", "excluded_outflows"]].agg(math.fsum)
     # Financial identities use aggregated components, not a second summation path.

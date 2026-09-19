@@ -94,10 +94,14 @@ def score_core(window: FeatureWindow, *, company_id: str, currency: str, as_of,
     versions = window.frame.get("classification_version", pd.Series(dtype=str)).dropna().unique()
     if len(versions) > 1:
         raise ValueError("Monthly facts mix classification versions")
+    if len(versions) and not str(versions[0]).startswith(config.classification_version + "+") and str(versions[0]) != config.classification_version:
+        raise ValueError("Monthly facts classification version is incompatible with Pulse score configuration")
     classification_version = str(versions[0]) if len(versions) else (lineage or {}).get("classification_version", config.classification_version)
     fact_versions = window.frame.get("facts_version", pd.Series(dtype=str)).dropna().unique()
     if len(fact_versions) > 1:
         raise ValueError("Monthly facts mix facts versions")
+    if len(fact_versions) and "facts_version" in policy and str(fact_versions[0]) != policy["facts_version"]:
+        raise ValueError("Monthly facts version is incompatible with Pulse score configuration")
     facts_version = str(fact_versions[0]) if len(fact_versions) else policy.get("facts_version", "monthly-facts-v1")
     window.evidence["source_refs"] = {"ledger": (lineage or {}).get("ledger_ref", "ledger.parquet"),
                                       "facts": (lineage or {}).get("facts_ref", "monthly_facts.parquet")}
@@ -117,6 +121,7 @@ def score_core(window: FeatureWindow, *, company_id: str, currency: str, as_of,
                             contributions=contributions, economic_facts=window.sums, evidence=window.evidence,
                             flags=window.flags, config_version=policy["config_version"],
                             facts_version=facts_version,
+                            cleaning_version=policy.get("cleaning_version", "cleaning-v1"),
                             health_evidence=health_evidence, identified_range=identified_range,
                             **composition_fields)
 

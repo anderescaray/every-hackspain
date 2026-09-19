@@ -6,6 +6,7 @@ const text = z.string().min(1);
 export const pulseStatusSchema = z.enum(["complete", "complete_verified", "complete_bounded", "partial", "insufficient_evidence"]);
 export const isCompleteStatus = (status: z.infer<typeof pulseStatusSchema>) => ["complete", "complete_verified", "complete_bounded"].includes(status);
 export const healthEvidenceSchema = z.enum(["verified", "bounded", "partial", "unknown"]);
+export const isDualHealthVersion = (version: string) => version === "PulseFourPillars-v1.1" || version === "PulseFourPillars-v1.2";
 export const healthLevelSchema = z.enum(["operating_only", "extended_verified", "extended_bounded"]);
 const operatingKeys = ["generation", "momentum", "resilience"] as const;
 export const operatingValuesSchema = z.object({ generation: score.nullable(), momentum: score.nullable(), resilience: score.nullable() }).strict();
@@ -35,13 +36,13 @@ export function identificationIssue(method: string, item: {
 export const pulseEnvelopeShape = {
   snapshot_id: z.string().regex(/^web-[a-f0-9]{64}$/),
   run_id: text,
-  score_version: z.enum(["PulseFourPillars-v1.0", "PulseFourPillars-v1.0.1", "PulseFourPillars-v1.1"]),
+  score_version: z.enum(["PulseFourPillars-v1.0", "PulseFourPillars-v1.0.1", "PulseFourPillars-v1.1", "PulseFourPillars-v1.2"]),
   classification_version: text,
   cleaning_version: text,
   facts_version: text,
   config_version: text,
   as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  // This presentation is explicitly EUR-only; no implicit FX conversion.
+  // Frontend is EUR-only and does no FX; versioned D32 ledger converts known source currencies upstream.
   currency: z.literal("EUR"),
 };
 export const pulseEnvelopeSchema = z.object(pulseEnvelopeShape);
@@ -86,8 +87,8 @@ export const pulseSchema = z.object({
   const add = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   if (isCompleteStatus(pulse.status) !== (pulse.health !== null)) add("Health solo está identificado en un resultado completo");
   const patch = pulse.score_version !== "PulseFourPillars-v1.0";
-  const operatingComposition = pulse.score_version === "PulseFourPillars-v1.1";
-  const configVersion = operatingComposition ? "pulse-config-v1.1" : patch ? "pulse-config-v1.0.1" : "pulse-config-v1";
+  const operatingComposition = isDualHealthVersion(pulse.score_version);
+  const configVersion = pulse.score_version === "PulseFourPillars-v1.2" ? "pulse-config-v1.2" : operatingComposition ? "pulse-config-v1.1" : patch ? "pulse-config-v1.0.1" : "pulse-config-v1";
   if (pulse.config_version !== configVersion) add("Versión de configuración distinta del método");
   if (patch ? pulse.status === "complete" : !["complete", "partial"].includes(pulse.status)) add("Estado incompatible con la versión del motor");
   if (pulse.health_min > pulse.health_max) add("Límites de identificación inválidos");

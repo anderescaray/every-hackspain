@@ -56,10 +56,10 @@ export function CashTruthSection({ cash, companyId, groupId, onOpen }: { cash: C
           <small>Separada de la generación operativa.</small>
           <EvidenceButton refs={support?.evidence_refs ?? []} title={supportView.label} onOpen={onOpen} />
         </article>}
-        <article className={styles.unidentifiedOrigin} aria-label={uncertain?.label ?? "No identificado"}>
-          <h3>{uncertain?.label ?? "No identificado"}</h3>
+        <article className={styles.unidentifiedOrigin} aria-label="No identificado">
+          <h3>No identificado</h3>
           <strong title={uncertain ? exactMoney(uncertain.gross_movement) : undefined}>{uncertain ? money(uncertain.gross_movement) : "No disponible"}</strong>
-          <p>{uncertain?.explanation ?? "Origen no identificable con suficiente evidencia."}</p>
+          <p>Movimientos cuyo origen no puede determinarse con suficiente confianza.</p>
           <small>Volumen bruto, no generación neta de caja.</small>
           {uncertain?.evidence_refs.length ? <EvidenceButton refs={uncertain.evidence_refs} title="Movimientos no identificados" onOpen={onOpen} /> : <Confidence value={uncertain?.confidence ?? null} />}
         </article>

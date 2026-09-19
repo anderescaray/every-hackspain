@@ -16,7 +16,7 @@ python scripts/09_compute_pulse.py --raw-dir data \
   --data-vintage 2026-09-01 --company-id COMP_1084
 ```
 
-Sin `--company-id`, procesa el portfolio. La selección conserva otras empresas del grupo para detectar espejos; nunca mezcla monedas. `--previous-run` permite comparar una emisión almacenada, incluida una reexpresión del mismo `as_of`.
+Sin `--company-id`, procesa el portfolio. La selección conserva otras empresas del grupo para detectar espejos. Desde D32 todos los importes se convierten a EUR con tipo fijo por moneda (`xray.fx`) en el libro de caja. `--previous-run` permite comparar una emisión almacenada, incluida una reexpresión del mismo `as_of`.
 
 ## 2. Cash Truth
 
@@ -147,3 +147,27 @@ Límite previo fuera del pipeline canónico: `score_company` acepta DataFrames i
 - No hay renormalización por missing: Debt nulo deja `extended_health=null` y no afecta `operating_health`; G/M/R faltante deja ambos nulos. `health_level` distingue `operating_only`, `extended_verified`, `extended_bounded` o `null` si no hay diagnóstico operativo. `insights_available` y `missing_modules` declaran explícitamente qué puede mostrarse.
 - `operating_weights` y `operating_contributions` permiten reconciliar Operating sin cálculo en la UI; `contributions` existentes reconcilian Extended. La clave heredada `health` se conserva sólo como alias del **Extended** para consumidores históricos, nunca como nombre de una mezcla entre fórmulas. Portfolio y frontend deben emplear los nombres explícitos.
 - La atribución temporal compara Operating con Operating y Extended con Extended. Si aparece Debt por nueva evidencia sin cambiar I/O/N/S, el salto de nivel es `evidence_change`, no deterioro ni mejora económica; nunca se resta Operating a Extended como si fueran el mismo indicador.
+
+## 16. Integración sobre main D32: PulseFourPillars-v1.2
+
+La rama `score_v2` integra Pulse como fuente de la web sobre el `main` que
+introdujo D32 y el advisor V2. **No cambia fórmulas, pesos ni anclas de los
+cuatro pilares ni la composición Operating/Extended de v1.1**. Sí registra
+una nueva cadena de versiones (`cleaning-v2`, `cash-truth-v2`,
+`monthly-facts-v2`, `pulse-config-v1.2`, `PulseFourPillars-v1.2`) porque D32
+convierte importes de moneda conocida a EUR a tipo fijo, revisa exclusiones
+de limpieza y consolida los hechos en un panel EUR. La configuración v1.1
+permanece inmutable; su reproducción exacta requiere el código anterior a D32.
+
+La política FX queda identificada por fecha de tasa, fecha de conocimiento
+(2026-09-19), fuente y hash de tasas en el metadata de clasificación;
+`xray/fx.py` entra en el hash recursivo del código del run. El pipeline no
+admite `data_vintage` anterior a la disponibilidad de esos tipos. Un score
+v1.2 con `as_of=2026-08-31` es **retrospective_restatement** con vintage
+2026-09-19, no diagnóstico conocido entonces; la diferencia frente a v1.1
+pre-D32 es metodológica y no se etiqueta como cambio económico comparable.
+El exportador Pulse verifica run, versiones y aportaciones antes de
+publicar `current.json` + snapshot inmutable; la UI recibe `operating_health`
+como referencia principal de cartera, `extended_health` adicional y Debt
+independiente. `financial_smoothed_v2` queda aislado para investigación y
+advisor, nunca como sustituto silencioso de una puntuación Pulse ausente.

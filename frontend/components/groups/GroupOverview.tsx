@@ -3,6 +3,7 @@
 import { AnalysisLink as Link } from "@/components/navigation/AnalysisLink";
 import { useState } from "react";
 import type { GroupDetail, GroupInsight, GroupMetric } from "@/types/groupDetail";
+import { isDualHealthVersion } from "@/types/pulse";
 import { dateLabel, severityLabels, trajectoryLabels } from "@/lib/companyFormat";
 import { groupMoney, groupScore, priorityOrder, roleLabels } from "@/lib/groupPresentation";
 import { EvidenceButton, type OpenEvidence } from "@/components/insights/InsightPrimitives";
@@ -22,7 +23,7 @@ function Insights({ items, group, onOpen }: { items: GroupInsight[]; group: Grou
 }
 
 export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: OpenEvidence }) {
-  const dualHealth = group.score_version === "PulseFourPillars-v1.1";
+  const dualHealth = isDualHealthVersion(group.score_version);
   const [query, setQuery] = useState("");
   const [trajectory, setTrajectory] = useState("all");
   const members = [...group.members].filter((member) => member.company_id.toLowerCase().includes(query.toLowerCase()) && (trajectory === "all" || (member.trajectory ?? "unknown") === trajectory)).sort((a, b) => priorityOrder[a.attention] - priorityOrder[b.attention]);

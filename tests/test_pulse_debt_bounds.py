@@ -175,7 +175,7 @@ def test_uncertain_leave_one_out_updates_partition_and_does_not_certify_zero_ser
     changed = without_transaction(frame, row)
     assert changed.loc[0, "potentially_financial_uncertain_outflows"] == 0
     assert changed.loc[0, "debt_unresolved_uncertain_outflows"] == 0
-    assert recalculate(changed, before, load_config()).pillars["debt_obligations"]["score"] >= before.pillars["debt_obligations"]["score"]
+    assert recalculate(changed, before, load_config(V101_CONFIG)).pillars["debt_obligations"]["score"] >= before.pillars["debt_obligations"]["score"]
 
 
 def test_incomplete_invalid_debt_keeps_generation_independent():

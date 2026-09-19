@@ -26,10 +26,12 @@ from xray.pulse.contracts import PILLARS
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
 METHOD = "PulseFourPillars-v1.0.1"
 COMPOSED_METHOD = "PulseFourPillars-v1.1"
+CURRENT_METHOD = "PulseFourPillars-v1.2"
+COMPOSED_METHODS = {COMPOSED_METHOD, CURRENT_METHOD}
 COMPOSITION_VERSION = "operating-extended-health-v1"
 SUPPORTED_METHODS = {"PulseFourPillars-v1.0": "pulse-config-v1", METHOD: "pulse-config-v1.0.1",
-                     COMPOSED_METHOD: "pulse-config-v1.1"}
-BOUNDED_METHODS = {METHOD, COMPOSED_METHOD}
+                     COMPOSED_METHOD: "pulse-config-v1.1", CURRENT_METHOD: "pulse-config-v1.2"}
+BOUNDED_METHODS = {METHOD, *COMPOSED_METHODS}
 COMPLETE_STATUSES = {"complete", "complete_verified", "complete_bounded"}
 EXPORTER_VERSION = "pulse-frontend-v1.2"
 ALIASES = {"momentum": "momentum", "cash_generation": "generation",
@@ -130,7 +132,7 @@ def _validate_score(score: dict[str, Any], cash: dict[str, Any], envelope: WebEn
         _validate_bounded_contract(score)
     elif score["pillars"]["debt_obligations"].get("evidence_status") == "bounded":
         raise ValueError("Historical v1.0 cannot contain bounded Debt")
-    if method == COMPOSED_METHOD:
+    if method in COMPOSED_METHODS:
         _validate_composition_contract(score)
     # Check every nested value, including features and robustness, is finite JSON.
     _json(score)
@@ -188,7 +190,7 @@ def _validate_composition_contract(score: dict[str, Any]) -> None:
 
 def _composition_fields(score: dict[str, Any]) -> dict[str, Any]:
     """Lossless projection only; v1.0/v1.0.1 do not acquire synthetic fields."""
-    if score["score_version"] != COMPOSED_METHOD:
+    if score["score_version"] not in COMPOSED_METHODS:
         return {}
     return {key: score[key] for key in ("composition_version", "operating_health", "extended_health",
                                        "health_level", "insights_available", "missing_modules")}
@@ -308,7 +310,7 @@ def company_detail(score: dict[str, Any], cash: dict[str, Any], group_id: str | 
     reason = f"Componentes no evaluables: {missing}." if missing else "Los cuatro pilares están identificados."
     if status == "complete_bounded":
         reason = "Deuda y Health incluyen una estimación acotada; el intervalo identifica la incertidumbre observada."
-    if score["score_version"] == COMPOSED_METHOD:
+    if score["score_version"] in COMPOSED_METHODS:
         level = score["health_level"]
         if level == "operating_only":
             assessment = "Operating Health disponible; Extended Health no identificado"
@@ -327,7 +329,7 @@ def company_detail(score: dict[str, Any], cash: dict[str, Any], group_id: str | 
             **({"operating_contributions": score["operating_contributions"],
                 "operating_weights": score["operating_weights"],
                 "debt_obligations": score["pillars"]["debt_obligations"]}
-               if score["score_version"] == COMPOSED_METHOD else {}),
+               if score["score_version"] in COMPOSED_METHODS else {}),
             "status": status, "health_score": score["health"], "dimensions": _dimensions(score),
             "health_score_model": {"version": score["score_version"], "provisional": status not in {"complete", "complete_verified"},
                                    "weights": {alias: score["pillars"][name]["weight"] for alias, name in ALIASES.items()}},
@@ -359,11 +361,11 @@ def portfolio_export(details: dict[str, dict[str, Any]], envelope: WebEnvelope) 
                       "main_signal": detail["assessment"], "main_signal_impact": None,
                       "support_dependency_ratio": None, "attention": "unknown", "has_detail": True})
     return {"schema_version": "2.0", "source": "generated", **envelope.to_dict(),
-            **({"composition_version": COMPOSITION_VERSION} if envelope.score_version == COMPOSED_METHOD else {}),
+            **({"composition_version": COMPOSITION_VERSION} if envelope.score_version in COMPOSED_METHODS else {}),
             "period": f"Seis meses completos hasta {envelope.as_of}",
             "summary": (f"{len(items)} empresas observadas en {envelope.currency}; Operating Health es la referencia comparable, "
                         f"Extended Health se muestra sólo con Debt identificado. Fuente única: {envelope.score_version}."
-                        if envelope.score_version == COMPOSED_METHOD else
+                        if envelope.score_version in COMPOSED_METHODS else
                         f"{len(items)} empresas observadas en {envelope.currency}; incluye evidencia parcial. Fuente única: {envelope.score_version}."),
             "items": items}
 
@@ -385,7 +387,7 @@ def group_detail(group_id: str, details: list[dict[str, Any]], envelope: WebEnve
                         "summary": "Este run contiene diagnóstico observado, no pronóstico de necesidades futuras.",
                         "funding_need": None, "confidence": None, "evidence_refs": []}, "evidence_refs": []})
     return {"schema_version": "2.0", "source": "generated", **envelope.to_dict(),
-            **({"composition_version": COMPOSITION_VERSION} if envelope.score_version == COMPOSED_METHOD else {}),
+            **({"composition_version": COMPOSITION_VERSION} if envelope.score_version in COMPOSED_METHODS else {}),
             "group_id": _identifier(group_id, "GROUP"), "health_score": None, "status": "insufficient_evidence",
             "period": f"Seis meses completos hasta {envelope.as_of}",
             "summary": f"{len(members)} sociedades observadas. No se calcula ni promedia un Health Score de grupo.",
@@ -451,7 +453,7 @@ def _publish(staged: Path, root: Path, manifest: dict[str, Any]) -> Path:
 def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "EUR",
         verbose: bool = True) -> dict[str, Any]:
     if currency != "EUR":
-        raise ValueError("This web contract is an explicit EUR view; no FX consolidation or currency relabelling")
+        raise ValueError("This web contract is an explicit EUR view; FX conversion belongs to the versioned source ledger")
     run_dir, out_dir = Path(run_dir).absolute(), Path(out_dir).absolute()
     check_output_path(out_dir, run_dir)
     _safe_destination(out_dir)
@@ -464,7 +466,7 @@ def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "E
                 "export_dependencies_sha256": {"artifacts.py": sha256(Path(__file__).parents[1] / "artifacts.py"),
                                                "pulse/contracts.py": sha256(Path(__file__).parents[1] / "pulse" / "contracts.py")},
                 "exporter_version": EXPORTER_VERSION, "currency": currency, "schemas": ["3.0", "2.0", "2.0"],
-                **({"composition_version": COMPOSITION_VERSION} if source["versions"]["score_version"] == COMPOSED_METHOD else {})}
+                **({"composition_version": COMPOSITION_VERSION} if source["versions"]["score_version"] in COMPOSED_METHODS else {})}
     snapshot_id = "web-" + hashlib.sha256(_json(identity).encode()).hexdigest()
     envelope = WebEnvelope(run_id=source["run_id"], snapshot_id=snapshot_id,
                            as_of=source["as_of"], currency=currency, **version_fields)
@@ -499,7 +501,7 @@ def run(run_dir: Path, out_dir: Path = FRONTEND_GENERATED, *, currency: str = "E
               **({"health_levels": {level: sum(d["health_level"] == level for d in details.values())
                                     for level in ("operating_only", "extended_verified", "extended_bounded")},
                   "operating_unavailable": sum(d["operating_health"] is None for d in details.values())}
-                 if envelope.score_version == COMPOSED_METHOD else {}),
+                 if envelope.score_version in COMPOSED_METHODS else {}),
               "excluded_currency_panels": len(excluded)}
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".pulse-web-", dir=out_dir) as directory:

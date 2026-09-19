@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { filterItems, parseQuery, sortItems, summarize } from "../lib/portfolioPresentation";
 import { getPortfolio, PortfolioDataError } from "../services/portfolioData";
+import { listPulseDocuments } from "../services/pulseSnapshot";
 import { writeFixtureSnapshot } from "./fixtures/snapshot";
 import { fixtureEnvelope } from "./fixtures/pulseData";
 import { portfolioSchema, type Portfolio, type PortfolioItem } from "../types/portfolio";
@@ -67,5 +68,25 @@ test("getPortfolio lee el snapshot y rechaza fixtures o runs mezclados", async (
   for (const value of [{ ...portfolio, source: "fixture" }, { ...portfolio, run_id: "other" }]) {
     await writeFixtureSnapshot(directory, { "portfolio.json": value });
     await assert.rejects(getPortfolio(), PortfolioDataError);
+  }
+});
+
+test("el validador enumera documentos del snapshot activo, no JSON sueltos", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "embat-pulse-list-test-"));
+  const current = process.env.PULSE_GENERATED_DIR;
+  process.env.PULSE_GENERATED_DIR = root;
+  try {
+    assert.equal(await listPulseDocuments("companies/"), null);
+    await writeFixtureSnapshot(root, {
+      "portfolio.json": portfolio,
+      "companies/COMP_0001.json": {},
+      "groups/GROUP_0001.json": {},
+    });
+    assert.deepEqual(await listPulseDocuments("companies/"), ["companies/COMP_0001.json"]);
+    assert.deepEqual(await listPulseDocuments("groups/"), ["groups/GROUP_0001.json"]);
+  } finally {
+    if (current === undefined) delete process.env.PULSE_GENERATED_DIR;
+    else process.env.PULSE_GENERATED_DIR = current;
+    await rm(root, { recursive: true, force: true });
   }
 });

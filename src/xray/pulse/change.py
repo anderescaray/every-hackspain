@@ -58,7 +58,7 @@ def attribute_change(current: PulseScoreResult, previous: PulseScoreResult | dic
         old, new = before.get("confidence", {}).get(key), current.confidence.get(key)
         old_comparison, new_comparison = old, new
         if (key == "debt_evidence" and before.get("score_version") == current.score_version
-                and current.score_version in ("PulseFourPillars-v1.0.1", "PulseFourPillars-v1.1")
+                and current.score_version in ("PulseFourPillars-v1.0.1", "PulseFourPillars-v1.1", "PulseFourPillars-v1.2")
                 and isinstance(old, dict) and isinstance(new, dict)):
             old_comparison, new_comparison = _debt_evidence_structure(old), _debt_evidence_structure(new)
         if old_comparison != new_comparison:
