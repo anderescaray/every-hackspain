@@ -91,3 +91,16 @@ def test_expected_payment_date_kept_apart_from_real_payment():
     assert pd.isna(out.loc["o1", "expected_payment_date"]) and out.loc["o1", "payment_date"] == pd.Timestamp("2025-02-05")
     assert pd.isna(out.loc["o2", "payment_date"]) and out.loc["o2", "expected_payment_date"] == pd.Timestamp("2025-01-31")
     assert out.loc["o3", "expected_payment_date"] == pd.Timestamp("2025-03-15")
+
+
+def test_third_party_garnishments_are_not_own_stress():
+    # Embargos a terceros: la empresa ingresa lo retenido a un empleado/proveedor o lo transfiere al juzgado.
+    out, _ = run_tx([
+        row(1, category="tax", description="[COMPANY] - DOC. DE INGRESOS ASOCIADOS EMBARGOS- DOCNUM:[NUM]", amount=-300.0),
+        row(2, category="salary", description="S/ORD.TRANSFERENCIA [NUM] EMBARGO NOMINA 3 2025", amount=-150.0),
+        row(3, category="payment", description="EMBARGO [X] Y SALARIOS COUNTERPARTY_1", amount=-90.0),
+        row(4, category="payment", description="TRANSF PARA JUZGADO I INSTANCIA 2 EMBARGO", amount=-60.0),
+        row(5, category="tax", description="DILIGENCIA DE EMBARGO AEAT", amount=-2500.0),        # embargo a la empresa
+        row(6, category="-", description="EMBARGO COMUNICADO EL DIA 12-03-2026", amount=-800.0),  # embargo a la empresa
+    ])
+    assert out.event_type.tolist() == ["embargo_tercero"] * 4 + ["embargo", "embargo"]
