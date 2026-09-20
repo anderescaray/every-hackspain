@@ -20,6 +20,7 @@ import pandas as pd
 
 from xray.paths import PROCESSED_DIR, ROOT
 from xray.product.company_brief import build_brief_facts, company_brief
+from xray.product.actionability import from_sensitivity, unavailable as actionability_unavailable
 
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
 MODEL_VERSION = "financial_smoothed_v2+frontend-export-1"
@@ -236,7 +237,7 @@ def _simulation(scenarios=None, health_score=None, has_invoices=True):
     return {"inputs": inputs, "scenarios": out, "example_id": best[0] if best and best[1] != 0 else None, "methodology": METHODOLOGY}
 
 
-def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, completer=None):
+def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, completer=None, sensitivity=None):
     """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno."""
     currency = "EUR"
     block = (company.get("currencies") or {}).get(currency)
@@ -254,7 +255,7 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, com
     confidence = (block.get("confidence") or {}).get("confidence")
     cash = _cash_truth(company["company_id"], company.get("group_id"), block.get("cash_truth"), confidence, evidence_rows)
     brief = _brief_for_company(company, last, trajectory, dependency, confidence, completer=completer)
-    return {
+    detail = {
         "schema_version": "2.0", "source": "generated", "company_id": company["company_id"],
         "group_id": company.get("group_id"), "as_of": as_of, "currency": currency,
         "health_score": _score(last["score"]), "dimensions": dimensions,
@@ -270,6 +271,17 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, com
         "simulation": _simulation(scenarios, _score(last["score"]), has_invoices=_num(last.get("level_collections")) is not None
                                   or _num(last.get("level_payments")) is not None),
     }
+    if sensitivity is not None:
+        if sensitivity.get("company_id") != company["company_id"] or sensitivity.get("currency") != currency:
+            raise ValueError(f"Advisor sensitivity identity mismatch for {company['company_id']}")
+        if sensitivity.get("month") != pd.Timestamp(last["month"]).strftime("%Y-%m-%d"):
+            detail["actionability"] = actionability_unavailable(sensitivity, "insufficient_data", "score_month_not_current")
+        else:
+            advisor_score = _num((sensitivity.get("baseline") or {}).get("score"))
+            if advisor_score is not None and abs(advisor_score - float(last["score"])) > 1e-4:
+                raise ValueError(f"Advisor/V2 score mismatch for {company['company_id']}")
+            detail["actionability"] = from_sensitivity(sensitivity)
+    return detail
 
 
 def _advisor_recommendations(plan):
@@ -456,6 +468,19 @@ def _sample_evidence(evidence, company_id, window):
     return sample
 
 
+def _optional_sensitivities(advisor_dir, company_files):
+    """Adjunta company_sensitivity si existe; no bloquea el export ni exige hashes."""
+    folder = Path(advisor_dir) / "company_sensitivity"
+    if not folder.is_dir():
+        return {}
+    docs = {}
+    for file in company_files:
+        path = folder / f"{file.stem}.json"
+        if path.is_file():
+            docs[file.stem] = json.loads(path.read_text(encoding="utf-8"))
+    return docs
+
+
 def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True,
         advisor_dir=PROCESSED_DIR / "advisor_production", completer=None, llm_companies=None):
     """Exporta el contrato del frontend.
@@ -481,8 +506,10 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
         whatif_groups = {cid: frame for cid, frame in whatif.groupby("company_id", sort=False)}
     else:
         whatif_groups = {}
+    company_files = sorted((product_dir / "companies").glob("COMP_*.json"))
+    sensitivities = _optional_sensitivities(advisor_dir, company_files)
     details, written, skipped, llm_used = {}, 0, 0, 0
-    for file in sorted((product_dir / "companies").glob("COMP_*.json")):
+    for file in company_files:
         company = json.loads(file.read_text(encoding="utf-8"))
         block = (company.get("currencies") or {}).get("EUR") or {}
         window = [pd.Timestamp(m) for m in (block.get("cash_truth") or {}).get("window_months", [])]
@@ -492,6 +519,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
         detail = company_detail(
             company, summary_row, rows, whatif_groups.get(company["company_id"]),
             completer=completer if use_llm else None,
+            sensitivity=sensitivities.get(company["company_id"]),
         )
         if detail is None:
             skipped += 1
@@ -516,6 +544,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
                 "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
                 "companies_with_scenarios": len(whatif_groups),
                 "llm_companies_attempted": llm_used,
+                "companies_with_actionability": sum(1 for item in details.values() if item.get("actionability")),
                 "product_manifest_sha256": _sha(product_dir / "_product_manifest.json"),
                 "advisor_manifest_sha256": _sha(advisor_dir / "_advisor_manifest.json")}
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)

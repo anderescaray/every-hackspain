@@ -76,6 +76,7 @@ Para servir una compilación de producción: `npm run build` y `npm start`. No s
 | `alerts` | Hasta 5 alertas; `severity`: `high`, `medium`, `low`; título, explicación, periodo y referencias |
 | `evidence` | Hasta 50 grupos, máximo 10 filas representativas por grupo; los recuentos totales se suministran aparte |
 | `simulation` | Cuatro controles, resultados precalculados, `example_id` nullable y metodología |
+| `actionability` | Opcional. Presentación de `company_sensitivity_v1` (palancas precomputadas). Sin recálculo de Health. Ausente si no hay artefacto del advisor |
 
 Todos los textos de producto suministrados por Data (`label`, `explanation`, `period`, `title`, etc.) deben llegar **en español**. Los enums internos, identificadores, `Health Score`, `Momentum`, AR/AP y EUR no requieren traducción en el JSON. La UI traduce los enums, no narrativas arbitrarias.
 
