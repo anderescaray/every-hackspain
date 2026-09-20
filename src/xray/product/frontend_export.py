@@ -20,7 +20,7 @@ import pandas as pd
 
 from xray.artifacts import sha256, verify_run
 from xray.paths import PROCESSED_DIR, ROOT
-from xray.product.company_brief import build_brief_facts, company_brief
+from xray.product.company_brief import build_brief_facts, company_brief, compose_summary
 from xray.product.actionability import from_sensitivity, unavailable as actionability_unavailable
 
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
@@ -294,8 +294,14 @@ def _sanitize_stress(stress):
     return {**stress, "scenarios": scenarios, "exposures": exposures, "custom_factors": factors}
 
 
-def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, completer=None, sensitivity=None, stress=None):
-    """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno."""
+def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, completer=None, sensitivity=None,
+                   stress=None, stats=None):
+    """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno.
+
+    Con `completer`, el resumen en viñetas lo escribe el LLM leyendo la ficha ya montada
+    (`compose_summary`); el assessment y el resto del contrato siguen siendo deterministas.
+    `stats` es un dict opcional donde se apunta cuántos resúmenes vinieron del LLM.
+    """
     currency = "EUR"
     block = (company.get("currencies") or {}).get(currency)
     if not block:
@@ -311,7 +317,7 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, com
     dependency = _num(cash_summary_row.get("support_dependency_ratio")) if cash_summary_row is not None else None
     confidence = (block.get("confidence") or {}).get("confidence")
     cash = _cash_truth(company["company_id"], company.get("group_id"), block.get("cash_truth"), confidence, evidence_rows)
-    brief = _brief_for_company(company, last, trajectory, dependency, confidence, completer=completer)
+    brief = _brief_for_company(company, last, trajectory, dependency, confidence)
     detail = {
         "schema_version": "2.0", "source": "generated", "company_id": company["company_id"],
         "group_id": company.get("group_id"), "as_of": as_of, "currency": currency,
@@ -347,6 +353,11 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, com
         if baseline is None or abs(baseline - float(last["score"])) > 1e-6:
             raise ValueError(f"Stress/V2 baseline mismatch for {company['company_id']}")
         detail["stress_test"] = _sanitize_stress(stress)
+    if completer is not None:
+        summary, source, _fallback = compose_summary(detail, brief.summary, completer)
+        detail["summary"] = summary
+        if stats is not None and source == "llm":
+            stats["llm_summaries"] = stats.get("llm_summaries", 0) + 1
     return detail
 
 
@@ -586,8 +597,9 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
         completer=None, llm_companies=None):
     """Exporta el contrato del frontend.
 
-    `completer`: si se pasa, parafrasea assessment/summary solo para empresas en `llm_companies`
-    (o todas si `llm_companies` es None). Sin completer, todo es plantilla determinista.
+    `completer`: si se pasa, el resumen en viñetas de cada empresa lo escribe el LLM a partir
+    de su informe completo, solo para las empresas de `llm_companies` (o todas si es None).
+    Sin completer, todo es plantilla determinista; si el anclaje falla, también.
     Los grupos solo incorporan planes de `advisor_dir` generados con `--production-safe`.
     """
     product_dir, out_dir, advisor_dir, stress_dir = Path(product_dir), Path(out_dir), Path(advisor_dir), Path(stress_dir)
@@ -615,6 +627,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     if (stress_dir / "latest.json").is_file():
         _, _, stress_docs = _stress_snapshots(stress_dir, latest, product_inputs)
     details, written, skipped, llm_used = {}, 0, 0, 0
+    llm_stats = {}
     for file in company_files:
         company = json.loads(file.read_text(encoding="utf-8"))
         block = (company.get("currencies") or {}).get("EUR") or {}
@@ -627,6 +640,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
             completer=completer if use_llm else None,
             sensitivity=sensitivities.get(company["company_id"]),
             stress=stress_docs.get(company["company_id"]),
+            stats=llm_stats,
         )
         if detail is None:
             skipped += 1
@@ -651,6 +665,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
                 "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
                 "companies_with_scenarios": len(whatif_groups),
                 "llm_companies_attempted": llm_used,
+                "llm_summaries_written": llm_stats.get("llm_summaries", 0),
                 "companies_with_actionability": sum(1 for item in details.values() if item.get("actionability")),
                 "companies_with_stress_test": sum(1 for item in details.values() if item.get("stress_test")),
                 "product_manifest_sha256": _sha(product_dir / "_product_manifest.json"),
@@ -658,7 +673,9 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)
     say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} · portfolio {len(portfolio['companies'])} -> {out_dir}")
     if completer is not None:
-        say(f"  LLM intentado en {llm_used} empresas (fallback a plantilla si el anclaje falla)")
+        written_llm = llm_stats.get("llm_summaries", 0)
+        say(f"  LLM intentado en {llm_used} empresas · {written_llm} resúmenes del LLM · "
+            f"{llm_used - written_llm} con plantilla (anclaje o red)")
     return manifest
 
 

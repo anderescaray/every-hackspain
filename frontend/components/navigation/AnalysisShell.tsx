@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { GroupView } from "@/types/groupDetail";
-import { companySections, withCompanyContext } from "@/lib/analysisNavigation";
+import { visibleCompanySections, withCompanyContext } from "@/lib/analysisNavigation";
 import { groupTabs } from "@/lib/groupPresentation";
 import { CompanyNavigationContext, useAnalysisNavigation } from "./AnalysisNavigationProvider";
 import styles from "./navigation.module.css";
 
-type ShellProps = { companyId: string | null; groupId?: string | null; view: "company" | GroupView; children: ReactNode };
+type ShellProps = { companyId: string | null; groupId?: string | null; view: "company" | GroupView;
+  /** false cuando la ficha no trae escenarios: el acceso al simulador no se muestra. */
+  simulator?: boolean; children: ReactNode };
 
 function NavigationIcon({ name }: { name: string }) {
   const paths: Record<string, string> = {
@@ -33,7 +35,7 @@ function NavigationIcon({ name }: { name: string }) {
   return <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.overview} /></svg>;
 }
 
-function SidebarContents({ companyId, groupId, view, activeSection, onSection, mobile = false, close }: Omit<ShellProps, "children"> & { activeSection: string; onSection: (id: string) => void; mobile?: boolean; close?: () => void }) {
+function SidebarContents({ companyId, groupId, view, simulator = true, activeSection, onSection, mobile = false, close }: Omit<ShellProps, "children"> & { activeSection: string; onSection: (id: string) => void; mobile?: boolean; close?: () => void }) {
   const navigation = useAnalysisNavigation();
   const collapsed = !mobile && navigation.collapsed;
   const sectionsId = useId();
@@ -49,7 +51,7 @@ function SidebarContents({ companyId, groupId, view, activeSection, onSection, m
     <div className={styles.menuSections}>
       <button className={styles.sectionToggle} aria-label="Secciones de empresa" aria-expanded={navigation.companyExpanded} aria-controls={sectionsId} onClick={() => navigation.setCompanyExpanded((value) => !value)}><span className={styles.sectionInitial}>E</span><span className={styles.sectionText}>Empresa</span><span className={styles.disclosure} data-expanded={navigation.companyExpanded}><NavigationIcon name="chevron" /></span></button>
       <nav id={sectionsId} hidden={!navigation.companyExpanded} aria-label="Secciones de empresa" className={styles.menuLinks}>
-        {companyId ? companySections.map((section) => <Link key={section.id} href={`/companies/${companyId}#${section.id}`} aria-label={section.label} title={collapsed ? section.label : undefined} aria-current={view === "company" && activeSection === section.id ? "location" : undefined} onClick={(event) => { if (view === "company" && window.location.pathname === `/companies/${companyId}` && window.location.hash === `#${section.id}`) event.preventDefault(); onSection(section.id); close?.(); }}><NavigationIcon name={section.icon} /><span className={styles.linkText}>{section.label}</span></Link>) : <p className={styles.menuHint}>Abre una ficha de empresa para consultar su análisis individual.</p>}
+        {companyId ? visibleCompanySections({ simulator }).map((section) => <Link key={section.id} href={`/companies/${companyId}#${section.id}`} aria-label={section.label} title={collapsed ? section.label : undefined} aria-current={view === "company" && activeSection === section.id ? "location" : undefined} onClick={(event) => { if (view === "company" && window.location.pathname === `/companies/${companyId}` && window.location.hash === `#${section.id}`) event.preventDefault(); onSection(section.id); close?.(); }}><NavigationIcon name={section.icon} /><span className={styles.linkText}>{section.label}</span></Link>) : <p className={styles.menuHint}>Abre una ficha de empresa para consultar su análisis individual.</p>}
       </nav>
       {groupId ? <>
         <hr className={styles.divider} />
@@ -62,7 +64,7 @@ function SidebarContents({ companyId, groupId, view, activeSection, onSection, m
   </div>;
 }
 
-export function AnalysisShell({ companyId, groupId, view, children }: ShellProps) {
+export function AnalysisShell({ companyId, groupId, view, simulator = true, children }: ShellProps) {
   const { collapsed } = useAnalysisNavigation();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -79,14 +81,14 @@ export function AnalysisShell({ companyId, groupId, view, children }: ShellProps
   useEffect(() => {
     if (view !== "company" || pathname !== `/companies/${companyId}`) return;
     const update = () => {
-      const current = [...companySections].reverse().find((section) => {
+      const current = [...visibleCompanySections({ simulator })].reverse().find((section) => {
         const node = document.getElementById(section.id);
         return node && node.getBoundingClientRect().top <= 160;
       });
       setActiveSection(current?.id ?? "health-score");
     };
     const followHash = () => {
-      const section = companySections.find((item) => `#${item.id}` === window.location.hash);
+      const section = visibleCompanySections({ simulator }).find((item) => `#${item.id}` === window.location.hash);
       if (section) document.getElementById(section.id)?.scrollIntoView({ block: "start", behavior: "instant" });
       update();
     };
@@ -94,7 +96,7 @@ export function AnalysisShell({ companyId, groupId, view, children }: ShellProps
     window.addEventListener("scroll", update, { passive: true });
     window.addEventListener("hashchange", followHash);
     return () => { cancelAnimationFrame(frame); window.removeEventListener("scroll", update); window.removeEventListener("hashchange", followHash); };
-  }, [companyId, view, pathname]);
+  }, [companyId, view, pathname, simulator]);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 981px)");
@@ -115,12 +117,12 @@ export function AnalysisShell({ companyId, groupId, view, children }: ShellProps
 
   return <CompanyNavigationContext.Provider value={companyId}>
     <div className={styles.shell} data-collapsed={collapsed} data-testid="analysis-shell">
-      <aside className={styles.desktopSidebar} aria-label="Menú lateral"><SidebarContents companyId={companyId} groupId={groupId} view={view} activeSection={activeSection} onSection={selectSection} /></aside>
+      <aside className={styles.desktopSidebar} aria-label="Menú lateral"><SidebarContents companyId={companyId} groupId={groupId} view={view} simulator={simulator} activeSection={activeSection} onSection={selectSection} /></aside>
       <div className={styles.content}>
         <div className={styles.mobileBar}><button className={styles.mobileMenuButton} aria-label="Abrir navegación" aria-expanded={mobileOpen} aria-haspopup="dialog" onClick={() => setMobileOpen(true)}><NavigationIcon name="menu" /><span>Menú</span></button><div><strong>X Ray</strong><span>{companyId ?? groupId ?? "Cartera"}</span></div></div>
         {children}
       </div>
-      <dialog ref={dialog} className={styles.mobileDrawer} aria-labelledby={dialogTitle} onCancel={() => setMobileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setMobileOpen(false); }}><h2 id={dialogTitle} className={styles.srOnly}>Navegación de empresa y grupo</h2>{mobileOpen && <SidebarContents companyId={companyId} groupId={groupId} view={view} activeSection={activeSection} onSection={selectSection} mobile close={() => setMobileOpen(false)} />}</dialog>
+      <dialog ref={dialog} className={styles.mobileDrawer} aria-labelledby={dialogTitle} onCancel={() => setMobileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setMobileOpen(false); }}><h2 id={dialogTitle} className={styles.srOnly}>Navegación de empresa y grupo</h2>{mobileOpen && <SidebarContents companyId={companyId} groupId={groupId} view={view} simulator={simulator} activeSection={activeSection} onSection={selectSection} mobile close={() => setMobileOpen(false)} />}</dialog>
     </div>
   </CompanyNavigationContext.Provider>;
 }

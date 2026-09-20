@@ -10,7 +10,6 @@ for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
     await page.screenshot({ path: testInfo.outputPath("company.png"), fullPage: true });
     await page.getByRole("region", { name: "Estado financiero global", exact: true }).screenshot({ path: testInfo.outputPath("health-score.png") });
     await page.getByRole("region", { name: "Origen de la caja", exact: true }).screenshot({ path: testInfo.outputPath("cash-truth.png") });
-    await page.getByRole("region", { name: "Tiempo financiado", exact: true }).screenshot({ path: testInfo.outputPath("time-borrowed.png") });
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
     expect(results.violations.map((violation) => ({ id: violation.id, nodes: violation.nodes.map((node) => ({ html: node.html, issue: node.failureSummary })) }))).toEqual([]);
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
@@ -28,7 +27,7 @@ for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: id, exact: true })).toBeVisible();
     await expect(page.getByText("Datos de ejemplo")).toBeVisible();
-    for (const name of ["Tendencia", "Origen de la caja", "Tiempo financiado", "Stress Testing"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    for (const name of ["Tendencia", "Origen de la caja", "Stress Testing"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
@@ -92,27 +91,6 @@ test("origen de liquidez separado de movimientos de tesorería", async ({ page }
   await expect(missingTreasury.getByText("No disponible", { exact: true })).toBeVisible();
   await expect(missingTreasury.getByText("No se deduce este importe", { exact: false })).toBeVisible();
   await expect(missingTreasury.getByText("1,2 M€", { exact: true })).toHaveCount(0);
-});
-
-test("tiempo financiado: puntualidad independiente y selector AR/AP", async ({ page }) => {
-  await page.goto("/companies/COMP_1171");
-  const timing = page.getByRole("region", { name: "Tiempo financiado", exact: true });
-  await expect(timing.getByText("COUNTERPARTY_06105", { exact: true })).toBeVisible();
-  await expect(timing.getByRole("heading", { name: "Más puntualidad. Más tiempo hasta convertir la venta en caja." })).toBeVisible();
-  await expect(timing.getByText("102", { exact: true })).toHaveCount(2);
-  for (const value of ["62", "81", "20", "0"]) await expect(timing.getByText(value, { exact: true })).toBeVisible();
-  await timing.getByText("Cómo interpretar los tiempos", { exact: false }).click();
-  await expect(timing.getByText("Son medianas independientes", { exact: false })).toBeVisible();
-  await timing.getByRole("button", { name: "Ver evidencia: Plazos y cobros de clientes", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("columnheader", { name: "Vencimiento", exact: true })).toBeVisible();
-  await expect(page.getByRole("dialog").getByRole("row")).toHaveCount(7);
-  await page.getByRole("button", { name: "Cerrar evidencia" }).click();
-  await timing.getByRole("button", { name: "Proveedores · AP", exact: true }).click();
-  await expect(timing.getByRole("button", { name: "Proveedores · AP", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(timing.getByText("Tiempo hasta pago", { exact: true })).toBeVisible();
-  await expect(timing.getByRole("heading", { name: "Menos plazo recibido. La caja se necesita antes." })).toBeVisible();
-  await timing.getByRole("button", { name: "Clientes · AR", exact: true }).click();
-  await expect(timing.getByText("COUNTERPARTY_06105", { exact: true })).toBeVisible();
 });
 
 test("tendencia del Health Score: resumen y gráfico sin tabla desplegable", async ({ page }) => {

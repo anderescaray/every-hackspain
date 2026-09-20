@@ -4,11 +4,11 @@ Reto de Embat: construir un **score de salud financiera** (empresa × mes, con t
 
 **Producto propuesto:** Embat Pulse, early warning y explicación de tesorería. Ver [`docs/embat_pulse_mvp_propuesta_final.md`](docs/embat_pulse_mvp_propuesta_final.md).
 
-**Si retomas el proyecto con otro agente/modelo**, empieza por [`docs/decisiones.md`](docs/decisiones.md) §13 (score V2 suavizado: qué se hizo, resultados y qué no mejora), luego [`docs/scoring-v2.md`](docs/scoring-v2.md). El registro central sigue siendo `decisiones.md` (§10 V1, §11 producto, §12 auditoría, §13 V2). [`docs/continuar-score-v2.md`](docs/continuar-score-v2.md) es el relevo previo a V2, ya ejecutado en su mayor parte.
+**Si retomas el proyecto con otro agente/modelo**, empieza por [`docs/decisiones.md`](docs/decisiones.md) §13 (score V2 suavizado: qué se hizo, resultados y qué no mejora), luego [`docs/scoring-v2.md`](docs/scoring-v2.md) y [`docs/formula-score.md`](docs/formula-score.md). El registro central sigue siendo `decisiones.md` (§10 V1, §11 producto, §12 auditoría, §13 V2). Relevos previos y notas de trabajo se conservan en `docs_sobra/`.
 
 ## Estado y documentación
 
-Punto de entrada para cualquier persona o agente: [`docs/ESTADO-ACTUAL.md`](docs/ESTADO-ACTUAL.md) (arquitectura vigente, cifras reales, comandos, pendientes). Registro de decisiones: [`docs/decisiones.md`](docs/decisiones.md).
+Punto de entrada para cualquier persona o agente: [`docs/ESTADO-ACTUAL.md`](docs/ESTADO-ACTUAL.md) (arquitectura vigente, cifras reales, comandos, pendientes). Registro de decisiones: [`docs/decisiones.md`](docs/decisiones.md). Índice de documentación: [`docs/README.md`](docs/README.md).
 
 ## Estado real
 
@@ -22,7 +22,7 @@ Punto de entrada para cualquier persona o agente: [`docs/ESTADO-ACTUAL.md`](docs
 | Score V1 (control) | `financial_baseline_v1`: nivel, momentum, referencia y contribuciones. Ruidoso (mediana de cambio mensual 8,8 puntos); conservado en `data/processed/scores/` | [scoring.md](docs/scoring.md), [explainability.md](docs/explainability.md) |
 | **Score V2 (candidato)** | `financial_smoothed_v2`: nivel de flujos agregados a 6 meses, momentum trimestre/trimestre estandarizado por la volatilidad propia de cada empresa, confirmación bache/tendencia con evidencia del mes actual, episodios (`one_off_dip`, `trend_deterioration`…), explicación aditiva exacta. Mediana de cambio mensual 3,3; extremos a la mitad; 922 empresas puntuadas en agosto. No discrimina proxies de estrés mejor que V1 (ninguna lo hace) | `src/xray/score_v2/`, [scoring-v2.md](docs/scoring-v2.md), decisiones §13 |
 | Comparador V1/V2 | Estabilidad, proxies (texto de estrés, caja negativa), riesgo por etiqueta, anticipación con regla independiente, sensibilidad | `src/xray/evaluation/`, [validation.md](docs/validation.md) |
-| **Advisor: plan de grupo + sensibilidad de empresa** | `treasury_advisor_v1` (`src/xray/group_advisor/`): escenarios mecánicos valorados con la función de nivel exacta de V2. Plan de grupo (D1: la filial fuerte asume el servicio de deuda de la débil; P: financia el pago a proveedores en plazo si la receptora está restringida por liquidez), objetivo cóncavo por tramos, greedy determinista con certificado, evidencia por paso. Sensibilidad por empresa: qué palanca mueve más el nivel, hasta dónde vale y cuánto hace falta para cambiar de tramo. Narrativa por plantillas con validador de anclaje (todo número del texto existe en el JSON); LLM opcional no conectado. Agosto 2026: 19 grupos con plan, 160 sin palancas, 71 unipersonales; 949 empresas con sensibilidad; 0 fallos de anclaje | [group-optimization.md](docs/group-optimization.md), [roadmap-group-advisor.md](docs/roadmap-group-advisor.md), decisiones §14 |
+| **Advisor: plan de grupo + sensibilidad de empresa** | `treasury_advisor_v1` (`src/xray/group_advisor/`): escenarios mecánicos valorados con la función de nivel exacta de V2. Plan de grupo (D1: la filial fuerte asume el servicio de deuda de la débil; P: financia el pago a proveedores en plazo si la receptora está restringida por liquidez), objetivo cóncavo por tramos, greedy determinista con certificado, evidencia por paso. Sensibilidad por empresa: qué palanca mueve más el nivel, hasta dónde vale y cuánto hace falta para cambiar de tramo. Narrativa por plantillas con validador de anclaje (todo número del texto existe en el JSON); LLM opcional no conectado. Agosto 2026: 19 grupos con plan, 160 sin palancas, 71 unipersonales; 949 empresas con sensibilidad; 0 fallos de anclaje | [group-optimization.md](docs/group-optimization.md), decisiones §20 |
 | Alertas, API y demo | Diseños pendientes, sin despliegue ni métricas comprobadas | [alerts-and-monitoring.md](docs/alerts-and-monitoring.md), [product-and-demo.md](docs/product-and-demo.md), [embat_pulse_mvp_propuesta_final.md](docs/embat_pulse_mvp_propuesta_final.md) |
 
 Otros documentos: [patron-tiempo-prestado.md](docs/patron-tiempo-prestado.md) (crédito comercial: puntualidad frente a conversión de caja).
@@ -55,7 +55,8 @@ every.hackspain/
 │   ├── cleaned/           ← salida de la limpieza (parquet + log + manifiesto)
 │   └── processed/         ← features, scores y artefactos del producto
 ├── data_summary/          ← muestras y diccionario (en git)
-├── docs/                  ← documentación técnica, producto y decisiones.md
+├── docs/                  ← documentación técnica, producto y decisiones.md (entregable)
+├── docs_sobra/            ← notas internas, guiones y roadmaps archivados
 ├── resources/             ← artefactos estáticos versionados (categorías Jev, D31)
 ├── notebooks/             ← exploración (01) y análisis de limpieza (02)
 ├── scripts/               ← puntos de entrada del pipeline (00_…, 01_…)
