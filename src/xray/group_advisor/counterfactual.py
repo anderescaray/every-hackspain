@@ -33,7 +33,7 @@ LEVEL_INPUT_COLUMNS = ("op_margin_w", "debt_service_w", "debt_without_inflow_w",
 LEVEL_RESULT_COLUMNS = ("level", "level_operations", "level_debt", "level_collections", "level_payments",
                         "level_coverage", "level_components_available", "has_uncovered_debt_service")
 COMPONENTS = tuple(COMPONENT_WEIGHTS)
-LEVERS = ("D1", "P")
+LEVERS = ("D1", "P", "O")
 _ADD_TOLERANCE = 1e-9
 
 
@@ -134,6 +134,28 @@ def debt_service_add(row, delta, k, horizon):
     return derive(out)
 
 
+def outflow_add(row, delta, k, horizon):
+    """`O_k = O + k·Δ` con Δ el gasto operativo mensual asumido (o liberado si Δ < 0), como `debt_service_add`.
+
+    Sirve a la palanca O: el grupo paga directamente proveedores o costes fijos de la filial. El gasto externo
+    del grupo no cambia; cambia quién lo soporta, y con él el margen de cada una.
+    """
+    _check_step(k, horizon)
+    delta = _check_param("delta", delta)
+    out = dict(row)
+    base = _num(out.get("window_outflow_sum"))
+    if math.isnan(base):
+        out["window_outflow_sum"] = math.nan
+        return derive(out)
+    outflow = base + k * delta
+    if outflow < 0:
+        if abs(outflow) > _ADD_TOLERANCE * max(1.0, abs(base)):
+            raise ValueError(f"outflow_add dejaría las salidas de la ventana negativas ({outflow!r})")
+        outflow = 0.0
+    out["window_outflow_sum"] = outflow
+    return derive(out)
+
+
 def ap_delay_scale(row, psi, k, horizon):
     """`p_k = p · (1 − kψ/H)`, 0 ≤ ψ ≤ 1."""
     step = _check_step(k, horizon)
@@ -185,13 +207,13 @@ def component_scores(result_row):
 
 @dataclass(frozen=True)
 class Action:
-    lever: str                      # "D1" | "P"
+    lever: str                      # "D1" | "P" | "O"
     donor: str
     recipient: str
     donor_currency: str
     recipient_currency: str
     fraction: float
-    amount_recipient_ccy: float     # D1: horizon·fraction·monthly_debt_service_b ; P: fraction·gap_b
+    amount_recipient_ccy: float     # D1: H·fraction·cuota_b ; P: fraction·gap_b ; O: H·fraction·gasto_mensual_b
     amount_donor_ccy: float         # convertido con la tabla FX (igual si misma moneda)
     fx_applied: float | None        # tipo aplicado c_b -> c_a, None si misma moneda
     psi: float | None               # solo P
@@ -226,6 +248,17 @@ def apply_d1(row_a, row_b, phi, k, horizon, monthly_service_b_in_donor_ccy):
     return (debt_service_add(row_a, phi * monthly, k, horizon), debt_service_scale(row_b, -phi, k, horizon))
 
 
+def apply_o(row_a, row_b, omega, k, horizon, monthly_outflow_b_in_donor_ccy):
+    """O: la donante `a` asume la fracción ω de los pagos operativos de la receptora `b` (pagos centralizados).
+
+    Receptora: `outflow_scale(−ω)`. Donante: `outflow_add(+ω·o_b)` con `o_b` el gasto mensual de `b` en la
+    moneda de `a`. Mueve el margen de las dos, que es el 45 % del nivel; el gasto externo del grupo es el mismo.
+    """
+    omega = _check_param("omega", omega, 0.0, 1.0)
+    monthly = _check_param("monthly_outflow_b_in_donor_ccy", monthly_outflow_b_in_donor_ccy, 0.0)
+    return (outflow_add(row_a, omega * monthly, k, horizon), outflow_scale(row_b, -omega, k, horizon))
+
+
 def apply_p(row_b, psi, k, horizon):
     """P: financiar el pago de proveedores a tiempo en `b`; `ap_delay_scale(ψ)`. El donante no cambia de señales."""
     return ap_delay_scale(row_b, psi, k, horizon)
@@ -238,8 +271,8 @@ def _level(result, company_id):
 def evaluate_action(rows, reference_state, action, k, horizon, monthly_service_b_in_donor_ccy=None):
     """Compone la acción sobre las filas de donante y receptora, recalcula sus niveles y describe el efecto.
 
-    Solo se puntúan las dos filiales implicadas (`score_level` es fila a fila). `D1` exige
-    `monthly_service_b_in_donor_ccy`; `P` exige `action.psi`.
+    Solo se puntúan las dos filiales implicadas (`score_level` es fila a fila). `D1` y `O` exigen la magnitud
+    mensual de `b` en moneda de `a` (`monthly_service_b_in_donor_ccy`); `P` exige `action.psi`.
     """
     if action.lever not in LEVERS:
         raise ValueError(f"Palanca desconocida: {action.lever!r}")
@@ -255,6 +288,11 @@ def evaluate_action(rows, reference_state, action, k, horizon, monthly_service_b
             raise ValueError("D1 requiere monthly_service_b_in_donor_ccy (cuota mensual de b en moneda de a)")
         row_a2, row_b2 = apply_d1(row_a, row_b, action.fraction, k, horizon, monthly_service_b_in_donor_ccy)
         signal = "debt_service_w"
+    elif action.lever == "O":
+        if monthly_service_b_in_donor_ccy is None:
+            raise ValueError("O requiere el gasto operativo mensual de b en moneda de a")
+        row_a2, row_b2 = apply_o(row_a, row_b, action.fraction, k, horizon, monthly_service_b_in_donor_ccy)
+        signal = "op_margin_w"
     else:
         if action.psi is None:
             raise ValueError("P requiere action.psi")

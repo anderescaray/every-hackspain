@@ -4,6 +4,14 @@
 
 Nota D32: tras la especificación, el pipeline de features pasó a convertir todas las monedas a EUR con tipo fijo (`src/xray/fx.py`), de modo que el panel primario es 100 % EUR. La restricción de moneda R1 y la tabla FX del advisor (§7) quedan operativas pero sin efecto sobre este dataset (`fx_rate_unavailable` = 0 acciones).
 
+## 0b. Palanca O y oportunidades medidas (D46–D48, 20-09-2026)
+
+Añadido después de la especificación: la palanca **O** (la donante asume pagos operativos de la receptora,
+*payment factory*) es **opcional** (`--levers D1,P,O`) y ataca el bloqueo dominante de D1/P, que exigían deuda
+o facturas en la receptora y dejaban sin tocar el margen (45 % del nivel). Con ella los planes pasan de 19 a
+48. Aparte, `xray.product.group_opportunities` publica **hechos medidos** (cash pooling, netting intragrupo y
+crédito de hermanas sin usar) que no simulan el score. Cifras y límites en `decisiones.md` D46–D48.
+
 ## 0. Qué es y qué no es
 
 Un **motor determinista** con dos ámbitos y una sola mecánica:

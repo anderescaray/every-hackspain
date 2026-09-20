@@ -24,6 +24,10 @@ def reconstruct_liquidity(tables, config):
     # D38: un ajuste técnico posterior al cierre invalida la caja reconstruida de ese cierre (no se borra).
     tx["unsafe"] = ~tx.status.eq("booked") | tx.amount.isna() | tx.is_sync_duplicate | technical.fillna(False)
     first = tx.groupby("product_id").date.min()
+    # D46: una cuenta sin ningún movimiento en toda la ventana y con saldo 0 no puede esconder caja: su saldo
+    # reconstruido es 0 en todos los cierres desde que existe. Con saldo distinto de 0 seguimos sin saber su
+    # historia, así que esa sí queda como no fiable.
+    balances["is_dormant_zero"] = ~balances.product_id.isin(tx.product_id) & balances.balance.eq(0)
     bank_flow = tx.loc[tx.status.eq("booked") & ~tx.is_sync_duplicate]
     frames = []
     for month in config.months:
@@ -37,7 +41,7 @@ def reconstruct_liquidity(tables, config):
         a["is_reconstruction_unreliable"] = (a.product_id.map(unsafe).fillna(False).astype(bool)
                                               | a.is_sentinel_balance | a.date.isna() | a.balance.isna()
                                               | a.date.lt(end - pd.Timedelta(days=1))
-                                              | a.observed_from.isna() | a.observed_from.ge(end))
+                                              | ((a.observed_from.isna() | a.observed_from.ge(end)) & ~a.is_dormant_zero))
         a["month"] = month
         a["snapshot_date"] = a.date
         a["reconstructed_balance"] = a.reconstructed_balance.where(~a.is_reconstruction_unreliable)

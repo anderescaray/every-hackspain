@@ -4,6 +4,7 @@ Sin opciones publica todo en `data/processed/advisor/`. `--group GROUP_xxxx` / `
 construyen solo ese estado, imprimen la narrativa por consola y no publican nada.
 """
 import argparse
+from dataclasses import replace
 import sys
 from pathlib import Path
 
@@ -54,8 +55,13 @@ def main():
     parser.add_argument("--month", help="primer día del mes (YYYY-MM-01); por defecto el último cierre del panel")
     parser.add_argument("--group", metavar="GROUP_xxxx", help="imprime el plan de ese grupo y no publica")
     parser.add_argument("--company", metavar="COMP_xxxx", help="imprime la sensibilidad de esa empresa y no publica")
+    parser.add_argument("--levers", default="D1,P",
+                        help="palancas de grupo separadas por coma; D1,P por defecto, D1,P,O añade la asunción de pagos operativos (D48)")
     args = parser.parse_args()
     config = default_config(month=args.month) if args.month else default_config()
+    levers = tuple(x.strip() for x in args.levers.split(",") if x.strip())
+    if levers != config.levers:
+        config = replace(config, levers=levers)
     if args.group is None and args.company is None:
         run(args.features_dir, args.out_dir, config, args.month)
         return

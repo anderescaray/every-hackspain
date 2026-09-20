@@ -18,7 +18,7 @@ import math
 from dataclasses import dataclass, replace
 
 from xray.group_advisor.config import AdvisorConfig
-from xray.group_advisor.counterfactual import (COMPONENTS, Action, ActionEffect, apply_d1, apply_p, evaluate_action,
+from xray.group_advisor.counterfactual import (COMPONENTS, Action, ActionEffect, apply_d1, apply_o, apply_p, evaluate_action,
                                                level_from_signals)
 from xray.group_advisor.fx import MissingFXRateError, convert
 from xray.group_advisor.objective import group_utility, subsidiary_weights
@@ -31,6 +31,8 @@ REASON_DONOR_BUFFER = "donor_buffer"
 REASON_DONOR_FLOOR = "donor_level_floor"
 REASON_DONOR_INDICATOR = "donor_would_hit_zero_inflow_indicator"
 REASON_RECIPIENT_NO_DEBT = "recipient_no_debt_service"
+REASON_RECIPIENT_NO_OUTFLOW = "recipient_no_operating_outflow"
+REASON_RECIPIENT_MARGIN = "recipient_margin_unavailable"
 REASON_RECIPIENT_AP = "recipient_ap_component_unavailable"
 REASON_RECIPIENT_NO_DELAY = "recipient_no_ap_delay"
 REASON_RECIPIENT_NO_NEED = "recipient_no_ap_need"
@@ -53,8 +55,8 @@ STOP_NO_CANDIDATES = "no_feasible_candidates"
 STOP_MIN_GAIN = "no_candidate_above_min_gain"
 STOP_MAX_STEPS = "max_steps_reached"
 
-LEVER_COMPONENT = {"D1": "debt", "P": "payments"}
-LEVER_SIGNAL = {"D1": "debt_service_w", "P": "ap_delay_w"}
+LEVER_COMPONENT = {"D1": "debt", "P": "payments", "O": "operations"}
+LEVER_SIGNAL = {"D1": "debt_service_w", "P": "ap_delay_w", "O": "op_margin_w"}
 DEFAULT_MIN_DELAY_COUNT = 5
 FLOOR_WARNING_MARGIN = 0.5
 EFFICIENCY_UNIT = 10_000.0
@@ -194,6 +196,9 @@ def recipient_need(sub_row, lever, config=None):
     config = config or AdvisorConfig()
     if lever == "D1":
         return config.horizon_months * _num(sub_row.get("monthly_debt_service"))
+    if lever == "O":
+        monthly = _num(sub_row.get("window_outflow_sum")) / config.horizon_months
+        return monthly if monthly > 0 else math.nan
     if lever == "P":
         need, cash = ap_need(sub_row), reliable_cash(sub_row)
         if math.isnan(need) or math.isnan(cash):
@@ -230,6 +235,8 @@ def donor_reason(sub_row, lever, cash, config=None):
         return REASON_DONOR_INFLOW
     if lever == "D1" and math.isnan(_num(sub_row.get("window_debt_service_sum"))):
         return REASON_DONOR_SERVICE
+    if lever == "O" and math.isnan(_num(sub_row.get("window_outflow_sum"))):
+        return REASON_DONOR_OUTFLOW
     return None
 
 
@@ -238,6 +245,10 @@ def recipient_reason(sub_row, lever, config=None):
     config = config or AdvisorConfig()
     if lever == "D1":
         return None if _num(sub_row.get("monthly_debt_service")) > 0 else REASON_RECIPIENT_NO_DEBT
+    if lever == "O":
+        if not _num(sub_row.get("window_outflow_sum")) > 0:
+            return REASON_RECIPIENT_NO_OUTFLOW
+        return None if not math.isnan(_num(sub_row.get("op_margin_w"))) else REASON_RECIPIENT_MARGIN
     if not ap_delay_observed(sub_row, config):
         return REASON_RECIPIENT_AP
     if not _num(sub_row.get("ap_delay_w")) > 0:
@@ -346,11 +357,25 @@ def _d1_params(working, recipient, fraction, need_original, rate):
     return params
 
 
+def _o_params(working, recipient, fraction, need_original, rate):
+    """Por `k`: `(ω_rel, o_b^k·fx)` tales que `apply_o` asume exactamente `fraction·H·o_b` originales."""
+    params = {}
+    for k in working.ks:
+        outflow = _num(working.rows_by_k[k][recipient].get("window_outflow_sum"))
+        if math.isnan(outflow) or outflow <= 0:
+            return None
+        params[k] = (min(fraction * need_original * working.horizon / outflow, 1.0), outflow / working.horizon * rate)
+    return params
+
+
 def _perturb(rows, lever, donor, recipient, k, horizon, d1_params=None, psi=None):
     row_a, row_b = rows[donor], rows[recipient]
     if lever == "D1":
         phi_rel, monthly = d1_params[k]
         return apply_d1(row_a, row_b, phi_rel, k, horizon, monthly)
+    if lever == "O":
+        omega_rel, monthly = d1_params[k]
+        return apply_o(row_a, row_b, omega_rel, k, horizon, monthly)
     return dict(row_a), apply_p(row_b, psi, k, horizon)
 
 
@@ -404,7 +429,7 @@ def authoritative_effects(state, working, candidate):
     effects = {}
     for k in working.ks:
         rows = working.rows_by_k[k]
-        if action.lever == "D1":
+        if action.lever in ("D1", "O"):
             phi_rel, monthly = candidate.d1_params[k]
             effects[k] = evaluate_action(rows, state.reference_state, replace(action, fraction=phi_rel), k, horizon, monthly)
         else:
@@ -447,7 +472,8 @@ def generate_candidates(state, working, config=None, ks=None):
                     pair.reason = REASON_FX
                     continue
                 pair.fx_applied = None if pair.donor_currency == pair.recipient_currency else rate
-                monthly_b = _num(sub_b.get("monthly_debt_service")) * rate if lever == "D1" else 0.0
+                monthly_b = (_num(sub_b.get("monthly_debt_service")) * rate if lever == "D1"
+                             else need * rate if lever == "O" else 0.0)
                 fraction_specs, reason = _grid_specs(lever, donor, recipient, pair, working, sub_a, sub_b, need, rate, monthly_b, config)
                 if reason:
                     pair.reason = reason
@@ -504,8 +530,8 @@ def _grid_specs(lever, donor, recipient, pair, working, sub_a, sub_b, need, rate
     effective = sorted({min(float(phi), remaining) for phi in config.fractions})
     fits = []
     for phi in effective:
-        x_a = phi * need * rate
-        assumed = working.assumed_service.get(donor, 0.0) + (phi * monthly_b_donor_ccy if lever == "D1" else 0.0)
+        x_a = phi * need * rate * (config.horizon_months if lever == "O" else 1.0)
+        assumed = working.assumed_service.get(donor, 0.0) + (phi * monthly_b_donor_ccy if lever in ("D1", "O") else 0.0)
         buffer = donor_buffer(sub_a, assumed, config)
         if working.cash[donor] - x_a >= buffer - _tol(buffer):
             fits.append(phi)
@@ -521,10 +547,14 @@ def _grid_specs(lever, donor, recipient, pair, working, sub_a, sub_b, need, rate
             binding.append(BINDING_BUFFER)
         if remaining < 1.0 - _TOL and phi == remaining:
             binding.append(BINDING_CAP)
-        x_b = phi * need
+        x_b = phi * need * (config.horizon_months if lever == "O" else 1.0)
         d1_params = psi = None
         if lever == "D1":
             d1_params = _d1_params(working, recipient, phi, need, rate)
+            if d1_params is None:
+                continue
+        elif lever == "O":
+            d1_params = _o_params(working, recipient, phi, need, rate)
             if d1_params is None:
                 continue
         else:
@@ -539,7 +569,7 @@ def apply_candidate(working, candidate, effects=None):
     action = candidate.action
     working.cash[action.donor] -= action.amount_donor_ccy
     working.fraction_used[(action.lever, action.recipient)] = working.fraction_used.get((action.lever, action.recipient), 0.0) + action.fraction
-    if action.lever == "D1":
+    if action.lever in ("D1", "O"):
         working.assumed_service[action.donor] = working.assumed_service.get(action.donor, 0.0) + action.amount_donor_ccy / working.horizon
     for k in working.ks:
         rows = working.rows_by_k[k]

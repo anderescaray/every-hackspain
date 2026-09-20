@@ -38,7 +38,8 @@ STRUCTURAL_NOTE = "margen 6m {margin}: no es palanca de tesoreria"
 UNEXPLAINED_NOTE = "retraso AP no explicado por liquidez (politica de pago o higiene ERP)"
 DONOR_EVIDENCE = ("reconstructed_cash", "runway_months")
 RECIPIENT_EVIDENCE = {"D1": ("window_debt_service_sum", "level_inflow_sum"),
-                      "P": ("inv_ap_overdue_amount", "inv_ap_due_30_amount", "reconstructed_cash", "runway_months")}
+                      "P": ("inv_ap_overdue_amount", "inv_ap_due_30_amount", "reconstructed_cash", "runway_months"),
+                      "O": ("window_outflow_sum", "level_inflow_sum")}
 RECIPIENT_CANDIDATE_REASONS = frozenset({None, REASON_RECIPIENT_NOT_CONSTRAINED, REASON_RECIPIENT_CASH})
 DECIMALS = 6
 

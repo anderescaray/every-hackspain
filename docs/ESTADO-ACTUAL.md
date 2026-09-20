@@ -91,7 +91,9 @@ Rama `integracion` de Álvaro mergeada en `main` (red financiera interactiva con
 3. Formato del leaderboard con Embat; `scores_v2/company_latest_scores.csv` es candidato. `predict --reference` ya existe para el test oculto; **falta el fallback por signo** para bancos cuyas plantillas no vio D31 (`hallazgos-datos.md` §11.5).
 
 **B · Bonus del enunciado**
-4. Alertas en la ficha y en Portfolio (`alerts[]`, sin tocar componentes). **`lead_time.json` ya existe** (D41, `scripts/11_lead_time.py`): frente a estrés propio (sin embargos a terceros), V2 detecta el 32% de 142 eventos con antelación mediana de 3 meses (p25–p75 2–5), 78% de falsas alarmas y ×1,2 sobre la tasa base. Contarlo en el pitch con sus límites. Comparación de alertas en `scripts/12_early_warning.py` (D42): la caja sola no mejora al score; la intersección score+caja detecta más a igual coste de alarmas pero avisa más tarde.
+4. Alertas en la ficha y en Portfolio (`alerts[]`, sin tocar componentes). **`lead_time.json` ya existe** (D41, `scripts/11_lead_time.py`): frente a estrés propio (sin embargos a terceros), V2 detecta el 32% de 142 eventos con antelación mediana de 3 meses (p25–p75 2–5), 78% de falsas alarmas y ×1,2 sobre la tasa base. Contarlo en el pitch con sus límites. Comparación de alertas en `scripts/12_early_warning.py` (D42). **Tesorería de grupo (D46–D48):** `scripts/14_group_opportunities.py` publica oportunidades medidas (cash pooling: 91% de los descubiertos con una hermana con caja; netting: 96% menos de transferencias intragrupo; crédito de hermanas sin usar) y `scripts/08_treasury_advisor.py --levers D1,P,O` añade la palanca de pagos operativos (planes 19 → 48). D46 dejó la caja fiable en 1.066 empresas sin mover V2.
+
+**Monitor ya implementado (D44):**
 5. `coverage_state` dentro del momentum de V2 (deltas solo entre meses `ok`), más allá del `provisional` actual.
 
 **C · Si sobra tiempo**
