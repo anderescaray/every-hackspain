@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 
 test("el JSON completo de la documentación cumple el contrato de Data y el validador CLI", async () => {
   const document = await readFile(new URL("../../docs/frontend-data-contract.md", import.meta.url), "utf8");
-  const block = document.match(/```json\n([\s\S]*?)\n```/);
+  const block = document.match(/```json\r?\n([\s\S]*?)\r?\n```/);
   assert.ok(block, "Falta el ejemplo JSON completo");
   const company = companyDetailSchema.parse(JSON.parse(block[1]));
   assert.equal(company.source, "generated");
@@ -37,7 +37,7 @@ test("el JSON completo de la documentación cumple el contrato de Data y el vali
 
 test("el JSON de grupo documentado cumple el esquema y el CLI de grupos", async () => {
   const document = await readFile(new URL("../../docs/frontend-data-contract.md", import.meta.url), "utf8");
-  const payload = [...document.matchAll(/```json\n([\s\S]*?)\n```/g)].map((block) => JSON.parse(block[1])).find((item) => Array.isArray(item.members));
+  const payload = [...document.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g)].map((block) => JSON.parse(block[1])).find((item) => Array.isArray(item.members));
   const group = groupDetailSchema.parse(payload);
   assert.equal(group.source, "generated");
   assert.equal(group.members.length, 2);

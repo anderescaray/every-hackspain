@@ -1,6 +1,31 @@
 # Documentación técnica — X-Ray · Embat
 
-**Empieza por [ESTADO-ACTUAL.md](./ESTADO-ACTUAL.md)** (arquitectura vigente, cifras, comandos, pendientes). **[decisiones.md](./decisiones.md) es el registro central.** §13 contiene el score V2 suavizado (qué se hizo, resultados, qué no mejora y pendientes); §12 la auditoría que lo motivó; §10 V1 y §11 producto. Para retomar el proyecto con otro agente: leer §13, después [scoring-v2.md](./scoring-v2.md) y el informe `data/processed/evaluation/score_comparison.md` (generado localmente). [continuar-score-v2.md](./continuar-score-v2.md) fue el relevo previo a V2; sus tareas de estabilidad y comparador están ejecutadas, las de liquidez y fallback no.
+**Empieza por [ESTADO-ACTUAL.md](./ESTADO-ACTUAL.md)** (arquitectura vigente, cifras, comandos, pendientes). **[decisiones.md](./decisiones.md) es el registro central.** §13 contiene el score V2 suavizado (qué se hizo, resultados, qué no mejora y pendientes); §12 la auditoría que lo motivó; §10 V1 y §11 producto. Para retomar el proyecto con otro agente: leer §13, después [scoring-v2.md](./scoring-v2.md), [formula-score.md](./formula-score.md) y el informe `data/processed/evaluation/score_comparison.md` (generado localmente). Notas de trabajo interno previas y roadmaps de ejecución se conservan en `docs_sobra/` (p.ej. [continuar-score-v2.md](../docs_sobra/continuar-score-v2.md)).
+
+## Mapa de documentos del entregable (`docs/`)
+
+| Área | Documento | Propósito |
+|---|---|---|
+| **Arquitectura** | [ESTADO-ACTUAL.md](./ESTADO-ACTUAL.md) | Punto de entrada técnico, cifras clave, pipeline y estado actual |
+| | [decisiones.md](./decisiones.md) | Registro central de decisiones de arquitectura y modelado (D01–D42) |
+| | [README.md](./README.md) | Este índice de documentación técnica |
+| **Scoring & Finanzas** | [formula-score.md](./formula-score.md) | La fórmula completa del score en 1 página ejecutiva |
+| | [scoring-v2.md](./scoring-v2.md) | Especificación matemática completa de `financial_smoothed_v2` |
+| | [scoring.md](./scoring.md) | Modelo de control baseline `financial_baseline_v1` |
+| | [explainability.md](./explainability.md) | Descomposición aditiva exacta de variaciones y drivers |
+| | [validation.md](./validation.md) | Protocolo de validación, holdout, estabilidad y test de estrés |
+| | [patron-tiempo-prestado.md](./patron-tiempo-prestado.md) | Análisis de crédito comercial y retrasos de pago (AR/AP) |
+| **Datos e IA** | [feature-engineering.md](./feature-engineering.md) | Features mensuales, calendarios, agregaciones y calidad |
+| | [hallazgos-datos.md](./hallazgos-datos.md) | Hallazgos, anomalías y reglas de negocio sobre datos brutos |
+| | [jev-categorias.md](./jev-categorias.md) | Categorización asistida por IA estática (TypeSafe Jev, D31) |
+| **Advisor & Grupo** | [group-optimization.md](./group-optimization.md) | Optimización greedy de transferencias y sensibilidad por empresa |
+| | [llm-narrativa.md](./llm-narrativa.md) | Narrativa financiera anclada a datos (plantillas + LLM opcional) |
+| **Producto & UI** | [embat_pulse_mvp_propuesta_final.md](./embat_pulse_mvp_propuesta_final.md) | Propuesta ejecutiva de producto, comprador y valor de negocio |
+| | [product-and-demo.md](./product-and-demo.md) | Módulos del producto, comprador, propuesta para CFO y demo |
+| | [frontend-data-contract.md](./frontend-data-contract.md) | Contrato JSON estricto entre pipeline de datos y Next.js |
+| | [alerts-and-monitoring.md](./alerts-and-monitoring.md) | Diseño de alertas tempranas y monitor de cartera |
+
+> **Nota:** Documentos internos de trabajo, guiones de vídeo de presentación, checklists de testing pre-deploy y prompts de agentes se han archivado en `docs_sobra/`.
 
 ## Estado real
 
@@ -15,7 +40,7 @@
 | **Score V2 (canónico, decisiones §21)** | `financial_smoothed_v2`: nivel de flujos agregados 6m, momentum trimestre/trimestre estandarizado por volatilidad propia, confirmación bache/tendencia, episodios, explicación aditiva exacta. Mediana de cambio mensual 3,3; extremos a la mitad; 922 empresas puntuadas en agosto | [scoring-v2.md](./scoring-v2.md), decisiones §13 |
 | Comparador V1/V2 | Estabilidad, proxies de estrés (texto y caja negativa), riesgo por etiqueta, anticipación con regla independiente, sensibilidad. Ninguna versión discrimina los proxies; V2 gana en estabilidad sin perder | [validation.md](./validation.md), `src/xray/evaluation/` |
 | Leaderboard y predicción supervisada | Sin resultados oficiales ni acuerdo medido; pendiente formato/feedback | [decisiones.md](./decisiones.md) |
-| **Advisor: plan de grupo + sensibilidad de empresa** | `treasury_advisor_v1`: escenarios mecánicos sobre la función de nivel exacta de V2. Plan de grupo (asunción de servicio de deuda D1, financiación de pago a proveedores P; objetivo cóncavo por tramos; greedy determinista con certificado) y sensibilidad por empresa (pendiente por palanca, siguiente nudo, cuánto para cambiar de tramo). Narrativa por plantillas con validador de anclaje; LLM opcional no conectado. Agosto 2026: 19 grupos con plan / 160 sin palancas / 71 unipersonales; 949 empresas con sensibilidad; 0 fallos de anclaje | [group-optimization.md](./group-optimization.md), [roadmap-group-advisor.md](./roadmap-group-advisor.md), decisiones §20, `src/xray/group_advisor/` |
+| **Advisor: plan de grupo + sensibilidad de empresa** | `treasury_advisor_v1`: escenarios mecánicos sobre la función de nivel exacta de V2. Plan de grupo (asunción de servicio de deuda D1, financiación de pago a proveedores P; objetivo cóncavo por tramos; greedy determinista con certificado) y sensibilidad por empresa (pendiente por palanca, siguiente nudo, cuánto para cambiar de tramo). Narrativa por plantillas con validador de anclaje; LLM opcional no conectado. Agosto 2026: 19 grupos con plan / 160 sin palancas / 71 unipersonales; 949 empresas con sensibilidad; 0 fallos de anclaje | [group-optimization.md](./group-optimization.md), decisiones §20, `src/xray/group_advisor/` |
 | Frontend (Next.js) | Portfolio `/`, ficha de empresa y grupo con datos reales vía `09_export_frontend.py`; simulador con 81 escenarios precalculados (`10_build_whatif.py`). Resúmenes assessment/summary por plantilla anclada; LLM opcional (`--llm`, ver [llm-narrativa.md](./llm-narrativa.md)). Sin despliegue público | `frontend/`, [frontend-data-contract.md](./frontend-data-contract.md), decisiones §19 |
 | Pulse Four Pillars | Experimento (`xray.pulse`); su ledger `xray.ledger` sí es canónico y alimenta features y Cash Truth | decisiones §21 |
 | Alertas, API y demo | Alertas: solo diseño. API FastAPI existe pero el frontend no la usa. Sin despliegue | [alerts-and-monitoring.md](./alerts-and-monitoring.md), [product-and-demo.md](./product-and-demo.md) |
