@@ -55,7 +55,7 @@ test("tesorería explica causa→efecto Health y camino al siguiente tramo desde
   assert.match(html, /Faltan 21 mil €/);
   assert.match(html, /\+1,35 pts \/ €10k/);
   assert.match(html, /Eficiencia de liquidez · nivel V2/);
-  assert.match(html, /href="#stress-test"/);
+  assert.match(html, /href="#scenarios"/);
   assert.match(html, /Camino al siguiente tramo/);
   assert.match(html, /Actual/);
   assert.match(html, /Objetivo/);

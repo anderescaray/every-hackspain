@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { companySections, withCompanyContext } from "../lib/analysisNavigation";
 
-test("empresa tiene siete accesos estables incluyendo Cómo actuar, Escenarios y Stress Test", () => {
-  assert.deepEqual(companySections.map((section) => section.id), ["health-score", "trajectory", "actionability", "cash-truth", "time-borrowed", "scenarios", "stress-test"]);
+test("empresa tiene seis accesos estables incluyendo Cómo actuar y Stress Testing", () => {
+  assert.deepEqual(companySections.map((section) => section.id), ["health-score", "trajectory", "actionability", "cash-truth", "time-borrowed", "scenarios"]);
   assert.equal(companySections.find((section) => section.id === "actionability")?.label, "Cómo actuar");
+  assert.equal(companySections.find((section) => section.id === "scenarios")?.label, "Stress Testing");
 });
 
 test("el contexto de empresa se mantiene sin borrar filtros o fragmentos", () => {

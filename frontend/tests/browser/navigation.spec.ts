@@ -12,14 +12,14 @@ async function closeMenu(page: Page) {
   if (await close.isVisible()) await close.click();
 }
 
-test("un menú reúne las siete secciones de empresa y las tres del grupo", async ({ page }, testInfo) => {
+test("un menú reúne las seis secciones de empresa y las tres del grupo", async ({ page }, testInfo) => {
   await page.goto("/companies/COMP_0356");
   await openMenu(page);
   const company = page.getByRole("navigation", { name: "Secciones de empresa", exact: true });
   const group = page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true });
-  await expect(company.getByRole("link")).toHaveCount(7);
+  await expect(company.getByRole("link")).toHaveCount(6);
   await expect(group.getByRole("link")).toHaveCount(3);
-  for (const label of ["Health Score", "Tendencia", "Cómo actuar", "Origen de la caja", "Tiempo financiado", "Escenarios", "Stress Test"]) await expect(company.getByRole("link", { name: label, exact: true })).toBeVisible();
+  for (const label of ["Health Score", "Tendencia", "Cómo actuar", "Origen de la caja", "Tiempo financiado", "Stress Testing"]) await expect(company.getByRole("link", { name: label, exact: true })).toBeVisible();
   await expect(page.getByRole("separator")).toBeVisible();
   const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
   expect(audit.violations.map((item) => ({ id: item.id, nodes: item.nodes.map((node) => ({ html: node.html, issue: node.failureSummary })) }))).toEqual([]);
@@ -33,9 +33,9 @@ test("un menú reúne las siete secciones de empresa y las tres del grupo", asyn
   await closeMenu(page);
 });
 
-test("los accesos desplazan a la sección elegida sin quitar alertas o escenarios", async ({ page }) => {
+test("los accesos desplazan a la sección elegida sin quitar el simulador", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
-  for (const [label, id] of [["Tendencia", "trajectory"], ["Cómo actuar", "actionability"], ["Origen de la caja", "cash-truth"], ["Tiempo financiado", "time-borrowed"], ["Escenarios", "scenarios"], ["Stress Test", "stress-test"], ["Health Score", "health-score"]]) {
+  for (const [label, id] of [["Tendencia", "trajectory"], ["Cómo actuar", "actionability"], ["Origen de la caja", "cash-truth"], ["Tiempo financiado", "time-borrowed"], ["Stress Testing", "scenarios"], ["Health Score", "health-score"]]) {
     await openMenu(page);
     await page.getByRole("navigation", { name: "Secciones de empresa", exact: true }).getByRole("link", { name: label, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/companies/COMP_0356#${id}$`));
@@ -48,8 +48,9 @@ test("los accesos desplazan a la sección elegida sin quitar alertas o escenario
       await expect(page.locator(`#${id}`)).toBeInViewport();
     }
   }
-  await expect(page.getByRole("region", { name: "Alertas priorizadas", exact: true })).toHaveCount(1);
-  await expect(page.getByRole("heading", { name: "Escenarios", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Alertas priorizadas", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Alertas", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Stress Testing", exact: true })).toHaveCount(1);
 });
 
 test("empresa seleccionada se conserva al recorrer grupo y regresar a caja", async ({ page }) => {
@@ -89,7 +90,7 @@ test("sin grupo se oculta el bloque; con JSON de grupo ausente se conserva el re
   await openMenu(page);
   await expect(page.getByRole("button", { name: "Secciones de grupo", exact: true })).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("navigation", { name: "Secciones de empresa", exact: true }).getByRole("link")).toHaveCount(7);
+  await expect(page.getByRole("navigation", { name: "Secciones de empresa", exact: true }).getByRole("link")).toHaveCount(6);
   await closeMenu(page);
   await page.goto("/groups/GROUP_0087?entity=COMP_0655");
   await expect(page.getByRole("heading", { name: "Datos del grupo no disponibles.", exact: true })).toBeVisible();
