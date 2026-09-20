@@ -60,32 +60,7 @@
 }
 .companyMeta { gap: 16px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
 .headerIdentity h1 { margin-bottom: 12px; }
-.headerIdentity p,
-.headerIdentity .summaryLead { max-width: 670px; color: var(--muted); font-size: 14px; line-height: 1.55; }
-.summaryPanel {
-  max-width: 100%;
-  width: 100%;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px 18px 16px;
-  margin: 4px 0 14px;
-}
-.summaryPanel .summaryLead { margin: 0; }
-.summaryList {
-  max-width: none;
-  margin: 0;
-  padding: 0 0 0 18px;
-  list-style: disc;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.5;
-}
-.summaryList li { margin: 0 0 8px; padding: 0; }
-.summaryList li:last-child { margin-bottom: 0; }
+.headerIdentity p { max-width: 670px; color: var(--muted); font-size: 14px; line-height: 1.55; }
 .trajectoryBadge { display: flex; gap: 8px; align-items: center; white-space: nowrap; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 6px 12px; text-transform: capitalize; margin-top: 30px; }
 .trajectoryBadge > span { font-size: 17px; }
 .deteriorating { background: var(--warm-soft); color: #8f4528; }
