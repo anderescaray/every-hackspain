@@ -87,6 +87,87 @@ const scenarioInputsSchema = z.object({ customer_term: amount, collection_delay:
 const simulationInputSchema = z.object({ key: scenarioKeySchema, label: text, unit: z.enum(["days", "%"]), baseline: amount.nonnegative(), min: amount, max: amount, step: amount.positive(), explanation: text });
 const scenarioSchema = z.object({ id: text, label: text, inputs: scenarioInputsSchema, health_score: score.int(), impacts: z.array(z.object({ key: scenarioKeySchema, label: text, points: amount })).max(4), explanation: text });
 const simulationSchema = z.object({ inputs: z.array(simulationInputSchema).length(4), scenarios: z.array(scenarioSchema).max(1000), example_id: text.nullable(), methodology: text });
+const stressFactorSchema = z.enum(["operating_inflow", "operating_outflow", "observed_debt_service", "customer_delay", "variable_rate", "cost_payroll", "cost_utilities", "cost_payment_processing", "cost_other_operating_payment"]).or(z.string().regex(/^fx_[A-Z]{3}$/));
+const stressHorizonSchema = z.union([z.literal(1), z.literal(3), z.literal(6)]);
+const stressBandSchema = z.enum(["green", "amber", "red"]);
+const stressUnitSchema = z.enum(["pct", "days", "bp"]);
+const stressResultSchema = z.object({
+  observed_months: stressHorizonSchema,
+  status: z.enum(["available", "insufficient_quality_months", "unavailable"]),
+  reason: text.nullable(),
+  health: score.nullable(),
+  delta_points: amount.nullable(),
+  band: stressBandSchema.nullable(),
+  attribution: z.object({ method: z.literal("exact_shapley"), factors: z.array(z.object({ factor: stressFactorSchema, points: amount }).strict()).min(1).max(5), residual: amount }).strict().nullable(),
+  score_terms: z.array(z.object({ component: text, points: amount }).strict()).max(30).nullable(),
+}).strict().superRefine((value, ctx) => {
+  if (value.status === "available" && (value.health === null || value.delta_points === null || value.score_terms === null || value.band === null)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "El resultado disponible necesita Health, cambio, tramo y desglose" });
+  if (value.status !== "available" && (value.health !== null || value.delta_points !== null || value.band !== null || value.attribution !== null || value.score_terms !== null)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Sin resultado no se deben inventar valores" });
+  if (value.attribution !== null && value.observed_months !== 6) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La atribución Shapley solo aplica a seis meses observados" });
+});
+const stressScenarioSchema = z.object({
+  id: text,
+  kind: z.enum(["preset", "single_factor"]),
+  label: text,
+  status: z.enum(["available", "unavailable"]),
+  reason: text.nullable(),
+  shocks: z.array(z.object({ factor: stressFactorSchema, relative_pct: amount, unit: stressUnitSchema }).strict()).min(1).max(5),
+  results: z.array(stressResultSchema).max(3),
+  path: z.array(z.object({ observed_months: stressHorizonSchema, health: score, band: stressBandSchema }).strict()).max(3),
+  band_crossing_horizon: stressHorizonSchema.nullable(),
+}).strict().superRefine((value, ctx) => {
+  if (value.kind === "single_factor" && value.shocks.length !== 1) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Una prueba unifactorial necesita un solo factor" });
+  if (value.status === "unavailable" && (value.results.length || value.path.length || value.band_crossing_horizon !== null)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Un escenario no disponible no tiene resultados" });
+  if (value.status === "available" && (value.results.length !== 3 || new Set(value.results.map((result) => result.observed_months)).size !== 3)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Un escenario disponible necesita los tres horizontes observados" });
+});
+const stressStatus = z.enum(["available", "unavailable", "context_only"]);
+const stressEvidence = z.object({ status: stressStatus, reason: text.nullable() });
+const stressMonth = z.string().regex(/^\d{4}-\d{2}$/);
+const stressReconciliationMonth = z.object({ status: z.enum(["matched", "mismatch", "missing"]), inflow_delta: amount.nullable(), outflow_delta: amount.nullable(), unmapped_outflow_subclasses: z.array(text).optional() }).strict();
+const stressReconciliation = z.object({ status: z.enum(["matched", "unavailable"]), reason: text.nullable(), quality_months: z.array(stressMonth).max(6).optional(), monthly: z.record(stressMonth, stressReconciliationMonth).optional(), tolerance_eur: amount.nonnegative().optional() }).strict();
+const stressExposuresSchema = z.object({
+  company_id: z.string().regex(/^COMP_\d{4,10}$/), as_of: date, window_start: date, window_end: date,
+  operating: stressEvidence.extend({ inflows_6m: amount.nullable(), outflows_6m: amount.nullable(), net_6m: amount.nullable(), months_observed: z.array(stressMonth).max(6), quality_months: z.array(stressMonth).max(6), required_quality_months: count.optional() }).strict(),
+  costs: stressEvidence.extend({
+    by_subclass: z.record(z.string(), amount.nonnegative()), unclassified_discretionary_cost: amount.nullable().optional(),
+    monthly_by_subclass: z.record(stressMonth, z.record(z.string(), amount.nonnegative()).nullable()),
+    monthly_by_category: z.record(stressMonth, z.record(z.string(), amount.nonnegative()).nullable()),
+    category_gates: z.record(z.string(), z.object({ status: z.enum(["available", "unavailable"]), reason: text.nullable(), amount_6m: amount.nonnegative().nullable(), share_of_outflow: z.number().finite().min(0).max(1).nullable(), score_runnable: z.boolean() }).strict()),
+    reconciliation: stressReconciliation,
+    score_runnable: z.boolean(),
+    materiality_gate: z.object({ min_amount_eur: amount.nonnegative(), min_share_of_quality_outflow: z.number().finite().min(0).max(1) }).strict().optional(),
+  }).strict(),
+  debt_service: stressEvidence.extend({ principal_6m: amount.nonnegative().nullable(), interest_6m: amount.nonnegative().nullable(), verified_financing_fees_6m: amount.nonnegative().nullable(), total_6m: amount.nonnegative().nullable(), v2_service_6m: amount.nonnegative().nullable(), method_note: text.optional() }).strict(),
+  collections: stressEvidence.extend({ score_runnable: z.boolean(), largest_customer_id: text.nullable(), largest_customer_share: z.number().finite().min(0).max(1).nullable(), eligible_paid_count: count.nullable(), delay_median_days: amount.nullable() }).strict(),
+  fx: stressEvidence.extend({ non_eur_share: z.number().finite().min(0).max(1).nullable(), source_currency_amounts: z.record(z.string(), amount.nonnegative()), monthly_by_currency: z.record(stressMonth, z.record(z.string(), z.object({ inflows: amount.nonnegative(), outflows: amount.nonnegative() }).strict()).nullable()), reconciliation_status: z.enum(["matched", "unavailable"]).optional(), score_runnable: z.boolean(), stress_status: z.enum(["available", "context_only"]), stress_currency: z.string().regex(/^[A-Z]{3}$/).nullable(), basis: text.optional() }).strict(),
+  variable_rate: stressEvidence.extend({ score_runnable: z.boolean(), fresh_variable_products: count, outstanding_eur: amount.nonnegative().nullable() }).strict(),
+  group_support: stressEvidence.extend({ candidate_in_6m: amount.nonnegative().nullable(), candidate_out_6m: amount.nonnegative().nullable(), score_runnable: z.literal(false) }).strict(),
+  source_versions: z.object({ score_method: z.literal("financial_smoothed_v2"), classification_method: text.nullable() }).strict(),
+}).strict();
+const stressTestSchema = z.object({
+  schema_version: z.literal("1.0"), method: z.literal("v2_observed_window_stress_v1"),
+  status: z.enum(["available", "insufficient_data"]), reason: text.nullable(),
+  as_of: date, score_version: z.literal("financial_smoothed_v2"), baseline_health: score.nullable(),
+  baseline_band: stressBandSchema.nullable(),
+  horizon_semantics: z.literal("last_consecutive_quality_months_not_forecast"),
+  horizons: z.tuple([z.literal(1), z.literal(3), z.literal(6)]),
+  default_scenario_id: text.nullable(),
+  custom_factors: z.array(z.object({
+    factor: stressFactorSchema, group: z.enum(["comercial", "costes", "financiacion", "mercado"]),
+    unit: stressUnitSchema, positions: z.array(amount).min(1).max(8),
+    context: z.object({ top1_share: z.number().finite().min(0).max(1).optional(), currency: z.string().regex(/^[A-Z]{3}$/).optional(), outstanding_eur: amount.nonnegative().optional() }).strict().nullable(),
+  }).strict()).max(20),
+  reverse_limits: z.array(z.object({ factor: stressFactorSchema, unit: stressUnitSchema, value: amount, health: score, band: stressBandSchema }).strict()).max(8),
+  scenarios: z.array(stressScenarioSchema).max(48), exposures: stressExposuresSchema,
+  lineage: z.object({ run_id: text, reference_sha256: z.string().regex(/^[a-f0-9]{64}$/), features_sha256: z.string().regex(/^[a-f0-9]{64}$/), scores_sha256: z.string().regex(/^[a-f0-9]{64}$/), engine_version: text }).strict(),
+}).strict().superRefine((value, ctx) => {
+  if (value.status === "insufficient_data" && (value.baseline_health !== null || value.baseline_band !== null || value.default_scenario_id !== null || value.scenarios.length !== 0 || value.custom_factors.length !== 0 || value.reverse_limits.length !== 0)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Sin baseline comparable no puede haber escenarios" });
+  if (value.status === "available" && (value.baseline_health === null || value.baseline_band === null || !value.scenarios.length || !value.default_scenario_id)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Una prueba disponible necesita baseline y escenarios" });
+  if (value.default_scenario_id && !value.scenarios.some((scenario) => scenario.id === value.default_scenario_id && scenario.status === "available")) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "El escenario por defecto debe existir y estar disponible" });
+  if (new Set(value.scenarios.map((scenario) => scenario.id)).size !== value.scenarios.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Escenarios de estrés duplicados" });
+  if (value.exposures.as_of !== value.as_of || value.exposures.window_end !== value.as_of) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "El perímetro de exposición debe coincidir con el corte" });
+});
+
 const actionLeverIdSchema = z.enum(["ap_on_time", "ar_faster", "debt_service_cut", "cut_outflow", "raise_inflow"]);
 const actionLeverSchema = z.object({
   lever: actionLeverIdSchema,
@@ -162,6 +243,7 @@ export const companyDetailSchema = z.object({
   alerts: z.array(alertSchema).max(5),
   evidence: z.array(evidenceSchema).max(50),
   simulation: simulationSchema,
+  stress_test: stressTestSchema.optional(),
   actionability: actionabilitySchema.optional(),
 }).strict().superRefine((company, ctx) => {
   const issue = (message: string, path: (string | number)[]) => ctx.addIssue({ code: z.ZodIssueCode.custom, message, path });
@@ -264,6 +346,7 @@ export const companyDetailSchema = z.object({
     if (Object.values(scenario.inputs).every((value) => value === 0) && scenario.health_score !== company.health_score) issue("El escenario sin ajustes debe coincidir con el estado actual", ["simulation", "scenarios", index]);
   });
   if (company.simulation.example_id !== null && !company.simulation.scenarios.some((scenario) => scenario.id === company.simulation.example_id)) issue("El escenario de ejemplo no existe", ["simulation", "example_id"]);
+  if (company.stress_test && (company.stress_test.as_of !== company.as_of || company.stress_test.exposures.company_id !== company.company_id)) issue("El Stress Test debe compartir empresa y corte", ["stress_test"]);
 });
 
 export type CompanyDetail = z.infer<typeof companyDetailSchema>;
@@ -291,5 +374,8 @@ export type ObservationEvidence = z.infer<typeof observationSchema>;
 export type ScenarioKey = z.infer<typeof scenarioKeySchema>;
 export type ScenarioInputs = z.infer<typeof scenarioInputsSchema>;
 export type Simulation = z.infer<typeof simulationSchema>;
+export type StressTest = z.infer<typeof stressTestSchema>;
+export type StressScenario = z.infer<typeof stressScenarioSchema>;
+export type StressFactor = z.infer<typeof stressFactorSchema>;
 export type Actionability = z.infer<typeof actionabilitySchema>;
 export type ActionLever = z.infer<typeof actionLeverSchema>;

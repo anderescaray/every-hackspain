@@ -16,6 +16,8 @@ function NavigationIcon({ name }: { name: string }) {
     health: "M4 12h4l2-6 4 12 2-6h4",
     trend: "M4 18V5m0 13h16M7 14l4-4 4 2 5-7",
     actions: "M4 18h16M7 15l4-4 3 2 4-6M16 7h2v2",
+    alerts: "M12 3 2 20h20L12 3zm0 6v4m0 4h.01",
+    stress: "M3 17h3l3-10 5 12 3-7h4",
     cash: "M4 7h16v12H4zM4 7V4h12m-1 8h5m-4 0v3",
     time: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m0 4v5l4 2",
     overview: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
