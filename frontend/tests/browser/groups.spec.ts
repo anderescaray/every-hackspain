@@ -37,7 +37,6 @@ test("el acceso aparece automáticamente solo en empresas con grupo", async ({ p
   await page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true }).getByRole("link", { name: "Visión general", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Visión general", exact: true })).toBeVisible();
   await expect(page.getByText("2 deteriorándose", { exact: true })).toBeVisible();
-  await expect(page.getByText("6 sociedades observadas de 8 conocidas", { exact: false })).toBeVisible();
   await page.goto("/companies/COMP_9001");
   await page.getByTestId("analysis-shell").waitFor();
   if (await openMenu.isVisible()) await openMenu.click();
@@ -50,16 +49,15 @@ test("overview permite priorizar sociedades y revisar evidencias", async ({ page
   await expect(list.getByRole("listitem")).toHaveCount(2);
   await page.getByRole("button", { name: /Todas/ }).click();
   await expect(list.getByRole("listitem")).toHaveCount(6);
-  await page.getByLabel("Buscar sociedad", { exact: true }).fill("COMP_0412");
-  await expect(list.getByRole("listitem")).toHaveCount(1);
-  await list.getByRole("listitem").locator("summary").click();
-  const button = list.getByRole("button", { name: "Ver evidencia: Sociedad COMP_0412", exact: true });
+  const row = list.getByRole("listitem").filter({ hasText: "COMP_0412" });
+  await row.locator("summary").click();
+  const button = row.getByRole("button", { name: "Ver evidencia: Sociedad COMP_0412", exact: true });
   await button.click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("columnheader", { name: "Sociedad observada", exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(button).toBeFocused();
-  await list.getByRole("link", { name: "Ver en la red", exact: true }).click();
+  await row.getByRole("link", { name: "Ver en la red", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "Detalle de la selección" }).getByRole("heading", { name: "COMP_0412", exact: true })).toBeVisible();
 });
 

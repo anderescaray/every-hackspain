@@ -8,7 +8,9 @@ MONTHS = pd.date_range("2025-01-01", "2025-12-01", freq="MS")
 
 
 def frames(companies):
-    features = pd.DataFrame([{"company_id": c, "month": m, "tx_count": 10} for c in companies for m in MONTHS])
+    features = pd.DataFrame([{"company_id": c, "group_id": f"G_{c}", "month": m, "tx_count": 10, "tx_inflow": 1000.0,
+                              "debt_principal_paid": 50.0, "debt_interest_paid": 0.0}
+                             for c in companies for m in MONTHS])
     return features, features[["company_id", "month"]]
 
 
@@ -74,3 +76,37 @@ def test_common_subset_uses_the_same_events_for_every_alarm():
     assert r["onsets"] == 2 and r["common_onsets"] == 1                   # B queda fuera del subconjunto común
     assert all(v["evaluable_onsets"] == 1 for v in r["alarms_common"].values())
     assert r["alarms"]["score_z<=-1.5"]["evaluable_onsets"] == 2          # el score sí ve los dos
+
+
+def test_debt_pressure_needs_a_rise_over_its_own_history_not_a_high_level():
+    from xray.evaluation.early_warning import debt_pressure_alarms
+    months = pd.date_range("2025-01-01", "2025-08-01", freq="MS")
+    # A: carga alta pero estable (20% siempre) -> no es alarma. B: salta de 5% a 20% en julio -> alarma.
+    rows = []
+    for m in months:
+        rows.append({"company_id": "A", "month": m, "tx_inflow": 1000.0, "debt_principal_paid": 200.0, "debt_interest_paid": 0.0})
+        salto = m >= pd.Timestamp("2025-07-01")
+        rows.append({"company_id": "B", "month": m, "tx_inflow": 1000.0, "debt_principal_paid": 200.0 if salto else 50.0,
+                     "debt_interest_paid": 0.0})
+    a = debt_pressure_alarms(pd.DataFrame(rows)).set_index(["company_id", "month"])
+    assert not a.loc["A", "alarm"].any()
+    assert a.loc[("B", pd.Timestamp("2025-07-01")), "alarm"]
+    assert not a.loc[("B", pd.Timestamp("2025-04-01")), "alarm"]          # antes del salto, nada
+    assert not a.loc[("B", pd.Timestamp("2025-01-01")), "available"]      # sin historia previa no es evaluable
+
+
+def test_debt_pressure_ignores_months_without_operating_inflow():
+    from xray.evaluation.early_warning import debt_pressure_alarms
+    months = pd.date_range("2025-01-01", "2025-06-01", freq="MS")
+    rows = [{"company_id": "A", "month": m, "tx_inflow": 0.0 if m == months[-1] else 1000.0,
+             "debt_principal_paid": 100.0, "debt_interest_paid": 0.0} for m in months]
+    a = debt_pressure_alarms(pd.DataFrame(rows)).set_index("month")
+    assert not a.loc[months[-1], "available"]                              # sin entradas no hay cociente
+
+
+def test_holdout_split_is_by_group_and_deterministic():
+    from xray.evaluation.early_warning import split_groups
+    companies = pd.DataFrame({"group_id": [f"G{i:03d}" for i in range(100)]})
+    dev, hold = split_groups(companies)
+    assert len(dev) == 70 and len(hold) == 30 and not dev & hold
+    assert (dev, hold) == split_groups(companies)                          # misma semilla, mismo reparto

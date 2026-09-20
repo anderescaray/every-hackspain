@@ -2,9 +2,9 @@
 
 import { AnalysisLink as Link } from "@/components/navigation/AnalysisLink";
 import { useState } from "react";
-import type { GroupDetail, GroupInsight, GroupMetric } from "@/types/groupDetail";
+import type { GroupDetail, GroupInsight, GroupMetric, GroupMember } from "@/types/groupDetail";
 import { dateLabel, severityLabels, trajectoryLabels } from "@/lib/companyFormat";
-import { groupMoney, groupScore, priorityOrder } from "@/lib/groupPresentation";
+import { groupMoney, groupScore, priorityOrder, roleLabels } from "@/lib/groupPresentation";
 import { EvidenceButton, type OpenEvidence } from "@/components/insights/InsightPrimitives";
 import { GroupLinks } from "./GroupLinks";
 import base from "@/components/insights/insights.module.css";
@@ -17,9 +17,53 @@ function Metric({ label, metric, group, onOpen }: { label: string; metric: Group
     <div className={styles.groupMetric}>
       <span>{label}</span>
       <strong>{groupMoney(metric.value)}</strong>
-      <small>{metric.covered_company_ids.length}/{group.members.length} sociedades</small>
+      <small>{metric.covered_company_ids.length} de {group.members.length} sociedades</small>
       <EvidenceButton refs={metric.evidence_refs} title={label} onOpen={onOpen} />
     </div>
+  );
+}
+
+function MemberRow({ member, group, onOpen }: { member: GroupMember; group: GroupDetail; onOpen: OpenEvidence }) {
+  return (
+    <li>
+      <details className={`${styles.memberRow} ${styles[`attention-${member.attention}`]}`}>
+        <summary>
+          <div className={styles.memberScoreBlock} aria-label={`Health Score ${groupScore(member.health_score)}`}>
+            <strong className={styles.memberHealth}>{groupScore(member.health_score)}</strong>
+            <span>Health</span>
+          </div>
+          <div className={styles.memberIdentity}>
+            <strong className={styles.companyLink}>{member.company_id}</strong>
+            <div className={styles.memberMeta}>
+              <span className={`${styles.attentionMark} ${styles[`mark-${member.attention}`]}`}>{attentionLabels[member.attention]}</span>
+              <span>{member.trajectory ? trajectoryLabels[member.trajectory] : "Sin trayectoria"}</span>
+              <span>{roleLabels[member.role]}</span>
+            </div>
+          </div>
+          <div className={styles.memberFigures}>
+            <div><span>Liquidez</span><strong>{groupMoney(member.available_liquidity)}</strong></div>
+            <div><span>Obligaciones</span><strong>{groupMoney(member.obligations_due)}</strong></div>
+          </div>
+          <span className={styles.expandMarker} aria-hidden="true">+</span>
+        </summary>
+        <div className={styles.memberCardBody}>
+          <p>{member.summary}</p>
+          <dl className={styles.dimensionGrid}>
+            <div><dt>Generación de caja</dt><dd>{groupScore(member.dimensions.cash_generation)}</dd></div>
+            <div><dt>Momentum</dt><dd>{groupScore(member.dimensions.momentum)}</dd></div>
+            <div><dt>Resiliencia</dt><dd>{groupScore(member.dimensions.resilience)}</dd></div>
+            <div><dt>Deuda</dt><dd>{groupScore(member.dimensions.debt)}</dd></div>
+            <div><dt>Deuda identificada</dt><dd>{groupMoney(member.identified_debt)}</dd></div>
+            <div><dt>Datos a</dt><dd>{dateLabel(group.as_of)}</dd></div>
+          </dl>
+          <div className={styles.memberCardActions}>
+            <Link className={base.evidenceButton} href={`/companies/${member.company_id}`}>Abrir ficha</Link>
+            <Link className={base.evidenceButton} href={`/groups/${group.group_id}/network?company=${member.company_id}`}>Ver en la red</Link>
+            <EvidenceButton refs={member.evidence_refs} title={`Sociedad ${member.company_id}`} onOpen={onOpen} />
+          </div>
+        </div>
+      </details>
+    </li>
   );
 }
 
@@ -45,11 +89,10 @@ function AlertList({ items, group, onOpen }: { items: GroupInsight[]; group: Gro
 }
 
 export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: OpenEvidence }) {
-  const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<"attention" | "all">("attention");
   const highAttention = group.members.filter((member) => member.attention === "high").length;
+  const sortedAlerts = [...group.alerts].sort((a, b) => priorityOrder[a.severity] - priorityOrder[b.severity]);
   const members = [...group.members]
-    .filter((member) => member.company_id.toLowerCase().includes(query.toLowerCase()))
     .filter((member) => focus === "all" || member.attention === "high")
     .sort((a, b) => priorityOrder[a.attention] - priorityOrder[b.attention] || (a.health_score ?? 999) - (b.health_score ?? 999));
 
@@ -60,85 +103,66 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
       <Metric label={`Vence · ${group.obligations.horizon}`} metric={group.obligations} group={group} onOpen={onOpen} />
     </section>
 
-    <section className={base.panel} aria-label="Sociedades del grupo observado">
-      <div className={styles.panelHeading}>
-        <div>
-          <span className={base.eyebrow}>Sociedades</span>
-          <h2>Dónde mirar primero</h2>
-          <p>Sin Health Score de grupo. Empieza por las sociedades en prioridad alta.</p>
+    <div className={styles.overviewBoard}>
+      <section className={styles.overviewPrimary} aria-label="Sociedades del grupo observado">
+        <header className={styles.overviewSectionHead}>
+          <div>
+            <h2>Dónde mirar primero</h2>
+            <p>
+              {focus === "attention"
+                ? highAttention
+                  ? `${highAttention} sociedades en prioridad alta, ordenadas por Health Score.`
+                  : "Ninguna sociedad en prioridad alta. Revisa el perímetro completo."
+                : `${group.members.length} sociedades del perímetro observado.`}
+            </p>
+          </div>
+          <span className={styles.overviewCount}>
+            {members.length}<small> / {group.members.length}</small>
+          </span>
+        </header>
+
+        <div className={styles.focusTabs} role="group" aria-label="Filtro de atención">
+          <button type="button" aria-pressed={focus === "attention"} className={focus === "attention" ? styles.focusTabActive : styles.focusTab} onClick={() => setFocus("attention")}>
+            Prioridad alta ({highAttention})
+          </button>
+          <button type="button" aria-pressed={focus === "all"} className={focus === "all" ? styles.focusTabActive : styles.focusTab} onClick={() => setFocus("all")}>
+            Todas ({group.members.length})
+          </button>
         </div>
-        <span className={base.periodBadge}>{highAttention} de {group.members.length} en foco</span>
-      </div>
 
-      <div className={styles.focusTabs} role="group" aria-label="Filtro de atención">
-        <button type="button" aria-pressed={focus === "attention"} className={focus === "attention" ? styles.focusTabActive : styles.focusTab} onClick={() => setFocus("attention")}>
-          Prioridad alta ({highAttention})
-        </button>
-        <button type="button" aria-pressed={focus === "all"} className={focus === "all" ? styles.focusTabActive : styles.focusTab} onClick={() => setFocus("all")}>
-          Todas ({group.members.length})
-        </button>
-        <label className={styles.inlineSearch}>
-          Buscar
-          <input type="search" aria-label="Buscar sociedad" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="COMP_…" />
-        </label>
-      </div>
-
-      {members.length ? (
-        <ul className={styles.memberCards} aria-label="Tabla de sociedades">
-          {members.map((member) => (
-            <li key={member.company_id}>
-              <details className={`${styles.memberCard} ${styles[`attention-${member.attention}`]}`}>
-                <summary>
-                  <div className={styles.memberCardMain}>
-                    <strong className={styles.companyLink}>{member.company_id}</strong>
-                    <span className={`${styles.attentionChip} ${styles[`chip-${member.attention}`]}`}>{attentionLabels[member.attention]}</span>
-                    <span className={styles.trajectoryChip}>{member.trajectory ? trajectoryLabels[member.trajectory] : "Sin evaluar"}</span>
-                  </div>
-                  <div className={styles.memberCardScores}>
-                    <div><span>Health</span><strong className={styles.memberHealth}>{groupScore(member.health_score)}</strong></div>
-                    <div><span>Liquidez</span><strong>{groupMoney(member.available_liquidity)}</strong></div>
-                    <div><span>Obligaciones</span><strong>{groupMoney(member.obligations_due)}</strong></div>
-                  </div>
-                  <span className={styles.expandMarker} aria-hidden="true">+</span>
-                </summary>
-                <div className={styles.memberCardBody}>
-                  <p>{member.summary}</p>
-                  <dl className={styles.dimensionGrid}>
-                    <div><dt>Generación de caja</dt><dd>{groupScore(member.dimensions.cash_generation)}</dd></div>
-                    <div><dt>Momentum</dt><dd>{groupScore(member.dimensions.momentum)}</dd></div>
-                    <div><dt>Resiliencia</dt><dd>{groupScore(member.dimensions.resilience)}</dd></div>
-                    <div><dt>Deuda</dt><dd>{groupScore(member.dimensions.debt)}</dd></div>
-                    <div><dt>Deuda identificada</dt><dd>{groupMoney(member.identified_debt)}</dd></div>
-                    <div><dt>Datos a</dt><dd>{dateLabel(group.as_of)}</dd></div>
-                  </dl>
-                  <div className={styles.memberCardActions}>
-                    <Link className={base.evidenceButton} href={`/companies/${member.company_id}`}>Abrir ficha</Link>
-                    <Link className={base.evidenceButton} href={`/groups/${group.group_id}/network?company=${member.company_id}`}>Ver en la red</Link>
-                    <EvidenceButton refs={member.evidence_refs} title={`Sociedad ${member.company_id}`} onOpen={onOpen} />
-                  </div>
-                </div>
-              </details>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className={base.emptyState}>{group.members.length ? "No hay sociedades que coincidan con estos filtros." : "No hay sociedades con análisis disponible en el grupo observado."}</p>
-      )}
-    </section>
-
-    <section className={base.panel} aria-label="Alertas del grupo">
-      <div className={styles.panelHeading}>
-        <div>
-          <h2>Alertas</h2>
-          <p>Despliega solo lo que necesites revisar.</p>
+        <div className={styles.memberTableHead} aria-hidden="true">
+          <span>Score</span>
+          <span>Sociedad</span>
+          <span>Caja</span>
+          <span />
         </div>
-      </div>
-      {group.alerts.length ? (
-        <AlertList items={[...group.alerts].sort((a, b) => priorityOrder[a.severity] - priorityOrder[b.severity])} group={group} onOpen={onOpen} />
-      ) : (
-        <p className={base.emptyState}>No hay alertas preparadas. No es una garantía de ausencia de riesgos.</p>
-      )}
-    </section>
+
+        {members.length ? (
+          <ul className={styles.memberCards} aria-label="Tabla de sociedades">
+            {members.map((member) => (
+              <MemberRow key={member.company_id} member={member} group={group} onOpen={onOpen} />
+            ))}
+          </ul>
+        ) : (
+          <p className={base.emptyState}>{group.members.length ? "No hay sociedades que coincidan con estos filtros." : "No hay sociedades con análisis disponible en el grupo observado."}</p>
+        )}
+      </section>
+
+      <aside className={styles.overviewAside} aria-label="Alertas del grupo">
+        <header className={styles.overviewSectionHead}>
+          <div>
+            <h2>Alertas</h2>
+            <p>{sortedAlerts.length ? "Señales a contrastar antes de mover caja." : "Sin alertas preparadas en este perímetro."}</p>
+          </div>
+          <span className={styles.overviewCount}>{sortedAlerts.length}</span>
+        </header>
+        {sortedAlerts.length ? (
+          <AlertList items={sortedAlerts} group={group} onOpen={onOpen} />
+        ) : (
+          <p className={base.emptyState}>No hay alertas preparadas. No es una garantía de ausencia de riesgos.</p>
+        )}
+      </aside>
+    </div>
 
     {group.recent_changes.length > 0 && (
       <details className={`${base.panel} ${styles.collapsiblePanel}`}>
@@ -165,6 +189,7 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
 
     <Link className={styles.nextStep} href={`/groups/${group.group_id}/network`}>
       <span><small>Siguiente</small><strong>Red financiera del grupo</strong></span>
+      <span aria-hidden="true">→</span>
     </Link>
   </>;
 }

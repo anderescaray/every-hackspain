@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--out-dir", type=Path)
     parser.add_argument("--horizon", type=int, default=6)
     args = parser.parse_args()
-    features = pd.read_parquet(args.features_dir / "company_monthly_features.parquet", columns=["company_id", "month", "tx_count"])
+    features = pd.read_parquet(args.features_dir / "company_monthly_features.parquet", columns=["company_id", "group_id", "month", "tx_count", "tx_inflow", "debt_principal_paid", "debt_interest_paid"])
     scores = pd.read_parquet(args.features_dir / "scores_v2" / "company_monthly_scores.parquet",
                              columns=["company_id", "month", "momentum_z"])
     liquidity = pd.read_parquet(args.features_dir / "company_currency_liquidity_context.parquet",
