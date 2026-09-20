@@ -13,7 +13,7 @@ export function WhatIfSection({ currentHealthScore, simulation }: { currentHealt
   const changed = Object.values(scenario.inputs).some((value) => value !== 0);
   const example = simulation.scenarios.find((item) => item.id === simulation.example_id);
 
-  return <section className={styles.panel} aria-label="Escenarios">
+  return <section id="scenarios" className={styles.panel} aria-label="Escenarios" data-company-section="scenarios">
     <SectionHeading number="06" title="Escenarios" description="Efecto estimado en el Health Score si cambian plazos o apoyo."><span className={styles.scenarioBadge}>Escenario, no predicción.</span></SectionHeading>
     <div className={styles.simulationLayout}><div className={styles.simulationControls}>
       {simulation.scenarios.length > 0 ? <div className={styles.simulationToolbar}>

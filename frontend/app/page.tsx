@@ -18,7 +18,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   }
   if (!portfolio) {
     return <main className={`${base.page} ${base.routeState}`}>
-      <span className={base.eyebrow}>Embat Pulse</span>
+      <span className={base.eyebrow}>X Ray</span>
       <h1>{invalid ? "Los datos de cartera necesitan revisión." : "Datos de cartera todavía no disponibles."}</h1>
       <p>{invalid ? "El archivo portfolio.json no cumple el contrato. No se muestran puntuaciones parciales." : "Ejecuta la exportación del pipeline (scripts/09_export_frontend.py) para generar public/generated/portfolio.json."}</p>
     </main>;

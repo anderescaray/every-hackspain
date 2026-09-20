@@ -36,7 +36,7 @@ export function TrajectoryChart({ history: observations, trajectory }: { history
         </div>
         <svg viewBox="0 0 760 266" className={styles.chart} role="img" aria-labelledby={`${chartId}-title ${chartId}-description`} onPointerMove={selectFromPointer}>
           <title id={`${chartId}-title`}>{`Tendencia del Health Score: de ${first.health_score} a ${last.health_score}`}</title>
-          <desc id={`${chartId}-description`}>{`${history.length} observaciones mensuales de ${dateLabel(first.month, true)} a ${dateLabel(last.month, true)}. ${direction}. Usa el selector de mes o la tabla para consultar cada valor.`}</desc>
+          <desc id={`${chartId}-description`}>{`${history.length} observaciones mensuales de ${dateLabel(first.month, true)} a ${dateLabel(last.month, true)}. ${direction}. Pasa el cursor por el gráfico para consultar cada mes.`}</desc>
           <defs><linearGradient id={`${chartId}-fill`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0d5c52" stopOpacity="0.12" /><stop offset="100%" stopColor="#0d5c52" stopOpacity="0" /></linearGradient></defs>
           {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1="44" x2="724" y1={y(value)} y2={y(value)} stroke="#e1e4e2" strokeDasharray={value === 0 ? undefined : "3 5"} /><text x="30" y={y(value) + 4} textAnchor="end" fill="#5a635f" fontSize="12">{value}</text></g>)}
           <polygon points={`${x(0)},224 ${points} ${x(history.length - 1)},224`} fill={`url(#${chartId}-fill)`} />
@@ -49,8 +49,6 @@ export function TrajectoryChart({ history: observations, trajectory }: { history
           </g>
           {history.filter((_, index) => index === 0 || index === history.length - 1 || index % 6 === 0).map((point) => <text key={point.month} x={x(history.indexOf(point))} y="253" textAnchor="middle" fill="#5a635f" fontSize="12">{dateLabel(point.month, true)}</text>)}
         </svg>
-        <label className={styles.chartSlider}>Explorar mes <input type="range" min="0" max={history.length - 1} value={activeIndex} onChange={(event) => setActiveIndex(Number(event.target.value))} aria-valuetext={`${dateLabel(current.month, true)}: Health Score ${current.health_score}`} /></label>
-        <details className={styles.methodology}><summary>Ver valores mensuales</summary><div className={styles.tableScroll}><table><caption>Histórico mensual del Health Score</caption><thead><tr><th scope="col">Mes</th><th scope="col">Health Score</th></tr></thead><tbody>{history.map((point) => <tr key={point.month}><td>{dateLabel(point.month, true)}</td><td>{point.health_score}</td></tr>)}</tbody></table></div></details>
       </>}
     </section>
   );

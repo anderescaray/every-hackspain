@@ -20,6 +20,7 @@ function NavigationIcon({ name }: { name: string }) {
     overview: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
     network: "M12 4v5M5 17l5-4m4 0 5 4M9 2h6v5H9zM2 16h6v5H2zM16 16h6v5h-6z",
     recommendations: "M8 4h12v16H4V4h4m0-2h8v5H8zM8 12l2 2 5-5M8 17h8",
+    scenarios: "M5 8h14M5 12h10M5 16h7M19 6v4m0 4v4",
     company: "M5 21V3h14v18M2 21h20M8 7h2m4 0h2M8 11h2m4 0h2M10 21v-5h4v5",
     chevron: "m8 5 7 7-7 7",
     menu: "M4 6h16M4 12h16M4 18h16",
@@ -38,7 +39,7 @@ function SidebarContents({ companyId, groupId, view, activeSection, onSection, m
 
   return <div className={styles.sidebarContents} data-compact={collapsed}>
     <div className={styles.brandRow}>
-      {home ? <Link href={withCompanyContext(home, companyId)} className={styles.brand} aria-label="Embat Pulse, inicio del análisis" onClick={close}><span className={styles.brandMark}>P</span><span className={styles.brandWords}>embat <strong>Pulse</strong></span></Link> : <span className={styles.brand}><span className={styles.brandMark}>P</span><span className={styles.brandWords}>embat <strong>Pulse</strong></span></span>}
+      {home ? <Link href={withCompanyContext(home, companyId)} className={styles.brand} aria-label="X Ray, inicio del análisis" onClick={close}><span className={styles.brandMark}>X</span><span className={styles.brandWords}><strong>X Ray</strong></span></Link> : <span className={styles.brand}><span className={styles.brandMark}>X</span><span className={styles.brandWords}><strong>X Ray</strong></span></span>}
       {mobile ? <button className={styles.iconButton} aria-label="Cerrar navegación" onClick={close}><NavigationIcon name="close" /></button> : <button className={styles.iconButton} aria-label={collapsed ? "Expandir menú lateral" : "Contraer menú lateral"} aria-expanded={!collapsed} onClick={() => navigation.setCollapsed((value) => !value)}><NavigationIcon name="collapse" /></button>}
     </div>
     <div className={styles.selectedCompany} role="group" aria-label={`Empresa seleccionada: ${companyId ?? "sin seleccionar"}`} title={companyId ?? "Sin empresa seleccionada"}><NavigationIcon name="company" /><div className={styles.contextText}><span>Empresa seleccionada</span><strong data-testid={mobile ? "mobile-navigation-company" : "navigation-company"}>{companyId ?? "Sin seleccionar"}</strong></div></div>
@@ -113,7 +114,7 @@ export function AnalysisShell({ companyId, groupId, view, children }: ShellProps
     <div className={styles.shell} data-collapsed={collapsed} data-testid="analysis-shell">
       <aside className={styles.desktopSidebar} aria-label="Menú lateral"><SidebarContents companyId={companyId} groupId={groupId} view={view} activeSection={activeSection} onSection={selectSection} /></aside>
       <div className={styles.content}>
-        <div className={styles.mobileBar}><button className={styles.mobileMenuButton} aria-label="Abrir navegación" aria-expanded={mobileOpen} aria-haspopup="dialog" onClick={() => setMobileOpen(true)}><NavigationIcon name="menu" /><span>Menú</span></button><div><strong>Pulse</strong><span>{companyId ?? groupId ?? "Cartera"}</span></div></div>
+        <div className={styles.mobileBar}><button className={styles.mobileMenuButton} aria-label="Abrir navegación" aria-expanded={mobileOpen} aria-haspopup="dialog" onClick={() => setMobileOpen(true)}><NavigationIcon name="menu" /><span>Menú</span></button><div><strong>X Ray</strong><span>{companyId ?? groupId ?? "Cartera"}</span></div></div>
         {children}
       </div>
       <dialog ref={dialog} className={styles.mobileDrawer} aria-labelledby={dialogTitle} onCancel={() => setMobileOpen(false)} onClick={(event) => { if (event.target === event.currentTarget) setMobileOpen(false); }}><h2 id={dialogTitle} className={styles.srOnly}>Navegación de empresa y grupo</h2>{mobileOpen && <SidebarContents companyId={companyId} groupId={groupId} view={view} activeSection={activeSection} onSection={selectSection} mobile close={() => setMobileOpen(false)} />}</dialog>

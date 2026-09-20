@@ -6,7 +6,7 @@ const untranslated = /Cash Truth|Time Borrowed|View evidence|Scenario, not forec
 for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
   test(`${id}: accesibilidad, español y capturas responsive`, async ({ page }, testInfo) => {
     await page.goto(`/companies/${id}`);
-    await page.getByRole("slider", { name: "Explorar mes" }).fill("23");
+    await page.getByRole("region", { name: "Tendencia", exact: true }).getByRole("img").hover({ position: { x: 40, y: 120 } });
     await page.screenshot({ path: testInfo.outputPath("company.png"), fullPage: true });
     await page.getByRole("region", { name: "Estado financiero global", exact: true }).screenshot({ path: testInfo.outputPath("health-score.png") });
     await page.getByRole("region", { name: "Origen de la caja", exact: true }).screenshot({ path: testInfo.outputPath("cash-truth.png") });
@@ -115,15 +115,14 @@ test("tiempo financiado: puntualidad independiente y selector AR/AP", async ({ p
   await expect(timing.getByText("COUNTERPARTY_06105", { exact: true })).toBeVisible();
 });
 
-test("tendencia del Health Score: teclado y 24 meses en tabla", async ({ page }) => {
+test("tendencia del Health Score: resumen y gráfico sin tabla desplegable", async ({ page }) => {
   await page.goto("/companies/COMP_0655");
   const trajectory = page.getByRole("region", { name: "Tendencia", exact: true });
-  const slider = trajectory.getByRole("slider", { name: "Explorar mes" });
-  await slider.focus();
-  await page.keyboard.press("Home");
-  await expect(slider).toHaveAttribute("aria-valuetext", "sept 2024: Health Score 59");
-  await trajectory.getByText("Ver valores mensuales", { exact: true }).click();
-  await expect(trajectory.getByRole("row")).toHaveCount(25);
+  await expect(trajectory.getByText("24 meses", { exact: true })).toBeVisible();
+  await expect(trajectory.getByRole("img", { name: /Tendencia del Health Score/ })).toBeVisible();
+  await expect(trajectory.getByRole("slider", { name: "Explorar mes" })).toHaveCount(0);
+  await expect(trajectory.getByText("Ver valores mensuales", { exact: true })).toHaveCount(0);
+  await expect(trajectory.getByRole("table")).toHaveCount(0);
 });
 
 test("alertas priorizadas desplegables con evidencia", async ({ page }) => {
