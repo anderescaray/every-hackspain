@@ -3,7 +3,6 @@ import { money, numberLabel } from "./companyFormat";
 
 export const groupTabs: { key: GroupView; label: string; description: string; suffix: string }[] = [
   { key: "overview", label: "Visión general", description: "Magnitudes y sociedades a revisar", suffix: "" },
-  { key: "network", label: "Red financiera", description: "Grafo de flujos del grupo", suffix: "/network" },
   { key: "recommendations", label: "Recomendaciones", description: "Revisiones priorizadas", suffix: "/recommendations" },
 ];
 export const roleLabels: Record<GroupMember["role"], string> = { provider: "Aportante", receiver: "Receptora", both: "Aporta y recibe", none_identified: "Sin rol interno identificado", unknown: "Rol no determinado" };
@@ -16,4 +15,3 @@ export const priorityOrder = { high: 0, medium: 1, low: 2 };
 export const groupMoney = (value: number | null, signed = false) => value === null ? "No disponible" : money(value, signed);
 export const groupScore = (value: number | null) => value === null ? "—" : numberLabel(value, 1);
 export const relationName = (relation: GroupRelation) => `${relation.from_company_id ?? "Origen no identificado"} → ${relation.to_company_id ?? "Destino no identificado"}`;
-export const relationHref = (groupId: string, relationId: string) => `/groups/${groupId}/network?relation=${encodeURIComponent(relationId)}`;

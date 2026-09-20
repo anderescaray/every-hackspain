@@ -17,7 +17,7 @@ test("un menú reúne las seis secciones de empresa y las tres del grupo", async
   await openMenu(page);
   const company = page.getByRole("navigation", { name: "Secciones de empresa", exact: true });
   const group = page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true });
-  await expect(company.getByRole("link")).toHaveCount(6);
+  await expect(company.getByRole("link")).toHaveCount(5);
   await expect(group.getByRole("link")).toHaveCount(3);
   for (const label of ["Health Score", "Tendencia", "Cómo actuar", "Origen de la caja", "Stress Testing"]) await expect(company.getByRole("link", { name: label, exact: true })).toBeVisible();
   await expect(page.getByRole("separator")).toBeVisible();
@@ -55,7 +55,7 @@ test("los accesos desplazan a la sección elegida sin quitar el simulador", asyn
 
 test("empresa seleccionada se conserva al recorrer grupo y regresar a caja", async ({ page }) => {
   await page.goto("/companies/COMP_0412");
-  for (const [label, suffix] of [["Visión general", ""], ["Red financiera", "/network"], ["Recomendaciones", "/recommendations"]]) {
+  for (const [label, suffix] of [["Visión general", ""], ["Recomendaciones", "/recommendations"]]) {
     await openMenu(page);
     const menu = page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true });
     await menu.getByRole("link", { name: label, exact: true }).click();
@@ -67,22 +67,6 @@ test("empresa seleccionada se conserva al recorrer grupo y regresar a caja", asy
   await expect(page).toHaveURL(/\/companies\/COMP_0412#cash-truth$/);
   await expect(page.getByRole("heading", { name: "COMP_0412", exact: true })).toHaveCount(1);
   await expect(page.locator("#cash-truth")).toBeInViewport();
-});
-
-test("los enlaces de relaciones conservan contexto sin pisar el filtro de sociedad", async ({ page }) => {
-  await page.goto("/groups/GROUP_0042?entity=COMP_0356");
-  const list = page.getByRole("list", { name: "Tabla de sociedades", exact: true });
-  await page.getByRole("button", { name: /Todas/ }).click();
-  const row = list.getByRole("listitem").filter({ hasText: "COMP_0412" });
-  await row.locator("summary").click();
-  await row.getByRole("link", { name: "Ver en la red", exact: true }).click();
-  await expect(page).toHaveURL(/\/groups\/GROUP_0042\/network\?/);
-  const url = new URL(page.url());
-  expect(url.searchParams.get("company")).toBe("COMP_0412");
-  expect(url.searchParams.get("entity")).toBe("COMP_0356");
-  await expect(page.getByRole("complementary", { name: "Detalle de la selección" }).getByRole("heading", { name: "COMP_0412", exact: true })).toBeVisible();
-  await openMenu(page);
-  await expect(page.getByRole("navigation", { name: "Secciones de empresa", exact: true }).getByRole("link", { name: "Health Score", exact: true })).toHaveAttribute("href", "/companies/COMP_0356#health-score");
 });
 
 test("sin grupo se oculta el bloque; con JSON de grupo ausente se conserva el retorno", async ({ page }) => {
@@ -115,7 +99,7 @@ test("escritorio permite contraer el lateral; móvil cierra con Escape y devuelv
   } else {
     await page.getByRole("button", { name: "Contraer menú lateral", exact: true }).click();
     await expect(page.getByRole("button", { name: "Expandir menú lateral", exact: true })).toBeVisible();
-    await page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true }).getByRole("link", { name: "Red financiera", exact: true }).click();
+    await page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true }).getByRole("link", { name: "Recomendaciones", exact: true }).click();
     await expect(page.getByRole("button", { name: "Expandir menú lateral", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Expandir menú lateral", exact: true }).click();
     await expect(page.getByRole("button", { name: "Contraer menú lateral", exact: true })).toBeVisible();

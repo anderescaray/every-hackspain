@@ -6,7 +6,6 @@ import { dateLabel } from "@/lib/companyFormat";
 import { groupTabs } from "@/lib/groupPresentation";
 import { Confidence } from "@/components/insights/InsightPrimitives";
 import { GroupOverview } from "./GroupOverview";
-import { GroupNetwork } from "./GroupNetwork";
 import { GroupRecommendations } from "./GroupRecommendations";
 import { GroupEvidenceDialog } from "./GroupEvidenceDialog";
 import base from "@/components/insights/insights.module.css";
@@ -14,11 +13,10 @@ import styles from "./groups.module.css";
 
 const questions: Record<GroupView, string> = {
   overview: "Resumen del perímetro y sociedades a revisar primero.",
-  network: "Sociedades y transferencias observadas en el grupo.",
   recommendations: "Escenarios precalculados para mejorar la filial más débil. Requieren aprobación humana.",
 };
 
-export function GroupIntelligence({ group, view, initialRelation, initialCompany }: { group: GroupDetail; view: GroupView; initialRelation?: string; initialCompany?: string }) {
+export function GroupIntelligence({ group, view, initialRelation }: { group: GroupDetail; view: GroupView; initialRelation?: string }) {
   const [evidence, setEvidence] = useState<{ refs: string[]; title: string } | null>(null);
   const openEvidence = (refs: string[], title: string) => setEvidence({ refs, title });
   const tab = groupTabs.find((item) => item.key === view)!;
@@ -62,7 +60,6 @@ export function GroupIntelligence({ group, view, initialRelation, initialCompany
     )}
     <div id="group-content" className={styles.groupContent}>
       {view === "overview" && <GroupOverview group={group} onOpen={openEvidence} />}
-      {view === "network" && <GroupNetwork group={group} onOpen={openEvidence} initialRelation={initialRelation} initialCompany={initialCompany} />}
       {view === "recommendations" && <GroupRecommendations group={group} onOpen={openEvidence} initialRelation={initialRelation} />}
     </div>
     <footer className={base.pageFooter}><span>X Ray</span><span>{group.source === "fixture" ? "Sin operaciones reales." : "Sin ejecución de operaciones."}</span></footer>
