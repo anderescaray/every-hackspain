@@ -1,13 +1,20 @@
-"""Resumen determinista de empresa (assessment + summary) con paráfrasis LLM opcional anclada.
+"""Resumen determinista de empresa (assessment + summary) con redacción LLM opcional anclada.
 
 El pipeline calcula los hechos; este módulo solo redacta. Sin API key (o si el anclaje falla)
 se sirve la plantilla. El LLM nunca calcula un número.
+
+Dos modos de LLM, ambos validados con `validate_grounding`:
+  - `company_brief(..., completer=...)`: parafrasea las plantillas (assessment y summary).
+  - `compose_summary(detail, ...)`: escribe las viñetas leyendo el informe completo de la ficha.
+El export usa el segundo para el resumen bajo el Health Score.
 """
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 
-from xray.group_advisor.grounding import extract_numbers, validate_grounding
+from xray.group_advisor.grounding import collect_numbers, extract_numbers, validate_grounding
 from xray.group_advisor.llm import grounded_paraphrase
 
 TRAJECTORY_ES = {
@@ -244,3 +251,131 @@ def maybe_paraphrase_texts(assessment: str, summary: str, facts: dict, completer
     a = grounded_paraphrase(facts, assessment, completer, system_prompt=BRIEF_SYSTEM_PROMPT)
     s = grounded_paraphrase(facts, summary, completer, system_prompt=BRIEF_SYSTEM_PROMPT)
     return a, s
+
+
+# ---------------------------------------------------------------------------
+# Viñetas compuestas a partir del informe completo de la ficha (no paráfrasis)
+# ---------------------------------------------------------------------------
+
+REPORT_SYSTEM_PROMPT = """Eres el analista de Embat Pulse. Recibes el informe completo de UNA empresa en JSON (todo lo que la ficha muestra: Health Score y sus dimensiones, trayectoria, historia mensual, factores del cambio con su impacto en puntos, origen de la caja con sus importes y la confianza del análisis) y un resumen de referencia generado por plantilla.
+Tu tarea: escribir las viñetas del resumen ejecutivo que va debajo del Health Score. No parafrasees la plantilla: léela como referencia y escribe TU resumen a partir del informe, eligiendo lo que de verdad explica el estado de esta empresa.
+Reglas cerradas:
+1. Usa únicamente números e identificadores que aparezcan en el JSON. No calcules, no sumes, no restes, no estimes, no redondees distinto. Si quieres decir una variación, usa una que ya esté en el JSON.
+2. Entre 3 y 4 viñetas, UNA por línea, separadas por salto de línea. Sin guiones, sin numeración, sin títulos, sin markdown.
+3. Cada viñeta es una frase corta y concreta, en castellano, tono ejecutivo. Nada de relleno ni de consejos genéricos.
+4. No repitas el Health Score como cifra suelta (ya se muestra al lado) ni hables de cobertura, confianza o «provisional» (eso va en su propio bloque).
+5. Formato castellano: miles con punto y decimales con coma («1.234,5»), con el código de moneda tras el importe. Puedes redondear un importe a euros enteros, a miles o a millones; a nada más.
+6. La dirección la pones con las palabras (sube, baja, resta, aporta, mejora, empeora) y tiene que coincidir con el signo del número o con el campo `direction`/`trajectory` del informe. Nunca escribas «resta -4,3»: o el signo o el verbo, no los dos.
+7. Prioriza: de dónde sale la caja y si el negocio la genera, qué factor ha movido el score y en qué dirección, qué dice la trayectoria, y cualquier dependencia o concentración relevante del informe.
+8. Si un dato no está en el JSON, no lo completes ni lo insinúes: omítelo. No prometas predicciones, no recomiendes acciones, no hables de impago ni de solvencia.
+Tu salida se valida automáticamente: cualquier número o identificador que no exista en el informe la descarta y se sirve la plantilla."""
+
+REPORT_MIN_BULLETS = 2
+REPORT_MAX_BULLETS = 4
+REPORT_MAX_BULLET_CHARS = 240
+
+
+def build_report_facts(detail: dict) -> dict:
+    """Informe podado que se entrega al LLM: la ficha entera menos lo pesado o hipotético.
+
+    Se quitan las filas de evidencia (ruido y tamaño), los escenarios del simulador (son
+    hipótesis, no estado observado) y el propio `summary` (va aparte como referencia), y se
+    recortan los flujos por cuenta. Todo lo que queda es anclaje válido para `validate_grounding`.
+    """
+    doc = {k: v for k, v in detail.items()
+           if k not in ("evidence", "simulation", "summary", "schema_version", "source")}
+    cash = doc.get("cash_truth")
+    if isinstance(cash, dict):
+        doc["cash_truth"] = {k: v for k, v in cash.items() if k != "account_flows"}
+    for key in ("alerts", "time_borrowed"):
+        value = doc.get(key)
+        if not value or (isinstance(value, dict) and not any(value.values())):
+            doc.pop(key, None)
+    return doc
+
+
+def _presentation_forms(value: float) -> set:
+    """Formas en que la ficha ya muestra un importe: exacto, sin céntimos, en miles y en millones.
+
+    `money()` del frontend imprime «1,2 M€» donde el dato es 1.234.567,89, así que el resumen
+    tiene que poder decir lo mismo. Solo se derivan del valor real; no se acepta ningún otro.
+    """
+    forms = {value, round(value, 1), float(round(value))}
+    if abs(value) >= 1000:
+        forms.add(float(round(value, -3)))
+        forms.add(round(value / 1000, 1))
+    if abs(value) >= 100_000:
+        forms.add(round(value / 1_000_000, 1))
+        forms.add(round(value / 1_000_000, 2))
+    return forms
+
+
+def _anchor_doc(doc: dict) -> dict:
+    """Informe más las magnitudes sin signo y los redondeos de presentación de sus propios números.
+
+    Dos permisos, los dos acotados al informe y sin crear cifras nuevas:
+
+    - **Signo.** El validador exige el número tal cual. En castellano la dirección la lleva el
+      verbo («resta 4,3 puntos», «cae 45.000 EUR»), así que exigir «-4,3» obligaría a escribir
+      mal; se aceptan los valores absolutos y la regla 5 del prompt obliga a que el verbo
+      concuerde con el signo o con `direction`/`trajectory`, que el validador no comprueba.
+    - **Redondeo.** Un importe del informe lleva céntimos y ningún resumen ejecutivo los escribe.
+      Se aceptan las formas de `_presentation_forms`, las mismas que ya pinta la ficha.
+
+    Lo que sigue prohibido es lo importante: cualquier número que no salga de un valor del
+    informe —una variación calculada, un porcentaje deducido, una cifra recordada— lo tumba.
+    """
+    anchors = set()
+    for number in collect_numbers(doc):
+        anchors |= _presentation_forms(number)
+        anchors |= _presentation_forms(abs(number))
+    return {**doc, "_presentation_anchors": sorted(anchors)}
+
+
+def _clean_bullets(text: str) -> list:
+    """Normaliza la salida del LLM a viñetas: una por línea, sin marcadores ni Health Score suelto."""
+    bullets = []
+    for raw in str(text).split("\n"):
+        line = raw.strip()
+        line = re.sub(r"^(?:[-•*•]|\d+[.)])\s+", "", line)
+        line = line.strip().strip("*").strip()
+        if not line or len(line) > REPORT_MAX_BULLET_CHARS:
+            continue
+        if re.match(r"^(Health Score|Resumen|Viñetas)\b", line, flags=re.IGNORECASE):
+            continue
+        if line not in bullets:
+            bullets.append(line)
+    return bullets[:REPORT_MAX_BULLETS]
+
+
+def compose_summary(detail: dict, template_summary: str, completer) -> tuple:
+    """Viñetas escritas por el LLM sobre el informe completo. Devuelve `(texto, origen, fallback)`.
+
+    Cualquier fallo —red, respuesta vacía, formato o un número que no esté en el informe—
+    sirve la plantilla determinista. El LLM nunca calcula.
+    """
+    if completer is None:
+        return template_summary, "template", False
+    doc = build_report_facts(detail)
+    user = "\n".join([
+        "Informe de la empresa (única fuente de hechos):",
+        json.dumps(doc, ensure_ascii=False, sort_keys=True, default=str),
+        "",
+        "Resumen de referencia generado por plantilla (no lo copies; es solo el suelo de calidad):",
+        template_summary,
+        "",
+        f"Escribe entre {REPORT_MIN_BULLETS + 1} y {REPORT_MAX_BULLETS} viñetas, una por línea, solo con hechos del informe.",
+    ])
+    try:
+        text = completer.complete(REPORT_SYSTEM_PROMPT, user)
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("respuesta vacía del completer")
+    except Exception:
+        return template_summary, "template", True
+    bullets = _clean_bullets(text)
+    if len(bullets) < REPORT_MIN_BULLETS:
+        return template_summary, "template", True
+    candidate = "\n".join(bullets)
+    if not validate_grounding(candidate, _anchor_doc(doc)).ok:
+        return template_summary, "template", True
+    return candidate, "llm", False

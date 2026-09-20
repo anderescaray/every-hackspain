@@ -15,6 +15,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# Narrativa LLM opcional (docs/llm-narrativa.md). El producto funciona sin esto: sin clave,
+# los textos son plantillas deterministas. `output_config` exige un SDK reciente.
+llm = ["anthropic>=0.105"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

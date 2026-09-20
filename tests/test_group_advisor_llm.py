@@ -6,7 +6,11 @@ from urllib.error import HTTPError
 import pytest
 
 from xray.group_advisor.llm import llm_render
-from xray.group_advisor.llm_providers import OpenAICompatibleCompleter, completer_from_env
+from xray.group_advisor.llm_providers import (
+    AnthropicCompleter,
+    OpenAICompatibleCompleter,
+    completer_from_env,
+)
 from xray.group_advisor.narrative import render_plan
 
 
@@ -80,3 +84,69 @@ def test_llm_render_still_falls_back_with_provider_style_error(plan_fixture_path
     template = render_plan(plan, "markdown")
     result = llm_render(plan, FakeCompleter("El plan sube 999 puntos."))
     assert result.fallback is True and result.text == template
+
+
+# --- Proveedor Anthropic (SDK oficial, sin red) ------------------------------------------
+
+class _Block:
+    def __init__(self, text, type="text"):
+        self.text, self.type = text, type
+
+
+class _Response:
+    def __init__(self, blocks, stop_reason="end_turn"):
+        self.content, self.stop_reason = blocks, stop_reason
+
+
+class FakeAnthropic:
+    """Sustituye a `anthropic.Anthropic`: guarda la petición y devuelve una respuesta fija."""
+
+    def __init__(self, response=None, error=None):
+        self.response, self.error, self.calls = response, error, []
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error:
+            raise self.error
+        return self.response
+
+
+def test_env_picks_anthropic_by_dedicated_key_prefix_or_override():
+    assert isinstance(completer_from_env({"ANTHROPIC_API_KEY": "sk-ant-1"}), AnthropicCompleter)
+    # Una clave de Anthropic pegada en la variable compartida también se reconoce.
+    assert isinstance(completer_from_env({"XRAY_LLM_API_KEY": "sk-ant-2"}), AnthropicCompleter)
+    assert isinstance(completer_from_env({"XRAY_LLM_API_KEY": "sk-proj-3"}), OpenAICompatibleCompleter)
+    forced = completer_from_env({"ANTHROPIC_API_KEY": "sk-ant-1", "OPENAI_API_KEY": "sk-4",
+                                 "XRAY_LLM_PROVIDER": "openai"})
+    assert isinstance(forced, OpenAICompatibleCompleter)
+    assert completer_from_env({"ANTHROPIC_API_KEY": "   "}) is None
+
+
+def test_anthropic_defaults_and_overrides():
+    default = completer_from_env({"ANTHROPIC_API_KEY": "sk-ant-1"})
+    assert default.model == "claude-opus-5" and default.effort == "low"
+    tuned = completer_from_env({"ANTHROPIC_API_KEY": "sk-ant-1", "XRAY_LLM_MODEL": "claude-haiku-4-5",
+                                "XRAY_LLM_EFFORT": "medium", "XRAY_LLM_MAX_TOKENS": "1500"})
+    assert (tuned.model, tuned.effort, tuned.max_tokens) == ("claude-haiku-4-5", "medium", 1500)
+
+
+def test_anthropic_request_shape_omits_temperature_and_joins_text_blocks():
+    fake = FakeAnthropic(_Response([_Block("Primera viñeta."), _Block("", "thinking"), _Block("Segunda.")]))
+    completer = AnthropicCompleter(api_key="sk-ant-1", client=fake)
+    assert completer.complete("sistema", "usuario") == "Primera viñeta.\nSegunda."
+    sent = fake.calls[0]
+    # `temperature` está retirado en Opus 5: enviarlo devuelve 400.
+    assert "temperature" not in sent
+    assert sent["model"] == "claude-opus-5" and sent["system"] == "sistema"
+    assert sent["messages"] == [{"role": "user", "content": "usuario"}]
+    assert sent["output_config"] == {"effort": "low"}
+    assert sent["max_tokens"] >= 1000  # el razonamiento adaptativo consume parte del techo
+
+
+def test_anthropic_raises_on_refusal_empty_or_transport_error():
+    for response in (_Response([_Block("texto")], stop_reason="refusal"), _Response([])):
+        with pytest.raises(RuntimeError):
+            AnthropicCompleter(api_key="sk-ant-1", client=FakeAnthropic(response)).complete("s", "u")
+    with pytest.raises(RuntimeError):
+        AnthropicCompleter(api_key="sk-ant-1", client=FakeAnthropic(error=TimeoutError("red"))).complete("s", "u")

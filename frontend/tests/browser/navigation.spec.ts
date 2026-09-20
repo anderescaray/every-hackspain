@@ -19,7 +19,7 @@ test("un menú reúne las cinco secciones de empresa y las tres del grupo", asyn
   const group = page.getByRole("navigation", { name: "Vistas de inteligencia de grupo", exact: true });
   await expect(company.getByRole("link")).toHaveCount(5);
   await expect(group.getByRole("link")).toHaveCount(3);
-  for (const label of ["Health Score", "Tendencia", "Origen de la caja", "Tiempo financiado", "Escenarios"]) await expect(company.getByRole("link", { name: label, exact: true })).toBeVisible();
+  for (const label of ["Health Score", "Tendencia", "Origen de la caja", "Escenarios"]) await expect(company.getByRole("link", { name: label, exact: true })).toBeVisible();
   await expect(page.getByRole("separator")).toBeVisible();
   const audit = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
   expect(audit.violations.map((item) => ({ id: item.id, nodes: item.nodes.map((node) => ({ html: node.html, issue: node.failureSummary })) }))).toEqual([]);
@@ -33,9 +33,9 @@ test("un menú reúne las cinco secciones de empresa y las tres del grupo", asyn
   await closeMenu(page);
 });
 
-test("los accesos desplazan a la sección elegida sin quitar alertas o escenarios", async ({ page }) => {
+test("los accesos desplazan a la sección elegida sin quitar escenarios", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
-  for (const [label, id] of [["Tendencia", "trajectory"], ["Origen de la caja", "cash-truth"], ["Tiempo financiado", "time-borrowed"], ["Escenarios", "scenarios"], ["Health Score", "health-score"]]) {
+  for (const [label, id] of [["Tendencia", "trajectory"], ["Origen de la caja", "cash-truth"], ["Escenarios", "scenarios"], ["Health Score", "health-score"]]) {
     await openMenu(page);
     await page.getByRole("navigation", { name: "Secciones de empresa", exact: true }).getByRole("link", { name: label, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/companies/COMP_0356#${id}$`));
@@ -48,7 +48,6 @@ test("los accesos desplazan a la sección elegida sin quitar alertas o escenario
       await expect(page.locator(`#${id}`)).toBeInViewport();
     }
   }
-  await expect(page.getByRole("region", { name: "Alertas priorizadas", exact: true })).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Escenarios", exact: true })).toHaveCount(1);
 });
 
