@@ -6,5 +6,6 @@ next-env.d.ts
 playwright-report/
 test-results/
 .env*
-public/generated/**/*.json
+# public/generated/**/*.json  <- se commitean: el despliegue los lee del disco en runtime
+#   y Vercel solo tiene lo que va en el repo. Regenerar con scripts/09_export_frontend.py.
 .tmp-fixtures/
