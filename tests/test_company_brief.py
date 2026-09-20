@@ -281,3 +281,43 @@ def test_compose_summary_allows_presentation_rounding_only():
         "La trayectoria es de deterioro.\n"
     )
     assert compose_summary(detail, "plantilla", nearby)[1] == "template"
+
+
+class SequencedCompleter:
+    """Devuelve una respuesta distinta por llamada y guarda los prompts recibidos."""
+
+    def __init__(self, *texts):
+        self.texts, self.prompts = list(texts), []
+
+    def complete(self, system, user):
+        self.prompts.append(user)
+        return self.texts[min(len(self.prompts) - 1, len(self.texts) - 1)]
+
+
+def test_compose_summary_retries_once_naming_the_invented_figures():
+    invented = ("El apoyo interno representa el 37 % de las entradas.\n"
+                "El margen resta 4,3 puntos.\n"
+                "La trayectoria es de deterioro.\n")
+    corrected = ("El apoyo interno pesa sobre las entradas del periodo.\n"
+                 "El margen resta 4,3 puntos.\n"
+                 "La trayectoria es de deterioro.\n")
+    completer = SequencedCompleter(invented, corrected)
+    text, source, fallback = compose_summary(_detail(), "plantilla", completer)
+    assert (source, fallback) == ("llm", False)
+    assert "37" not in text
+    assert len(completer.prompts) == 2
+    # El segundo intento nombra la cifra rechazada en vez de repetir el encargo a ciegas.
+    assert "37" in completer.prompts[1] and "no existen en el informe" in completer.prompts[1]
+
+
+def test_compose_summary_gives_up_after_the_retry():
+    completer = SequencedCompleter("El apoyo es del 37 % de las entradas.\nEl margen resta 4,3 puntos.\nDeterioro.\n")
+    text, source, fallback = compose_summary(_detail(), "plantilla", completer)
+    assert (text, source, fallback) == ("plantilla", "template", True)
+    assert len(completer.prompts) == 2  # el original y un único reintento
+
+
+def test_compose_summary_can_run_without_retries():
+    completer = SequencedCompleter("El apoyo es del 37 % de las entradas.\nEl margen resta 4,3 puntos.\nDeterioro.\n")
+    assert compose_summary(_detail(), "plantilla", completer, retries=0)[1] == "template"
+    assert len(completer.prompts) == 1
