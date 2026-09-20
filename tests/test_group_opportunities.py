@@ -24,6 +24,7 @@ def test_pooling_only_counts_siblings_of_the_same_group():
     out = pooling_opportunities(liq, COMPANIES)
     assert out.company_id.tolist() == ["A"]                        # solo A está en negativo
     assert out.sibling_cash.iloc[0] == 20000.0                     # la caja de C (otro grupo) no cuenta
+    assert out.reliable_siblings.iloc[0] == 1 and bool(out.sibling_cash_observed.iloc[0])
     assert bool(out.coverable.iloc[0]) and out.covered_amount.iloc[0] == 5000.0
 
 
@@ -32,13 +33,36 @@ def test_pooling_ignores_cash_that_is_not_reliable():
     assert out.empty                                                # sin reconstrucción completa no se afirma nada
 
 
+def test_pooling_distinguishes_missing_sibling_data_from_observed_zero():
+    liq = pd.DataFrame([
+        {"company_id": "A", "month": MONTH, "reconstructed_cash": -5000.0, "reconstruction_coverage": 1.0},
+        {"company_id": "B", "month": MONTH, "reconstructed_cash": 0.0, "reconstruction_coverage": 0.5},
+    ])
+    unknown = pooling_opportunities(liq, COMPANIES)
+    assert len(unknown) == 1 and not bool(unknown.sibling_cash_observed.iloc[0])
+    assert pd.isna(unknown.coverable.iloc[0]) and pd.isna(unknown.covered_amount.iloc[0])
+
+    liq.loc[liq.company_id.eq("B"), "reconstruction_coverage"] = 1.0
+    observed_zero = pooling_opportunities(liq, COMPANIES)
+    assert bool(observed_zero.sibling_cash_observed.iloc[0])
+    assert not bool(observed_zero.coverable.iloc[0]) and observed_zero.sibling_cash.iloc[0] == 0.0
+
+
 def test_overdraft_is_measured_apart_from_month_end_balance():
     # Descubierto en un mes que acaba en positivo: el bloque de caja negativa no lo vería.
     t = tx([("A", "2026-08-12", -120.0, False, "descubierto")])
     liq = liquidity({"A": 1000.0, "B": 8000.0})
     out = overdraft_coincidence(t, liq, COMPANIES)
-    assert len(out) == 1 and out.sibling_cash.iloc[0] == 9000.0 and out.cost.iloc[0] == 120.0
+    assert len(out) == 1 and out.sibling_cash.iloc[0] == 8000.0 and out.cost.iloc[0] == 120.0
+    assert bool(out.sibling_cash_observed.iloc[0])
     assert pooling_opportunities(liq, COMPANIES).empty
+
+
+def test_overdraft_never_calls_the_companys_own_cash_a_sibling():
+    t = tx([("A", "2026-08-12", -120.0, False, "descubierto")])
+    out = overdraft_coincidence(t, liquidity({"A": 1000.0}), COMPANIES)
+    assert out.sibling_cash.iloc[0] == 0.0
+    assert not bool(out.sibling_cash_observed.iloc[0])
 
 
 def test_netting_compensates_positions_and_ignores_external_flows():
@@ -46,9 +70,21 @@ def test_netting_compensates_positions_and_ignores_external_flows():
             ("A", "2026-08-06", 600.0, True, None), ("B", "2026-08-06", -600.0, True, None),
             ("A", "2026-08-07", -5000.0, False, None)])          # pago externo: fuera
     out = netting_opportunities(t, COMPANIES)
-    assert out.movements.iloc[0] == 4 and out.gross_amount.iloc[0] == 3200.0
+    assert out.ledger_entries.iloc[0] == 4 and out.movements.iloc[0] == 2
+    assert out.gross_amount.iloc[0] == 1600.0                       # una vez por transferencia, no ambas patas
     assert out.net_amount.iloc[0] == 400.0                        # solo queda la posición neta de B
-    assert round(float(out.reduction_share.iloc[0]), 3) == 0.875
+    assert round(float(out.reduction_share.iloc[0]), 3) == 0.75
+
+
+def test_netting_uses_converted_amounts_and_is_idempotent_without_mutating_input():
+    t = tx([("A", "2026-08-05", -100.0, True, None), ("B", "2026-08-05", 100.0, True, None)])
+    t["amount_eur"] = [-80.0, 80.0]
+    before = t.copy(deep=True)
+    first = netting_opportunities(t, COMPANIES)
+    second = netting_opportunities(t, COMPANIES)
+    pd.testing.assert_frame_equal(first, second)
+    pd.testing.assert_frame_equal(t, before)
+    assert first.gross_amount.iloc[0] == 80.0 and first.net_amount.iloc[0] == 80.0
 
 
 def test_unused_credit_compares_against_siblings_not_own_line():
@@ -58,6 +94,14 @@ def test_unused_credit_compares_against_siblings_not_own_line():
     assert out.company_id.tolist() == ["A"]
     assert out.own_available_credit.iloc[0] == 1000.0 and out.sibling_available_credit.iloc[0] == 50000.0
     assert bool(out.covered_by_sibling_credit.iloc[0])
+
+
+def test_unused_credit_distinguishes_missing_credit_from_observed_zero():
+    debt = pd.DataFrame({"company_id": ["B", "C"], "is_revolving": [True, True],
+                         "liquidity": [float("nan"), 0.0]})
+    out = unused_credit_opportunities(debt, liquidity({"A": -8000.0, "B": 5000.0}), COMPANIES)
+    assert out.sibling_available_credit.iloc[0] == 0.0
+    assert not bool(out.covered_by_sibling_credit.iloc[0])
 
 
 def test_report_carries_limits_and_headline_numbers():

@@ -28,6 +28,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--product-dir", type=Path, default=PROCESSED_DIR / "product")
     parser.add_argument("--out-dir", type=Path, default=FRONTEND_GENERATED)
+    parser.add_argument("--advisor-dir", type=Path, default=PROCESSED_DIR / "advisor_production",
+                        help="solo se exportan planes generados con --production-safe")
     parser.add_argument("--llm", action="store_true",
                         help="parafrasear assessment/summary con LLM (requiere API key en env)")
     parser.add_argument("--llm-companies", default=None,
@@ -48,7 +50,8 @@ def main():
             llm_companies = None
         else:
             llm_companies = [c.strip() for c in args.llm_companies.split(",") if c.strip()]
-    run(args.product_dir, args.out_dir, completer=completer, llm_companies=llm_companies)
+    run(args.product_dir, args.out_dir, advisor_dir=args.advisor_dir,
+        completer=completer, llm_companies=llm_companies)
 
 
 if __name__ == "__main__":

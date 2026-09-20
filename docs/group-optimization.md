@@ -1,6 +1,6 @@
 # Advisor — optimización de grupo y sensibilidad de empresa (`treasury_advisor_v1`)
 
-**Estado: implementado el 19-09-2026 en `src/xray/group_advisor/` (WP1–WP5 del [roadmap](./roadmap-group-advisor.md)); ejecutado sobre los datos D32 con `python -X utf8 scripts/08_treasury_advisor.py` → `data/processed/advisor/`.** Resultados, desviaciones y decisiones de implementación en [decisiones.md](./decisiones.md) §20 (GA-00 a GA-07; cifras vigentes en GA-06). Casos reales en §15. Este documento sigue siendo el contrato: fórmulas, palancas, restricciones, objetivo, algoritmos, salidas JSON y reglas de narrativa; donde la implementación se apartó de él, lo dice GA-xx y prevalece el código.
+**Estado: implementado el 19-09-2026 en `src/xray/group_advisor/` (WP1–WP5 del [roadmap](./roadmap-group-advisor.md)); ejecutado sobre los datos D32 con `python -X utf8 scripts/08_treasury_advisor.py` → `data/processed/advisor/`.** El 20-09 se añadió el perfil seguro `08 --production-safe` → `data/processed/advisor_production/` (GA-08): la UI de grupo solo consume esos planes. Resultados, desviaciones y decisiones de implementación en [decisiones.md](./decisiones.md) §20 (GA-00 a GA-08; cifras experimentales en GA-06, D48; recorte de producción en GA-08). Casos reales en §15. Este documento sigue siendo el contrato: fórmulas, palancas, restricciones, objetivo, algoritmos, salidas JSON y reglas de narrativa; donde la implementación se apartó de él, lo dice GA-xx y prevalece el código.
 
 Nota D32: tras la especificación, el pipeline de features pasó a convertir todas las monedas a EUR con tipo fijo (`src/xray/fx.py`), de modo que el panel primario es 100 % EUR. La restricción de moneda R1 y la tabla FX del advisor (§7) quedan operativas pero sin efecto sobre este dataset (`fx_rate_unavailable` = 0 acciones).
 
@@ -10,7 +10,10 @@ Añadido después de la especificación: la palanca **O** (la donante asume pago
 *payment factory*) es **opcional** (`--levers D1,P,O`) y ataca el bloqueo dominante de D1/P, que exigían deuda
 o facturas en la receptora y dejaban sin tocar el margen (45 % del nivel). Con ella los planes pasan de 19 a
 48. Aparte, `xray.product.group_opportunities` publica **hechos medidos** (cash pooling, netting intragrupo y
-crédito de hermanas sin usar) que no simulan el score. Cifras y límites en `decisiones.md` D46–D48.
+crédito de hermanas sin usar) que no simulan el score. La auditoría del 20-09 corrigió dos errores de D47
+(doble conteo de las patas espejo y caja propia atribuida a una hermana) y cuantificó 6/48 planes D48
+financieramente absurdos con ≤1.000 EUR de entradas semestrales, pese a cumplir la mecánica. Cifras y límites
+vigentes en `decisiones.md` D46–D48.
 
 ## 0. Qué es y qué no es
 

@@ -19,15 +19,19 @@ export function GroupRecommendations({ group, onOpen, initialRelation }: { group
     .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
 
   return (
-    <section className={base.panel} aria-label="Revisiones propuestas de tesorería">
+    <section className={base.panel} aria-label="Escenarios de tesorería para revisión">
       <div className={styles.panelHeading}>
         <div>
-          <span className={base.eyebrow}>Revisiones</span>
-          <h2>Qué revisar ahora</h2>
-          <p>Priorizadas para el vídeo: mira el título, abre el detalle si hace falta.</p>
+          <span className={base.eyebrow}>Apoyo a la decisión</span>
+          <h2>Acciones para revisar</h2>
+          <p>Escenarios precalculados con guardas cuantitativas. Requieren validación y aprobación humana.</p>
         </div>
-        <span className={base.periodBadge}>{items.length} revisiones</span>
+        <span className={base.periodBadge}>{items.length} escenarios</span>
       </div>
+
+      {group.recommendations.some((item) => item.id.startsWith("advisor-")) && (
+        <p className={styles.guardrail}><strong>Sin ejecución automática.</strong> X Ray no mueve fondos ni genera órdenes bancarias. Cada escenario debe revisarse con Tesorería, Fiscal y Legal.</p>
+      )}
 
       {selectedRelation && (
         <div className={styles.activeContext}>
@@ -53,7 +57,7 @@ export function GroupRecommendations({ group, onOpen, initialRelation }: { group
               <div>
                 <span className={`${base.severity} ${base[item.priority]}`}>Prioridad {severityLabels[item.priority].toLowerCase()}</span>
                 <h3>{item.title}</h3>
-                <p className={styles.recommendationType}>{recommendationLabels[item.type]} · {item.period}</p>
+                <p className={styles.recommendationType}>{item.id.startsWith("advisor-") ? "Supera guardas cuantitativas" : recommendationLabels[item.type]} · {item.period}</p>
               </div>
             </header>
 
@@ -68,7 +72,7 @@ export function GroupRecommendations({ group, onOpen, initialRelation }: { group
             </div>
 
             <details className={styles.recommendationExpand}>
-              <summary>Ver pasos y límites <span className={styles.expandMarker} aria-hidden="true">+</span></summary>
+              <summary>Ver impacto, pasos y límites <span className={styles.expandMarker} aria-hidden="true">+</span></summary>
               <div className={styles.recommendationBody}>
                 <div className={styles.recommendationColumns}>
                   <div>
@@ -103,7 +107,7 @@ export function GroupRecommendations({ group, onOpen, initialRelation }: { group
       </div>
 
       {!items.length && (
-        <p className={base.emptyState}>{group.recommendations.length ? "No hay recomendaciones que coincidan con estos filtros." : "No se han suministrado recomendaciones. No implica ausencia de riesgos u oportunidades."}</p>
+        <p className={base.emptyState}>{group.recommendations.length ? "No hay escenarios que coincidan con estos filtros." : "Ninguna acción supera las guardas de producción con la evidencia disponible. No implica ausencia de riesgos u oportunidades."}</p>
       )}
     </section>
   );

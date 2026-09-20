@@ -31,6 +31,7 @@ REASON_DONOR_BUFFER = "donor_buffer"
 REASON_DONOR_FLOOR = "donor_level_floor"
 REASON_DONOR_INDICATOR = "donor_would_hit_zero_inflow_indicator"
 REASON_RECIPIENT_NO_DEBT = "recipient_no_debt_service"
+REASON_RECIPIENT_OUTFLOW = "recipient_operating_outflow_unavailable"
 REASON_RECIPIENT_NO_OUTFLOW = "recipient_no_operating_outflow"
 REASON_RECIPIENT_MARGIN = "recipient_margin_unavailable"
 REASON_RECIPIENT_AP = "recipient_ap_component_unavailable"
@@ -39,11 +40,19 @@ REASON_RECIPIENT_NO_NEED = "recipient_no_ap_need"
 REASON_RECIPIENT_CASH = "recipient_cash_unreliable"
 REASON_RECIPIENT_NOT_CONSTRAINED = "recipient_not_liquidity_constrained"
 REASON_RECIPIENT_LEVEL = "recipient_level_unavailable"
+REASON_RECIPIENT_ACTIVITY = "recipient_activity_below_production_floor"
+REASON_RECIPIENT_ACTIVITY_RATIO = "recipient_activity_ratio_below_production_floor"
+REASON_RECIPIENT_COMPONENT_DROP = "recipient_component_would_disappear"
+REASON_DONOR_TRAMO = "donor_tramo_would_downgrade"
+REASON_NEGATIVE_K1 = "negative_short_term_utility"
+REASON_WORST_NOT_IMPROVED = "worst_subsidiary_not_improved"
 REASON_FX = "fx_rate_unavailable"
 REASON_FRACTION_CAP = "fraction_cap"
 REASON_LOWER_EFFICIENCY = "lower_efficiency"
 REASON_BELOW_MIN_GAIN = "below_min_gain"
-STATE_REASONS = frozenset({REASON_DONOR_BUFFER, REASON_DONOR_FLOOR, REASON_DONOR_INDICATOR, REASON_FRACTION_CAP})
+STATE_REASONS = frozenset({REASON_DONOR_BUFFER, REASON_DONOR_FLOOR, REASON_DONOR_INDICATOR, REASON_FRACTION_CAP,
+                           REASON_RECIPIENT_COMPONENT_DROP, REASON_DONOR_TRAMO, REASON_NEGATIVE_K1,
+                           REASON_WORST_NOT_IMPROVED})
 
 BINDING_COVERED = "need_fully_covered"
 BINDING_BUFFER = "donor_buffer"
@@ -81,6 +90,23 @@ def _flag(value):
 
 def _tol(reference):
     return _TOL * max(1.0, abs(reference))
+
+
+def _tramo_position(level, bounds):
+    return sum(float(level) >= float(bound) for bound in bounds)
+
+
+def production_recipient_reason(sub_row, lever, config):
+    """Guardas de actividad del perfil de producto; no alteran el advisor experimental."""
+    if not config.production_safe or lever not in ("D1", "O"):
+        return None
+    inflow = _num(sub_row.get("level_inflow_sum"))
+    outflow = _num(sub_row.get("window_outflow_sum"))
+    if math.isnan(inflow) or inflow < config.min_recipient_inflow_6m:
+        return REASON_RECIPIENT_ACTIVITY
+    if not math.isnan(outflow) and outflow > 0 and inflow / outflow < config.min_recipient_inflow_outflow_ratio:
+        return REASON_RECIPIENT_ACTIVITY_RATIO
+    return None
 
 
 # ---------------------------------------------------------------- estado de trabajo
@@ -246,7 +272,10 @@ def recipient_reason(sub_row, lever, config=None):
     if lever == "D1":
         return None if _num(sub_row.get("monthly_debt_service")) > 0 else REASON_RECIPIENT_NO_DEBT
     if lever == "O":
-        if not _num(sub_row.get("window_outflow_sum")) > 0:
+        outflow = _num(sub_row.get("window_outflow_sum"))
+        if math.isnan(outflow):
+            return REASON_RECIPIENT_OUTFLOW
+        if not outflow > 0:
             return REASON_RECIPIENT_NO_OUTFLOW
         return None if not math.isnan(_num(sub_row.get("op_margin_w"))) else REASON_RECIPIENT_MARGIN
     if not ap_delay_observed(sub_row, config):
@@ -396,14 +425,14 @@ def _effects_batch(specs, working, reference_state, ks):
     for k in ks:
         rows = working.rows_by_k[k]
         base = level_from_signals(rows, reference_state)
-        base_level, base_debt = base.level.to_dict(), base.level_debt.to_dict()
+        base_level = base.level.to_dict()
         perturbed, after = {}, []
         for index, spec in enumerate(specs):
             row_a2, row_b2 = _perturb(rows, spec.lever, spec.donor, spec.recipient, k, horizon, spec.d1_params, spec.psi)
             perturbed[f"{index}|a"], perturbed[f"{index}|b"] = row_a2, row_b2
             after.append((row_a2, row_b2))
         result = level_from_signals(perturbed, reference_state)
-        level, debt = result.level.to_numpy(dtype=float), result.level_debt.to_numpy(dtype=float)
+        level = result.level.to_numpy(dtype=float)
         arrays = {component: result[f"level_{component}"].to_numpy(dtype=float) for component in COMPONENTS}
         for index, spec in enumerate(specs):
             row_a, row_b = rows[spec.donor], rows[spec.recipient]
@@ -416,8 +445,9 @@ def _effects_batch(specs, working, reference_state, ks):
                 donor_components_after=_components(arrays, pa), recipient_components_after=_components(arrays, pb),
                 donor_signal_before=_num(row_a.get(signal)), donor_signal_after=_num(row_a2.get(signal)),
                 recipient_signal_before=_num(row_b.get(signal)), recipient_signal_after=_num(row_b2.get(signal)),
-                recipient_component_dropped=bool(spec.lever == "D1" and not math.isnan(_num(base_debt[spec.recipient]))
-                                                 and math.isnan(debt[pb])),
+                recipient_component_dropped=bool(
+                    not math.isnan(_num(base.at[spec.recipient, f"level_{LEVER_COMPONENT[spec.lever]}"]))
+                    and math.isnan(_num(arrays[LEVER_COMPONENT[spec.lever]][pb]))),
                 donor_hits_zero_inflow_indicator=bool(_flag(row_a2.get("debt_without_inflow_w"))
                                                       and not _flag(row_a.get("debt_without_inflow_w"))))
     return effects
@@ -463,7 +493,7 @@ def generate_candidates(state, working, config=None, ks=None):
                 pair = PairEvaluation(lever, donor, recipient, str(sub_a["currency"]), str(sub_b["currency"]), None, False,
                                       need, capacity, None)
                 pairs.append(pair)
-                pair.reason = reason_a or recipient_reason(sub_b, lever, config)
+                pair.reason = reason_a or recipient_reason(sub_b, lever, config) or production_recipient_reason(sub_b, lever, config)
                 if pair.reason:
                     continue
                 try:
@@ -493,6 +523,28 @@ def generate_candidates(state, working, config=None, ks=None):
         drop = working.baseline_levels[spec.donor] - effect.donor_level_after
         if reason is None and drop > config.donor_level_floor_drop + _TOL:
             reason = REASON_DONOR_FLOOR
+        if reason is None and config.production_safe and effect.recipient_component_dropped:
+            reason = REASON_RECIPIENT_COMPONENT_DROP
+        if reason is None and config.production_safe and config.protect_donor_tramo:
+            donor_before = working.levels_by_k[horizon][spec.donor]
+            if _tramo_position(effect.donor_level_after, config.tramo_bounds) < _tramo_position(donor_before, config.tramo_bounds):
+                reason = REASON_DONOR_TRAMO
+        if reason is None and config.production_safe and config.require_nonnegative_k1:
+            k1 = 1
+            before_k1 = working.group_utility(k1)
+            effect_k1 = spec_effects[k1]
+            after_k1 = working.group_utility(
+                k1, {spec.donor: effect_k1.donor_level_after, spec.recipient: effect_k1.recipient_level_after})
+            if after_k1 < before_k1 - _TOL:
+                reason = REASON_NEGATIVE_K1
+        if reason is None and config.production_safe and config.require_worst_level_improvement:
+            before_min = working.min_level(horizon)
+            levels_after = dict(working.levels_by_k[horizon])
+            levels_after[spec.donor] = effect.donor_level_after
+            levels_after[spec.recipient] = effect.recipient_level_after
+            after_min = min(v for v in levels_after.values() if not math.isnan(_num(v)))
+            if after_min <= before_min + _TOL:
+                reason = REASON_WORST_NOT_IMPROVED
         if reason:
             survivors.setdefault(key, [False, reason])
             survivors[key][1] = reason
@@ -706,7 +758,8 @@ def certificate(state, config=None, result=None):
     if not result.steps or count < 2 or count > config.exhaustive_max_subsidiaries:
         return {"checked": False, "best_single_utility": None, "best_pair_utility": None,
                 "greedy_utility": greedy_utility, "greedy_gap": None}
-    initial = WorkingState.from_state(state, config, ks=(horizon,))
+    certificate_ks = config.report_k if config.production_safe and config.require_nonnegative_k1 else (horizon,)
+    initial = WorkingState.from_state(state, config, ks=certificate_ks)
     base = initial.group_utility()
     singles = _above_min_gain(generate_candidates(state, initial, config).candidates, config)
     best_single = max([base + c.delta_utility for c in singles], default=base)

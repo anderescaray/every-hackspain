@@ -7,9 +7,9 @@ from advisor_fixtures import make_group_state
 from xray.group_advisor.config import AdvisorConfig
 from xray.group_advisor.objective import group_utility, levels_by_tramo, subsidiary_weights, tramo, utility, utility_max
 from xray.group_advisor.optimizer import (BINDING_BUFFER, BINDING_COVERED, REASON_DONOR_BUFFER, REASON_DONOR_CASH, REASON_FX,
-                                          REASON_RECIPIENT_NOT_CONSTRAINED, STOP_NO_CANDIDATES, WorkingState, authoritative_effects,
-                                          certificate, donor_buffer, generate_candidates, is_liquidity_constrained, optimize_group,
-                                          recipient_need)
+                                          REASON_RECIPIENT_ACTIVITY, REASON_RECIPIENT_NOT_CONSTRAINED, STOP_NO_CANDIDATES,
+                                          WorkingState, authoritative_effects, certificate, donor_buffer, generate_candidates,
+                                          is_liquidity_constrained, optimize_group, recipient_need)
 from xray.group_advisor.plan import STATUS_NO_LEVERS, STATUS_PLAN, STATUS_SINGLE, build_plan, plan_to_json
 from xray.group_advisor.state import build_group_state, load_inputs
 from xray.paths import PROCESSED_DIR
@@ -339,6 +339,49 @@ def test_zero_inflow_recipient_drops_debt_component_without_phantom_100():
     step = plan["plan"]["steps"][0]["effects"][f"k{H}"]
     assert step["recipient"]["component_dropped"] is True and step["recipient"]["level_after"] < 100
     assert plan["plan"]["steps"][0]["effects"]["k1"]["recipient"]["component_dropped"] is False
+
+
+def test_experimental_profile_still_publishes_the_ga06_low_activity_d1():
+    state = make_group_state([donor("A", BUFFER_A + 8e4),
+                              debtor("B", 358., -0.99, 885., tx_outflow_ma3=2e4)])
+    plan = build_plan(state, CONFIG, GENERATED_AT)
+    assert plan["status"] == STATUS_PLAN
+    assert plan["plan"]["steps"][0]["lever"] == "D1"
+    assert plan["plan"]["steps"][0]["recipient"] == "B"
+    assert not plan["config"]["production_safe"]
+
+
+def test_production_profile_rejects_the_ga06_low_activity_artifact():
+    config = AdvisorConfig(levers=("D1", "P", "O"), production_safe=True)
+    state = make_group_state([donor("A", BUFFER_A + 8e4),
+                              debtor("B", 358., -0.99, 885., tx_outflow_ma3=2e4)])
+    plan = build_plan(state, config, GENERATED_AT)
+    assert plan["plan"]["steps"] == []
+    reasons = {item["reason"] for item in plan["levers_evaluated"] if item["recipient"] == "B"}
+    assert REASON_RECIPIENT_ACTIVITY in reasons
+    assert plan["config"]["production_safe"] is True
+
+
+def test_production_profile_only_keeps_steps_that_improve_the_worst_without_downgrading_donor():
+    config = AdvisorConfig(levers=("D1", "P", "O"), production_safe=True)
+    state = make_group_state(rich_rows(), config=config)
+    plan = build_plan(state, config, GENERATED_AT)
+    assert plan["status"] == STATUS_PLAN and plan["plan"]["steps"]
+    levels = {item["company_id"]: item["level"] for item in plan["baseline"]["subsidiaries"] if item["level"] is not None}
+    baseline_signals = {item["company_id"]: item["signals"] for item in plan["baseline"]["subsidiaries"]}
+    for step in plan["plan"]["steps"]:
+        k1, kh = step["effects"]["k1"], step["effects"][f"k{H}"]
+        assert k1["group_utility_after"] >= k1["group_utility_before"] - 1e-9
+        before_min = min(levels.values())
+        levels[step["donor"]] = kh["donor"]["level_after"]
+        levels[step["recipient"]] = kh["recipient"]["level_after"]
+        assert min(levels.values()) > before_min
+        assert tramo(kh["donor"]["level_after"], config) == tramo(kh["donor"]["level_before"], config)
+        assert not kh["recipient"]["component_dropped"]
+        if step["lever"] in ("D1", "O"):
+            signals = baseline_signals[step["recipient"]]
+            assert signals["level_inflow_sum"] >= config.min_recipient_inflow_6m
+            assert signals["level_inflow_sum"] / signals["window_outflow_sum"] >= config.min_recipient_inflow_outflow_ratio
 
 
 def test_rejected_alternatives_carry_reasons_and_evidence_is_linked():

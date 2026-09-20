@@ -326,3 +326,35 @@ def test_dormant_zero_balance_account_does_not_block_company_cash():
     tables2 = fixture_tables([row(1, date='2026-08-10', amount=100)])         # P2 con saldo 200 y sin movimientos
     ctx2 = build_features(tables2, FeatureConfig(start_month='2026-08-01'))['reconstructed_liquidity_context'].set_index('product_id')
     assert ctx2.loc['P2', 'is_reconstruction_unreliable']
+
+
+def test_dormant_zero_is_not_confused_with_missing_balance_and_is_currency_safe_and_idempotent():
+    config = FeatureConfig(start_month='2026-08-01')
+    missing = fixture_tables([row(1, date='2026-08-10', amount=100)])
+    missing['balances'].loc[missing['balances'].product_id.eq('P2'), 'balance'] = np.nan
+    missing_ctx = build_features(missing, config)['reconstructed_liquidity_context'].set_index('product_id')
+    assert missing_ctx.loc['P2', 'is_reconstruction_unreliable']
+    assert pd.isna(missing_ctx.loc['P2', 'reconstructed_balance'])
+
+    zero_usd = fixture_tables([row(1, date='2026-08-10', amount=100)])
+    zero_usd['banking_products'].loc[zero_usd['banking_products'].product_id.eq('P2'), 'currency'] = 'USD'
+    zero_usd['balances'].loc[zero_usd['balances'].product_id.eq('P2'), 'balance'] = 0.
+    first = build_features(zero_usd, config)
+    second = build_features(zero_usd, config)
+    pd.testing.assert_frame_equal(first['reconstructed_liquidity_context'],
+                                  second['reconstructed_liquidity_context'])
+    usd = first['reconstructed_liquidity_context'].set_index('product_id').loc['P2']
+    assert usd.currency == 'EUR' and usd.reconstructed_balance == 0.
+    assert not usd.is_reconstruction_unreliable
+
+
+def test_future_dormant_zero_account_is_not_counted_before_it_exists():
+    tables = fixture_tables([row(1, date='2026-08-10', amount=100)])
+    account = tables['banking_products'].product_id.eq('P2')
+    tables['banking_products'].loc[account, 'created_at'] = pd.Timestamp('2026-10-01')
+    tables['balances'].loc[tables['balances'].product_id.eq('P2'), 'balance'] = 0.
+    result = build_features(tables, FeatureConfig(start_month='2026-08-01'))
+    context = result['reconstructed_liquidity_context'].set_index('product_id')
+    assert not context.loc['P2', 'account_seen_asof']
+    liquidity = result['company_currency_liquidity_context'].set_index(['company_id', 'month'])
+    assert liquidity.loc[('C1', pd.Timestamp('2026-08-01')), 'checking_accounts'] == 1

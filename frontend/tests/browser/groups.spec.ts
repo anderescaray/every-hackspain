@@ -113,14 +113,17 @@ test("de la relación al plan de revisión, sin ejecución de transferencias", a
   await expect(page.getByText("Relación: COMP_0007 → COMP_0412", { exact: true })).toBeVisible();
   await expect(page.getByText("Revisar el apoyo interno recurrente", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Quitar filtro de relación" }).click();
+  await expect(page.getByText("Sin ejecución automática.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Supera guardas cuantitativas", { exact: true })).toBeVisible();
+  await expect(page.getByText("Revisar la redistribución del servicio de deuda para COMP_0412", { exact: true })).toBeVisible();
   await page.getByLabel("Prioridad", { exact: true }).selectOption("medium");
-  await expect(page.getByText("4 revisiones", { exact: true })).toBeVisible();
+  await expect(page.getByText("4 escenarios", { exact: true })).toBeVisible();
   await expect(page.getByText("Completar la evidencia antes de concluir", { exact: true })).toBeVisible();
-  await page.getByRole("article").filter({ hasText: "Completar la evidencia antes de concluir" }).getByText("Ver pasos y límites").click();
+  await page.getByRole("article").filter({ hasText: "Completar la evidencia antes de concluir" }).getByText("Ver impacto, pasos y límites").click();
   await expect(page.getByText("La falta de conexiones no demuestra ausencia de relaciones.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Ejecutar|Transferir|Pagar/i })).toHaveCount(0);
   await page.getByRole("button", { name: "Restablecer filtros" }).click();
-  await expect(page.getByText("7 revisiones", { exact: true })).toBeVisible();
+  await expect(page.getByText("8 escenarios", { exact: true })).toBeVisible();
 });
 
 test("sin JSON, con JSON inválido o perímetro vacío no se inventa inteligencia", async ({ page }) => {
@@ -136,5 +139,5 @@ test("sin JSON, con JSON inválido o perímetro vacío no se inventa inteligenci
   await page.goto("/groups/GROUP_0099/network");
   await expect(page.getByText("No hay sociedades observadas para dibujar una red.")).toBeVisible();
   await page.goto("/groups/GROUP_0099/recommendations");
-  await expect(page.getByText("No se han suministrado recomendaciones.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Ninguna acción supera las guardas de producción", { exact: false })).toBeVisible();
 });
