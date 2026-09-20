@@ -277,8 +277,71 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
     }
 
 
-def group_detail(group, member_details, cash_summary):
-    """Grupo mínimo válido (contrato 1.0): miembros con score/dimensiones/rol; sin relaciones ni recomendaciones todavía."""
+def _advisor_recommendations(plan):
+    """Adapta únicamente planes `production_safe` a revisiones del contrato GroupDetail 1.0."""
+    config = plan.get("config") or {} if plan else {}
+    if not plan or plan.get("status") != "plan" or not config.get("production_safe"):
+        return []
+    horizon = int(config.get("horizon_months") or 6)
+    kh = f"k{horizon}"
+    recommendations = []
+    titles = {
+        "D1": "Revisar la redistribución del servicio de deuda",
+        "P": "Revisar financiación para pagar proveedores en plazo",
+        "O": "Revisar la centralización de pagos operativos",
+    }
+    types = {"D1": "funding_structure", "P": "liquidity_distribution", "O": "liquidity_distribution"}
+    activity_floor = f"{float(config.get('min_recipient_inflow_6m') or 10_000):,.0f}".replace(",", ".")
+    ratio = float(config.get("min_recipient_inflow_outflow_ratio") or 0.01)
+    for step in plan.get("plan", {}).get("steps") or []:
+        effect = (step.get("effects") or {}).get(kh) or {}
+        recipient, donor = effect.get("recipient") or {}, effect.get("donor") or {}
+        amount = _num((step.get("amount") or {}).get("reporting_ccy"))
+        before_g, after_g = _num(effect.get("group_utility_before")), _num(effect.get("group_utility_after"))
+        rb, ra = _num(recipient.get("level_before")), _num(recipient.get("level_after"))
+        db, da = _num(donor.get("level_before")), _num(donor.get("level_after"))
+        lever = step.get("lever")
+        donor_id, recipient_id = step.get("donor"), step.get("recipient")
+        if lever not in titles or None in (amount, before_g, after_g, rb, ra, db, da, donor_id, recipient_id):
+            continue
+        amount_text = f"{amount:,.0f} EUR".replace(",", ".")
+        recommendations.append({
+            "id": f"advisor-{int(step['step']):02d}-{lever.lower()}",
+            "type": types[lever],
+            "priority": "high" if rb < 40 else "medium",
+            "title": f"{titles[lever]} para {recipient_id}",
+            "explanation": (
+                f"Escenario mecánico que sube el nivel mínimo del grupo: {donor_id} asumiría {amount_text} "
+                f"de {recipient_id}. En régimen, el nivel de la receptora pasaría de {rb:.1f} a {ra:.1f}; "
+                f"el de la donante, de {db:.1f} a {da:.1f}. ΔG {after_g - before_g:+.2f}."
+            ),
+            "period": f"{_month_label(plan['month'])} · horizonte {horizon} meses",
+            "confidence": None,
+            "signals": [
+                {"source": "health", "observation": f"La receptora gana {ra - rb:.1f} puntos de nivel en régimen."},
+                {"source": "liquidity", "observation": f"La donante compromete {amount_text} respetando su colchón de caja."},
+                {"source": "resilience", "observation": f"La donante cambia {da - db:+.1f} puntos y conserva su tramo."},
+            ],
+            "review_steps": [
+                "Confirmar saldos, cobros y pagos previstos con el tesorero de ambas sociedades.",
+                "Validar fiscalidad, acuerdos intragrupo, covenants y capacidad legal para ejecutar la operación.",
+                "Aprobar, ajustar o descartar el escenario; X Ray no mueve fondos ni genera órdenes bancarias.",
+            ],
+            "constraints": [
+                "Escenario mecánico, no predicción ni recomendación ejecutable.",
+                "Perfil seguro: actividad mínima, mejora no negativa a un mes, donante sin bajar de tramo y mejora de la peor filial.",
+                f"Umbral de actividad no calibrado: al menos {activity_floor} EUR "
+                f"de entradas en {horizon} meses y ratio entradas/salidas ≥ {100 * ratio:.0f}%.",
+            ],
+            "company_refs": [recipient_id, donor_id],
+            "relation_refs": [],
+            "evidence_refs": [],
+        })
+    return recommendations[:30]
+
+
+def group_detail(group, member_details, cash_summary, advisor_plan=None):
+    """Grupo válido 1.0; solo incorpora escenarios del advisor con perfil seguro explícito."""
     members = []
     for row in group.get("companies", []):
         detail = member_details.get(row["company_id"])
@@ -305,6 +368,14 @@ def group_detail(group, member_details, cash_summary):
     as_of = max((d["as_of"] for d in member_details.values()), default=None)
     latest = pd.Timestamp(group.get("latest_month") or as_of or "2026-08-01")
     metric = lambda what: {"value": None, "covered_company_ids": [], "explanation": f"{what} no consolidado en esta versión: no se suman posiciones entre sociedades.", "evidence_refs": []}
+    recommendations = _advisor_recommendations(advisor_plan)
+    limitations = ["No se presume que la caja sea fungible entre sociedades.",
+                   "La ausencia de relaciones observadas no demuestra que no existan."]
+    if recommendations:
+        limitations += ["Los escenarios del advisor requieren aprobación humana; no ejecutan operaciones.",
+                        "Los umbrales del perfil seguro son conservadores y no están calibrados con resultados reales."]
+    else:
+        limitations.insert(1, "No hay un plan de tesorería que supere las guardas de producción.")
     return {
         "schema_version": "1.0", "source": "generated", "group_id": group["group_id"],
         "as_of": (latest + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d"), "period": f"seis meses hasta {_month_label(latest)}", "currency": "EUR",
@@ -312,11 +383,9 @@ def group_detail(group, member_details, cash_summary):
         "coverage": {"known_company_count": None, "confidence": None, "explanation": "Perímetro observado en el dataset; no se conoce el perímetro jurídico completo."},
         "available_liquidity": metric("Liquidez disponible"), "identified_debt": metric("Deuda identificada"),
         "obligations": {**metric("Obligaciones"), "horizon": "30 días"},
-        "limitations": ["No se presume que la caja sea fungible entre sociedades.",
-                        "Relaciones, recomendaciones y posiciones consolidadas no se exportan todavía.",
-                        "La ausencia de relaciones observadas no demuestra que no existan."],
+        "limitations": limitations,
         "members": members[:50], "insights": [], "alerts": [], "concentration": [], "recent_changes": [],
-        "relations": [], "recommendations": [], "evidence": [],
+        "relations": [], "recommendations": recommendations, "evidence": [],
     }
 
 
@@ -392,8 +461,9 @@ def _sample_evidence(evidence, company_id, window):
     return sample
 
 
-def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True):
-    product_dir, out_dir = Path(product_dir), Path(out_dir)
+def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED,
+        advisor_dir=PROCESSED_DIR / "advisor_production", verbose=True):
+    product_dir, out_dir, advisor_dir = Path(product_dir), Path(out_dir), Path(advisor_dir)
     say = print if verbose else (lambda *a, **k: None)
     portfolio = json.loads((product_dir / "portfolio.json").read_text(encoding="utf-8"))
     latest = pd.Timestamp(portfolio["latest_month"])
@@ -428,13 +498,17 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     for file in sorted((product_dir / "groups").glob("GROUP_*.json")):
         group = json.loads(file.read_text(encoding="utf-8"))
         group.setdefault("latest_month", portfolio["latest_month"])
-        _write_json(out_dir / "groups" / f"{group['group_id']}.json", group_detail(group, details, cash_by_company))
+        plan_path = advisor_dir / "group_plans" / f"{group['group_id']}.json"
+        advisor_plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else None
+        _write_json(out_dir / "groups" / f"{group['group_id']}.json",
+                    group_detail(group, details, cash_by_company, advisor_plan))
         groups += 1
     _write_json(out_dir / "portfolio.json", portfolio_export(portfolio, details, cash_by_company))
     manifest = {"model_version": MODEL_VERSION, "latest_month": portfolio["latest_month"], "companies_written": written,
                 "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
                 "companies_with_scenarios": len(whatif_groups),
-                "product_manifest_sha256": _sha(product_dir / "_product_manifest.json")}
+                "product_manifest_sha256": _sha(product_dir / "_product_manifest.json"),
+                "advisor_manifest_sha256": _sha(advisor_dir / "_advisor_manifest.json")}
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)
     say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} · portfolio {len(portfolio['companies'])} -> {out_dir}")
     return manifest

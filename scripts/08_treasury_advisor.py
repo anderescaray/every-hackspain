@@ -55,15 +55,20 @@ def main():
     parser.add_argument("--month", help="primer día del mes (YYYY-MM-01); por defecto el último cierre del panel")
     parser.add_argument("--group", metavar="GROUP_xxxx", help="imprime el plan de ese grupo y no publica")
     parser.add_argument("--company", metavar="COMP_xxxx", help="imprime la sensibilidad de esa empresa y no publica")
-    parser.add_argument("--levers", default="D1,P",
+    parser.add_argument("--levers",
                         help="palancas de grupo separadas por coma; D1,P por defecto, D1,P,O añade la asunción de pagos operativos (D48)")
+    parser.add_argument("--production-safe", action="store_true",
+                        help="perfil estricto para UI: D1,P,O con actividad mínima, mejora a k=1, protección de tramo y de la peor filial")
     args = parser.parse_args()
-    config = default_config(month=args.month) if args.month else default_config()
-    levers = tuple(x.strip() for x in args.levers.split(",") if x.strip())
+    config = default_config(month=args.month, production_safe=args.production_safe) if args.month else \
+        default_config(production_safe=args.production_safe)
+    raw_levers = args.levers or ("D1,P,O" if args.production_safe else "D1,P")
+    levers = tuple(x.strip() for x in raw_levers.split(",") if x.strip())
     if levers != config.levers:
         config = replace(config, levers=levers)
     if args.group is None and args.company is None:
-        run(args.features_dir, args.out_dir, config, args.month)
+        out_dir = args.out_dir or (args.features_dir / "advisor_production" if args.production_safe else None)
+        run(args.features_dir, out_dir, config, args.month)
         return
     if args.out_dir is not None:
         check_out_dir(resolve_out_dir(args.features_dir, args.out_dir), args.features_dir)

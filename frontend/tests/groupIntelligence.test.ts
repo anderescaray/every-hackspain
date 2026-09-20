@@ -21,7 +21,8 @@ test("el grupo conserva sociedades, relaciones y recomendaciones sin Group Healt
   assert.equal(value.members.filter((member) => member.trajectory === "deteriorating").length, 2);
   assert.equal("health_score" in value, false);
   assert.equal("group_health_score" in value, false);
-  assert.equal(value.recommendations.length, 7);
+  assert.equal(value.recommendations.length, 8);
+  assert.ok(value.recommendations.some((item) => item.id.startsWith("advisor-")));
   assert.ok(value.relations.some((relation) => relation.status === "identified"));
   assert.ok(value.relations.some((relation) => relation.status === "candidate"));
   assert.ok(value.relations.some((relation) => relation.status === "unknown" && relation.to_company_id === null));

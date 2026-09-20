@@ -1,10 +1,11 @@
 """Exportación al contrato del frontend: traducción sin recálculo, neutros documentados y ausencias explícitas."""
 import json
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from xray.product.frontend_export import WEIGHTS, company_detail, group_detail
+from xray.product.frontend_export import WEIGHTS, _advisor_recommendations, company_detail, group_detail
 
 
 def timeline(scores, **last):
@@ -93,6 +94,24 @@ def test_group_members_keep_nulls_and_roles_from_cash_truth():
     assert m["COMP_0002"]["health_score"] is None and m["COMP_0002"]["role"] == "unknown"
     assert g["available_liquidity"]["value"] is None and g["relations"] == [] and len(g["limitations"]) >= 1
     json.dumps(g, allow_nan=False)
+
+
+def test_only_production_safe_advisor_plans_become_group_recommendations():
+    plan = json.loads((Path(__file__).parent / "fixtures" / "advisor_plan_example.json").read_text(encoding="utf-8"))
+    assert _advisor_recommendations(plan) == []
+    plan["config"].update({"production_safe": True, "min_recipient_inflow_6m": 10_000.,
+                           "min_recipient_inflow_outflow_ratio": .01})
+    recommendations = _advisor_recommendations(plan)
+    assert len(recommendations) == len(plan["plan"]["steps"])
+    first = recommendations[0]
+    assert first["id"].startswith("advisor-") and first["confidence"] is None
+    assert first["company_refs"] == [plan["plan"]["steps"][0]["recipient"], plan["plan"]["steps"][0]["donor"]]
+    assert "Escenario mecánico" in first["constraints"][0] and "no mueve fondos" in first["review_steps"][-1]
+    assert "ΔG" in first["explanation"] and first["evidence_refs"] == []
+    json.dumps(recommendations, allow_nan=False)
+    incomplete = json.loads(json.dumps(plan))
+    incomplete["plan"]["steps"][0]["effects"]["k6"]["recipient"]["level_after"] = None
+    assert len(_advisor_recommendations(incomplete)) == len(plan["plan"]["steps"]) - 1
 
 
 def test_portfolio_items_map_status_trajectory_and_attention():

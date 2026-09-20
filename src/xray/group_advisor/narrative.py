@@ -40,11 +40,18 @@ REASON_ES = {
     "recipient_ap_component_unavailable": "componente de pagos (AP) de la receptora no disponible",
     "recipient_no_ap_delay": "la receptora ya paga a proveedores en plazo (retraso AP cero o negativo)",
     "recipient_no_ap_need": "la receptora no tiene AP vencido ni próximo",
+    "recipient_operating_outflow_unavailable": "los pagos operativos de la receptora no están observados en la ventana",
     "recipient_no_operating_outflow": "la receptora no tiene pagos operativos observados en la ventana",
     "recipient_margin_unavailable": "el margen operativo de la receptora no es evaluable",
     "recipient_cash_unreliable": "caja reconstruida de la receptora no fiable",
     "recipient_not_liquidity_constrained": "la receptora no está restringida por liquidez (retraso AP por política de pago o higiene ERP)",
     "recipient_level_unavailable": "el nivel de la receptora no es evaluable tras la acción",
+    "recipient_activity_below_production_floor": "actividad operativa por debajo del mínimo del perfil seguro",
+    "recipient_activity_ratio_below_production_floor": "entradas demasiado pequeñas frente a las salidas para el perfil seguro",
+    "recipient_component_would_disappear": "la acción haría desaparecer un componente del nivel en vez de mejorarlo",
+    "donor_tramo_would_downgrade": "la donante bajaría de tramo",
+    "negative_short_term_utility": "el efecto agregado sería negativo en el próximo cierre",
+    "worst_subsidiary_not_improved": "la acción no mejora el nivel de la peor filial",
     # par / plan
     "fx_rate_unavailable": "moneda sin tipo de cambio en la tabla fija",
     "fraction_cap": "la necesidad de la receptora ya está cubierta al completo",
@@ -199,11 +206,13 @@ def _business_phrase(step, subs, horizon):
 
 
 def _donor_tail(step, d6):
-    """Cierre de la frase del donante: en D1 asume servicio (su nivel sí se mueve); en P solo compromete caja."""
-    if step["lever"] != "D1":
+    """Cierre de la frase del donante: D1 y O mueven nivel; P solo compromete caja."""
+    if step["lever"] == "P":
         return "El donante no pierde nivel (la salida intragrupo no cuenta como operativa); pierde caja."
     before, after = fmt_num(d6.get("level_before")), fmt_num(d6.get("level_after"))
     movement = f"se mantiene en {after}" if before == after else f"pasa de {before} a {after}"
+    if step["lever"] == "O":
+        return f"El donante asume pagos operativos: su nivel {movement} (k=6); además compromete caja."
     return f"El donante asume servicio: su nivel {movement} (k=6); además compromete caja."
 
 
@@ -753,3 +762,60 @@ def render_sensitivity(sens, fmt="markdown"):
     sections += [("Palancas no evaluables", _unavailable_lines(sens)),
                  ("Supuestos y límites", _assumption_lines(sens) + [f"- {MECHANICAL_NOTICE}"])]
     return _compose(title, sections, fmt)
+
+
+# ----------------------------------------------------------------------------------------------- top action y resumen
+
+
+LEVER_ACTION_ES = {
+    "D1": "{donor} asume las cuotas de deuda de {recipient}",
+    "P": "{donor} financia a {recipient} para pagar a proveedores en plazo",
+    "O": "{donor} asume pagos operativos de {recipient}",
+}
+
+
+def render_top_action_summary(plan, ccy="EUR"):
+    """Frase condensada de la mejor acción del plan para mostrar en la vista de grupo."""
+    top = plan.get("top_action")
+    if not top:
+        return None
+    lever_text = LEVER_ACTION_ES.get(top["lever"], top["lever"]).format(
+        donor=top["donor"], recipient=top["recipient"])
+    amount = fmt_num(top.get("amount_reporting_ccy"), 0, ccy)
+    r_before = fmt_num(top.get("recipient_level_before"), 1)
+    r_after = fmt_num(top.get("recipient_level_after"), 1)
+    d_before = fmt_num(top.get("donor_level_before"), 1)
+    d_after = fmt_num(top.get("donor_level_after"), 1)
+    tramo_before = TRAMO_ES.get(top.get("recipient_tramo_before", ""), "")
+    tramo_after = TRAMO_ES.get(top.get("recipient_tramo_after", ""), "")
+    donor_delta = (top.get("donor_level_after") or 0) - (top.get("donor_level_before") or 0)
+    return (
+        f"{lever_text} ({amount}). "
+        f"{top['recipient']} pasa de {tramo_before} ({r_before}) a {tramo_after} ({r_after}). "
+        f"La donante {top['donor']} {'baja' if donor_delta < 0 else 'sube'} "
+        f"{fmt_num(abs(donor_delta), 1)} puntos ({d_before} → {d_after}) y conserva su tramo."
+    )
+
+
+def render_group_impact(plan, ccy="EUR"):
+    """Frase de resumen del impacto total del plan sobre el grupo."""
+    impact = plan.get("group_impact_summary")
+    if not impact:
+        return None
+    parts = [
+        f"El grupo puede mejorar {fmt_num(impact.get('delta_utility'), 1)} puntos de utilidad "
+        f"en {impact.get('total_steps')} {'paso' if impact.get('total_steps') == 1 else 'pasos'}, "
+        f"comprometiendo {fmt_num(impact.get('total_cash_committed'), 0, ccy)}."
+    ]
+    rescued = impact.get("subsidiaries_rescued", [])
+    if rescued:
+        names = ", ".join(
+            f"{r['company_id']} ({TRAMO_ES.get(r.get('tramo_before'), '')} → {TRAMO_ES.get(r.get('tramo_after'), '')})"
+            for r in rescued)
+        parts.append(f"Filiales rescatadas: {names}.")
+    blockers = impact.get("structural_blockers", [])
+    if blockers:
+        names = ", ".join(f"{b['company_id']}" for b in blockers)
+        parts.append(f"{names} {'tiene' if len(blockers) == 1 else 'tienen'} problemas estructurales de margen que la tesorería no resuelve.")
+    return " ".join(parts)
+

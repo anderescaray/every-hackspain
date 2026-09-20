@@ -15,7 +15,7 @@ import styles from "./groups.module.css";
 const questions: Record<GroupView, string> = {
   overview: "Resumen del perímetro y sociedades a revisar primero.",
   network: "Sociedades y transferencias observadas en el grupo.",
-  recommendations: "Revisiones priorizadas antes de mover caja.",
+  recommendations: "Escenarios precalculados para mejorar la filial más débil. Requieren aprobación humana.",
 };
 
 export function GroupIntelligence({ group, view, initialRelation, initialCompany }: { group: GroupDetail; view: GroupView; initialRelation?: string; initialCompany?: string }) {

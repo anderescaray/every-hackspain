@@ -25,6 +25,7 @@ REAL_DATA = (PROCESSED_DIR / "scores_v2").exists()
 def test_default_config_is_valid_and_matches_spec():
     config = AdvisorConfig()
     assert config.horizon_months == 6 and config.tramo_bounds == (40.0, 70.0) and config.levers == ("D1", "P")
+    assert not config.production_safe and config.min_recipient_inflow_6m == 10_000.
     assert config.fx_rates_to_eur is None and config.reporting_currency == "EUR"
     assert set(config.sensitivity_r_max) == {"cut_outflow", "raise_inflow", "debt_service_cut", "ap_on_time", "ar_faster"}
     AdvisorConfig(fx_rates_to_eur=default_fx_table(), fx_source=FX_SOURCE, fx_asof=FX_ASOF, reporting_currency="USD")
@@ -44,6 +45,9 @@ def test_default_config_is_valid_and_matches_spec():
     {"report_k": (0, 6)}, {"report_k": (1, 7)}, {"report_k": (6, 1)}, {"report_k": ()},
     {"horizon_months": 0}, {"levers": ("D2",)}, {"subsidiary_weighting": "flow"},
     {"sensitivity_r_max": {"cut_outflow": 0.5}}, {"donor_buffer_months": -1}, {"month": "2026-08-15"},
+    {"production_safe": "yes"}, {"min_recipient_inflow_6m": -1},
+    {"min_recipient_inflow_outflow_ratio": 1.1},
+    {"production_safe": True, "report_k": (6,)},
 ])
 def test_config_rejects_incoherent_values(kwargs):
     with pytest.raises(ValueError):

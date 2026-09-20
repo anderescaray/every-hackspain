@@ -13,8 +13,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--product-dir", type=Path, default=PROCESSED_DIR / "product")
     parser.add_argument("--out-dir", type=Path, default=FRONTEND_GENERATED)
+    parser.add_argument("--advisor-dir", type=Path, default=PROCESSED_DIR / "advisor_production",
+                        help="solo se exportan planes generados con --production-safe")
     args = parser.parse_args()
-    run(args.product_dir, args.out_dir)
+    run(args.product_dir, args.out_dir, args.advisor_dir)
 
 
 if __name__ == "__main__":

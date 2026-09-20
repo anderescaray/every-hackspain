@@ -58,6 +58,14 @@ class AdvisorConfig:
     fx_rates_to_eur: dict | None = None
     fx_source: str | None = None
     fx_asof: str | None = None
+    # Perfil de decisión para el producto. El motor experimental conserva sus resultados con False;
+    # la UI solo consume artefactos generados con True.
+    production_safe: bool = False
+    min_recipient_inflow_6m: float = 10_000.0
+    min_recipient_inflow_outflow_ratio: float = 0.01
+    require_nonnegative_k1: bool = True
+    protect_donor_tramo: bool = True
+    require_worst_level_improvement: bool = True
 
     def __post_init__(self):
         if self.month is not None:
@@ -80,6 +88,16 @@ class AdvisorConfig:
         if (not self.report_k or any(not isinstance(k, int) or not 1 <= k <= self.horizon_months for k in self.report_k)
                 or any(b <= a for a, b in zip(self.report_k, self.report_k[1:]))):
             raise ValueError("report_k debe ser una tupla creciente de enteros en 1..horizon_months")
+        for name in ("production_safe", "require_nonnegative_k1", "protect_donor_tramo", "require_worst_level_improvement"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} debe ser booleano")
+        if not _finite(self.min_recipient_inflow_6m) or self.min_recipient_inflow_6m < 0:
+            raise ValueError("min_recipient_inflow_6m debe ser finito y no negativo")
+        if (not _finite(self.min_recipient_inflow_outflow_ratio)
+                or not 0 <= self.min_recipient_inflow_outflow_ratio <= 1):
+            raise ValueError("min_recipient_inflow_outflow_ratio debe estar en [0, 1]")
+        if self.production_safe and self.require_nonnegative_k1 and 1 not in self.report_k:
+            raise ValueError("production_safe con require_nonnegative_k1 exige incluir k=1 en report_k")
         self._check_utility()
         if self.subsidiary_weighting not in WEIGHTINGS:
             raise ValueError(f"subsidiary_weighting debe ser uno de {WEIGHTINGS}")

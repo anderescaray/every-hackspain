@@ -34,6 +34,7 @@ LEVEL_RESULT_COLUMNS = ("level", "level_operations", "level_debt", "level_collec
                         "level_coverage", "level_components_available", "has_uncovered_debt_service")
 COMPONENTS = tuple(COMPONENT_WEIGHTS)
 LEVERS = ("D1", "P", "O")
+LEVER_COMPONENT = {"D1": "debt", "P": "payments", "O": "operations"}
 _ADD_TOLERANCE = 1e-9
 
 
@@ -299,7 +300,9 @@ def evaluate_action(rows, reference_state, action, k, horizon, monthly_service_b
         row_a2, row_b2 = dict(row_a), apply_p(row_b, action.psi, k, horizon)
         signal = "ap_delay_w"
     after = level_from_signals({action.donor: row_a2, action.recipient: row_b2}, reference_state)
-    debt_before, debt_after = before.at[action.recipient, "level_debt"], after.at[action.recipient, "level_debt"]
+    component = LEVER_COMPONENT[action.lever]
+    component_before = before.at[action.recipient, f"level_{component}"]
+    component_after = after.at[action.recipient, f"level_{component}"]
     return ActionEffect(
         k=int(k),
         donor_level_before=_level(before, action.donor), donor_level_after=_level(after, action.donor),
@@ -308,7 +311,7 @@ def evaluate_action(rows, reference_state, action, k, horizon, monthly_service_b
         recipient_components_after=component_scores(after.loc[action.recipient]),
         donor_signal_before=_num(row_a.get(signal)), donor_signal_after=_num(row_a2.get(signal)),
         recipient_signal_before=_num(row_b.get(signal)), recipient_signal_after=_num(row_b2.get(signal)),
-        recipient_component_dropped=bool(action.lever == "D1" and pd.notna(debt_before) and pd.isna(debt_after)),
+        recipient_component_dropped=bool(pd.notna(component_before) and pd.isna(component_after)),
         donor_hits_zero_inflow_indicator=bool(_flag(row_a2.get("debt_without_inflow_w"))
                                               and not _flag(row_a.get("debt_without_inflow_w"))),
     )

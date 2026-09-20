@@ -35,6 +35,7 @@ LIMITATIONS = ("caja reconstruida retrospectivamente; no saldo observado",
                "momentum no simulado",
                "el consolidado grupo-moneda no cambia con D1 y no se recalcula con P")
 STRUCTURAL_NOTE = "margen 6m {margin}: no es palanca de tesoreria"
+STRUCTURAL_BLOCKER = "margen 6m {margin}: problema estructural de negocio"
 UNEXPLAINED_NOTE = "retraso AP no explicado por liquidez (politica de pago o higiene ERP)"
 DONOR_EVIDENCE = ("reconstructed_cash", "runway_months")
 RECIPIENT_EVIDENCE = {"D1": ("window_debt_service_sum", "level_inflow_sum"),
@@ -194,7 +195,7 @@ def _step_entry(state, subs, greedy_step, config):
     momentum = _num(subs[action.recipient]["momentum_adjustment"])
     momentum = 0.0 if math.isnan(momentum) else momentum
     effects = {}
-    touches_donor = action.lever == "D1"
+    touches_donor = action.lever in ("D1", "O")
     for k in config.report_k:
         effect = greedy_step.effects[k]
         effects[_k(k)] = {
@@ -237,6 +238,70 @@ def _assumptions(result, config):
     return assumptions
 
 
+# ---------------------------------------------------------------- top action y resumen de impacto
+
+
+def _top_action(subs, result, config):
+    """La acción del plan con mayor ΔG en régimen (k=H): la que más mejora al grupo."""
+    if not result.steps:
+        return None
+    horizon = config.horizon_months
+    best = max(result.steps, key=lambda step: step.utility_after_by_k[horizon] - step.utility_before_by_k[horizon])
+    effect_kh = best.effects[horizon]
+    action = best.candidate.action
+    delta_g = best.utility_after_by_k[horizon] - best.utility_before_by_k[horizon]
+    r_before = _num(subs[action.recipient]["level"])
+    d_before = _num(subs[action.donor]["level"])
+    from xray.group_advisor.objective import tramo
+    return {
+        "step": best.step, "lever": action.lever,
+        "donor": action.donor, "recipient": action.recipient,
+        "donor_level_before": d_before,
+        "donor_level_after": effect_kh.donor_level_after,
+        "recipient_level_before": r_before,
+        "recipient_level_after": effect_kh.recipient_level_after,
+        "recipient_tramo_before": tramo(r_before, config),
+        "recipient_tramo_after": tramo(effect_kh.recipient_level_after, config),
+        "delta_utility_k6": delta_g,
+        "amount_reporting_ccy": best.candidate.x_report,
+        "efficiency_per_10k": best.candidate.efficiency,
+    }
+
+
+def _group_impact_summary(subs, optimizable, result, config):
+    """Resumen del impacto total del plan sobre el grupo: filiales rescatadas y bloqueadores."""
+    horizon = config.horizon_months
+    working = result.working_final
+    baseline_g = result.utility_before
+    after_g = working.group_utility(horizon)
+    total_cash = sum(step.candidate.x_report for step in result.steps)
+    from xray.group_advisor.objective import tramo
+    # Filiales que cambian de tramo gracias al plan
+    rescued = []
+    for cid in optimizable:
+        before = _num(subs[cid]["level"])
+        after = _num(working.levels_by_k[horizon].get(cid, before))
+        tramo_before = tramo(before, config)
+        tramo_after = tramo(after, config)
+        if tramo_before != tramo_after and tramo_after != "none" and tramo_before in ("red", "amber"):
+            rescued.append({"company_id": cid, "tramo_before": tramo_before, "tramo_after": tramo_after,
+                            "level_before": before, "level_after": after})
+    # Bloqueadores estructurales: filiales con margen < 40 que el plan no puede arreglar
+    bound = float(config.tramo_bounds[0])
+    blockers = []
+    for cid in optimizable:
+        ops = _num(subs[cid]["level_operations"])
+        if not math.isnan(ops) and ops < bound:
+            margin = _num(subs[cid]["op_margin_w"])
+            blockers.append({"company_id": cid, "reason": STRUCTURAL_BLOCKER.format(margin=_margin_text(margin))})
+    return {
+        "utility_before": baseline_g, "utility_after": after_g,
+        "delta_utility": after_g - baseline_g,
+        "total_steps": len(result.steps), "total_cash_committed": total_cash,
+        "subsidiaries_rescued": rescued, "structural_blockers": blockers,
+    }
+
+
 # ---------------------------------------------------------------- plan
 
 
@@ -256,6 +321,8 @@ def build_plan(state, config=None, generated_at=None):
     stopped_because = STOP_SINGLE if status == STATUS_SINGLE else result.stopped_because
     if generated_at is None:
         generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    top = _top_action(subs, result, config) if status == STATUS_PLAN else None
+    impact = _group_impact_summary(subs, optimizable, result, config) if status == STATUS_PLAN else None
     plan = {
         "schema_version": SCHEMA_VERSION, "method": METHOD, "group_id": str(state.group_id), "month": str(pd.Timestamp(state.month).date()),
         "config": dataclasses.asdict(config),
@@ -265,6 +332,7 @@ def build_plan(state, config=None, generated_at=None):
         "diagnosis": _diagnosis(subs, optimizable, config),
         "levers_evaluated": _levers_evaluated(result.pairs),
         "plan": _plan_block(state, subs, result, config, stopped_because),
+        "top_action": top, "group_impact_summary": impact,
         "rejected_alternatives": list(result.rejected),
         "certificate": certificate(state, config, result),
         "assumptions": _assumptions(result, config), "limitations": list(LIMITATIONS),
