@@ -9,6 +9,7 @@ import { ActionabilitySection } from "./ActionabilitySection";
 import { CashTruthSection } from "./CashTruthSection";
 import { TimeBorrowedSection } from "./TimeBorrowedSection";
 import { WhatIfSection } from "./WhatIfSection";
+import { StressTestSection } from "./StressTestSection";
 import { EvidenceDialog } from "./EvidenceDialog";
 import { Confidence, EvidenceButton, SectionHeading } from "./InsightPrimitives";
 import styles from "./insights.module.css";
@@ -129,6 +130,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
       {!alerts.length && <p className={styles.emptyState}>No hay alertas priorizadas en este análisis. Esto no garantiza la salud financiera.</p>}
     </section>
     <WhatIfSection currentHealthScore={company.health_score} simulation={company.simulation} />
+    <StressTestSection stressTest={company.stress_test} companyId={company.company_id} />
     <footer className={styles.pageFooter}><span>X Ray</span><span>{isMock ? "Sin procesamiento financiero en tiempo real." : "Datos precalculados. Sin procesamiento financiero en tiempo real."}</span></footer>
     {evidence && <EvidenceDialog groupId={company.group_id} title={evidence.title} groups={company.evidence.filter((group) => evidence.refs.includes(group.id)).map((group) => evidence.records ? { ...group, rows: group.rows.filter((row) => evidence.records?.some((record) => record.evidence_id === group.id && record.transaction_id === row.id)) } : group)} accounts={company.cash_truth.account_flows?.accounts ?? []} isMock={isMock} onClose={() => setEvidence(null)} />}
   </main>;

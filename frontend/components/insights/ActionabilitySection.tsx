@@ -87,7 +87,7 @@ export function ActionabilitySection({ actionability }: { actionability?: Action
         <BandPath actionability={actionability} selected={selected} />
         {alternatives.length > 0 && <div className={styles.actionAlternatives} aria-label="Otras palancas de tesorería"><h3>Otras palancas de tesorería</h3><ul>{alternatives.map((lever) => <LeverRow key={lever.lever} lever={lever} onSelect={() => setSelectedId(lever.lever)} />)}</ul></div>}
         <BusinessSensitivities levers={business} />
-        <a href="#scenarios" className={styles.actionExplore}>Abrir Escenarios <span aria-hidden="true">→</span></a>
+        <a href="#stress-test" className={styles.actionExplore}>Abrir Stress Test <span aria-hidden="true">→</span></a>
       </div>}
     </div> : actionability?.status === "business_sensitivity_only" || actionability?.status === "structural_issue" ? <div className={styles.actionContext}>
       <div className={styles.actionContextLead}><strong>{actionability.status === "structural_issue" ? "Problema principalmente operativo" : "Sin palanca de tesorería con impacto identificado"}</strong><span>Las variaciones de negocio son sensibilidades del modelo, no acciones recomendadas.</span></div>

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { companySections, withCompanyContext } from "../lib/analysisNavigation";
 
-test("empresa tiene seis accesos estables incluyendo Cómo actuar y Escenarios", () => {
-  assert.deepEqual(companySections.map((section) => section.id), ["health-score", "trajectory", "actionability", "cash-truth", "time-borrowed", "scenarios"]);
+test("empresa tiene siete accesos estables incluyendo Cómo actuar, Escenarios y Stress Test", () => {
+  assert.deepEqual(companySections.map((section) => section.id), ["health-score", "trajectory", "actionability", "cash-truth", "time-borrowed", "scenarios", "stress-test"]);
   assert.equal(companySections.find((section) => section.id === "actionability")?.label, "Cómo actuar");
 });
 

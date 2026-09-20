@@ -5,6 +5,7 @@ export const companySections = [
   { id: "cash-truth", label: "Origen de la caja", icon: "cash" },
   { id: "time-borrowed", label: "Tiempo financiado", icon: "time" },
   { id: "scenarios", label: "Escenarios", icon: "scenarios" },
+  { id: "stress-test", label: "Stress Test", icon: "stress" },
 ] as const;
 
 export function withCompanyContext(href: string, companyId: string | null): string {
