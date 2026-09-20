@@ -10,7 +10,7 @@ test("empresa tiene cinco accesos estables incluyendo Cómo actuar y Stress Test
 
 test("el contexto de empresa se mantiene sin borrar filtros o fragmentos", () => {
   assert.equal(withCompanyContext("/groups/GROUP_0042", "COMP_0412"), "/groups/GROUP_0042?entity=COMP_0412");
-  assert.equal(withCompanyContext("/groups/GROUP_0042/network?company=COMP_0007&relation=support-0412#detail", "COMP_0356"), "/groups/GROUP_0042/network?company=COMP_0007&relation=support-0412&entity=COMP_0356#detail");
+  assert.equal(withCompanyContext("/groups/GROUP_0042/recommendations?relation=support-0412#detail", "COMP_0356"), "/groups/GROUP_0042/recommendations?relation=support-0412&entity=COMP_0356#detail");
   assert.equal(withCompanyContext("/groups/GROUP_0042/recommendations?entity=COMP_0007", "COMP_0412"), "/groups/GROUP_0042/recommendations?entity=COMP_0412");
 });
 

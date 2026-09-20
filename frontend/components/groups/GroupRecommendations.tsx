@@ -99,7 +99,7 @@ export function GroupRecommendations({ group, onOpen, initialRelation }: { group
                   <Confidence value={item.confidence} />
                   <EvidenceButton refs={item.evidence_refs} title={item.title} onOpen={onOpen} />
                 </div>
-                <GroupLinks group={group} companies={item.company_refs} relations={item.relation_refs} />
+                <GroupLinks companies={item.company_refs} />
               </div>
             </details>
           </article>

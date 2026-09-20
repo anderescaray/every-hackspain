@@ -8,7 +8,7 @@ import { AnalysisShell } from "@/components/navigation/AnalysisShell";
 import { GroupIntelligence } from "./GroupIntelligence";
 import base from "@/components/insights/insights.module.css";
 
-export async function GroupRoute({ groupId, view, initialRelation, initialCompany, contextCompany }: { groupId: string; view: GroupView; initialRelation?: string; initialCompany?: string; contextCompany?: string }) {
+export async function GroupRoute({ groupId, view, initialRelation, contextCompany }: { groupId: string; view: GroupView; initialRelation?: string; contextCompany?: string }) {
   if (!/^GROUP_\d{4,10}$/.test(groupId)) notFound();
   let group;
   let invalid = false;
@@ -18,7 +18,7 @@ export async function GroupRoute({ groupId, view, initialRelation, initialCompan
     if (!(error instanceof GroupDataError)) throw error;
     invalid = true;
   }
-  const requestedCompany = contextCompany ?? initialCompany;
+  const requestedCompany = contextCompany;
   let companyId = requestedCompany && group?.members.some((member) => member.company_id === requestedCompany) ? requestedCompany : null;
   if (!companyId && requestedCompany && /^COMP_\d{4,10}$/.test(requestedCompany)) {
     try {
@@ -30,6 +30,6 @@ export async function GroupRoute({ groupId, view, initialRelation, initialCompan
   }
   companyId ??= group?.members[0]?.company_id ?? null;
   return <AnalysisShell companyId={companyId} groupId={groupId} view={view}>
-    {!group ? <main className={`${base.page} ${base.routeState}`}><span className={base.eyebrow}>X Ray</span><h1>{invalid ? "Los datos del grupo necesitan revisión." : "Datos del grupo no disponibles."}</h1><p>{groupId} · {invalid ? "El archivo no cumple el contrato esperado. No se muestran conclusiones parciales." : "No hay datos para este grupo. No se inventan sociedades, relaciones ni recomendaciones."}</p><Link className={base.primaryButton} href={withCompanyContext(`/groups/${groupId}`, companyId)}>Volver al grupo</Link></main> : <GroupIntelligence key={`${group.group_id}:${view}:${initialRelation ?? ""}:${initialCompany ?? ""}`} group={group} view={view} initialRelation={initialRelation} initialCompany={initialCompany} />}
+    {!group ? <main className={`${base.page} ${base.routeState}`}><span className={base.eyebrow}>X Ray</span><h1>{invalid ? "Los datos del grupo necesitan revisión." : "Datos del grupo no disponibles."}</h1><p>{groupId} · {invalid ? "El archivo no cumple el contrato esperado. No se muestran conclusiones parciales." : "No hay datos para este grupo. No se inventan sociedades, relaciones ni recomendaciones."}</p><Link className={base.primaryButton} href={withCompanyContext(`/groups/${groupId}`, companyId)}>Volver al grupo</Link></main> : <GroupIntelligence key={`${group.group_id}:${view}:${initialRelation ?? ""}`} group={group} view={view} initialRelation={initialRelation} />}
   </AnalysisShell>;
 }

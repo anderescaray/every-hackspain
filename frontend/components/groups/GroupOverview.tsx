@@ -58,7 +58,6 @@ function MemberRow({ member, group, onOpen }: { member: GroupMember; group: Grou
           </dl>
           <div className={styles.memberCardActions}>
             <Link className={base.evidenceButton} href={`/companies/${member.company_id}`}>Abrir ficha</Link>
-            <Link className={base.evidenceButton} href={`/groups/${group.group_id}/network?company=${member.company_id}`}>Ver en la red</Link>
             <EvidenceButton refs={member.evidence_refs} title={`Sociedad ${member.company_id}`} onOpen={onOpen} />
           </div>
         </div>
@@ -67,7 +66,7 @@ function MemberRow({ member, group, onOpen }: { member: GroupMember; group: Grou
   );
 }
 
-function AlertList({ items, group, onOpen }: { items: GroupInsight[]; group: GroupDetail; onOpen: OpenEvidence }) {
+function AlertList({ items, onOpen }: { items: GroupInsight[]; onOpen: OpenEvidence }) {
   return (
     <div className={styles.alertCards}>
       {items.map((item) => (
@@ -79,7 +78,7 @@ function AlertList({ items, group, onOpen }: { items: GroupInsight[]; group: Gro
           </summary>
           <div className={styles.alertCardBody}>
             <p>{item.explanation}</p>
-            <GroupLinks group={group} companies={item.company_refs} relations={item.relation_refs} />
+            <GroupLinks companies={item.company_refs} />
             <EvidenceButton refs={item.evidence_refs} title={item.title} onOpen={onOpen} />
           </div>
         </details>
@@ -157,7 +156,7 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
           <span className={styles.overviewCount}>{sortedAlerts.length}</span>
         </header>
         {sortedAlerts.length ? (
-          <AlertList items={sortedAlerts} group={group} onOpen={onOpen} />
+          <AlertList items={sortedAlerts} onOpen={onOpen} />
         ) : (
           <p className={base.emptyState}>No hay alertas preparadas. No es una garantía de ausencia de riesgos.</p>
         )}
@@ -179,7 +178,7 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
               <time dateTime={change.date}>{dateLabel(change.date)}</time>
               <h3>{change.title}</h3>
               <p>{change.explanation}</p>
-              <GroupLinks group={group} companies={change.company_refs} relations={change.relation_refs} />
+              <GroupLinks companies={change.company_refs} />
               <EvidenceButton refs={change.evidence_refs} title={change.title} onOpen={onOpen} />
             </article>
           ))}
@@ -187,8 +186,8 @@ export function GroupOverview({ group, onOpen }: { group: GroupDetail; onOpen: O
       </details>
     )}
 
-    <Link className={styles.nextStep} href={`/groups/${group.group_id}/network`}>
-      <span><small>Siguiente</small><strong>Red financiera del grupo</strong></span>
+    <Link className={styles.nextStep} href={`/groups/${group.group_id}/recommendations`}>
+      <span><small>Siguiente</small><strong>Recomendaciones del grupo</strong></span>
       <span aria-hidden="true">→</span>
     </Link>
   </>;

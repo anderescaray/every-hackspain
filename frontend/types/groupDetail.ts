@@ -155,4 +155,4 @@ export type GroupRecommendation = z.infer<typeof recommendationSchema>;
 export type GroupEvidence = z.infer<typeof evidenceSchema>;
 export type GroupMetric = z.infer<typeof metricSchema>;
 export type GroupInsight = z.infer<typeof insightSchema>;
-export type GroupView = "overview" | "network" | "recommendations";
+export type GroupView = "overview" | "recommendations";
