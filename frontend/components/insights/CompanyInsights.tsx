@@ -14,6 +14,32 @@ import styles from "./insights.module.css";
 
 const severityOrder = { high: 0, medium: 1, low: 2 };
 
+/** Viñetas del resumen: líneas separadas por \\n. Omite «Health Score N» (ya está en el hero / confianza). */
+function SummaryBullets({ text }: { text: string }) {
+  const items = text
+    .split(/\n+/)
+    .map((line) => line.replace(/^[-•*]\s+/, "").trim())
+    .filter(
+      (line) =>
+        line &&
+        !/^Health Score\b/i.test(line) &&
+        !/^(Estado provisional|Análisis provisional)\b/i.test(line),
+    );
+  if (items.length === 0) {
+    return null;
+  }
+  if (items.length === 1) {
+    return <p className={styles.summaryLead}>{items[0]}</p>;
+  }
+  return (
+    <ul className={styles.summaryList} aria-label="Resumen de la empresa">
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
 export function CompanyInsights({ company }: { company: CompanyDetail }) {
   const [evidence, setEvidence] = useState<{ refs: EvidenceRef[]; title: string; records?: TransactionEvidenceRef[] } | null>(null);
   const openEvidence = (refs: EvidenceRef[], title: string, records?: TransactionEvidenceRef[]) => setEvidence({ refs, title, records });
@@ -29,17 +55,31 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
     </div>
     <header id="health-score" data-company-section="health-score" className={styles.companyHeader}>
       <div className={styles.headerIdentity}>
-        <div><div className={styles.companyMeta}><span className={styles.eyebrow}>Empresa · {company.group_id === null ? "Sin grupo" : `Grupo ${company.group_id}`}</span><span>Datos a {dateLabel(company.as_of)}</span></div><h1>{company.company_id}</h1><p>{company.summary}</p></div>
+        <div>
+          <div className={styles.companyMeta}>
+            <span className={styles.eyebrow}>Empresa · {company.group_id === null ? "Sin grupo" : `Grupo ${company.group_id}`}</span>
+            <span>Datos a {dateLabel(company.as_of)}</span>
+          </div>
+          <h1>{company.company_id}</h1>
+        </div>
       </div>
       <div className={styles.healthOverview}>
         <section className={styles.healthHero} aria-label="Estado financiero global">
           <h2>Health Score</h2>
           <div className={styles.healthValue}><strong data-testid="health-score">{company.health_score === null ? "—" : numberLabel(company.health_score, 2)}</strong>{company.health_score !== null && <span>/ 100</span>}</div>
           <p className={styles.assessment}>{company.health_score === null ? "Salud no plenamente identificada. " : ""}{company.assessment}</p>
+          <div className={styles.summaryPanel}>
+            <SummaryBullets text={company.summary} />
+          </div>
           <span className={`${styles.trajectoryBadge} ${company.trajectory ? styles[company.trajectory] : styles.muted}`}>{company.trajectory ? trajectoryLabels[company.trajectory] : "Trayectoria no evaluable"} <span aria-hidden="true">{company.trajectory ? trajectorySymbol : ""}</span></span>
           <div className={styles.analysisConfidence}>
             <span>Confianza del análisis: <strong>{confidenceLabel(company.confidence)}</strong></span>
             <Confidence value={company.confidence} />
+            {company.health_score_model.provisional && (
+              <span className={styles.confidenceNote}>
+                Análisis provisional: la cobertura refleja datos incompletos (p. ej. sin facturas ERP o mes fino).
+              </span>
+            )}
           </div>
         </section>
         <section className={styles.composition} aria-label="Composición del Health Score">

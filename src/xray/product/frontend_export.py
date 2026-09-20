@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from xray.paths import PROCESSED_DIR, ROOT
+from xray.product.company_brief import build_brief_facts, company_brief
 
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
 MODEL_VERSION = "financial_smoothed_v2+frontend-export-1"
@@ -73,33 +74,26 @@ def _text(value, fallback):
     return (value or fallback)[:5000]
 
 
-def assessment_text(trajectory, status, reason, dependency):
-    parts = {"improving": "Trayectoria de mejora", "deteriorating": "Señales de deterioro", "stable": "Situación estable"}[trajectory]
-    if status == "provisional":
-        parts += " · evidencia parcial"
-    if dependency is not None and dependency >= 0.3:
-        parts += " · dependencia de apoyo"
-    return parts
-
-
-def summary_text(row, trajectory, dependency, reason):
-    score = _score(row.get("score"))
-    base = {"improving": "Las señales agregadas de los últimos trimestres mejoran frente a la propia historia de la empresa.",
-            "deteriorating": "Las señales agregadas de los últimos trimestres empeoran frente a la propia historia de la empresa.",
-            "stable": "No hay una dirección confirmada frente a la propia historia de la empresa."}[trajectory]
-    text = f"Health Score {score}: nivel de flujos operativos de seis meses con ajuste de tendencia. {base}"
-    if dependency is not None and dependency >= 0.3:
-        text += f" El apoyo intragrupo recibido supone el {dependency:.0%} de las entradas identificadas en seis meses."
-    reasons = {"optional_components_missing": "Faltan componentes opcionales (facturas) en la evaluación.",
-               "trend_unavailable": "La tendencia todavía no es calculable con el histórico disponible.",
-               "thin_current_month": "El mes actual tiene pocos movimientos utilizables.",
-               "short_history": "El histórico es inferior a seis meses.",
-               "partial_currency": "Parte de la actividad está en otras monedas y no se consolida.",
-               "coverage_account_change": "El conjunto de cuentas activas cambió este mes; la comparación con el anterior es parcial.",
-               "coverage_onboarding": "Primeros meses de actividad observada."}
-    if reason in reasons:
-        text += " " + reasons[reason]
-    return text
+def _brief_for_company(company, last, trajectory, dependency, confidence, completer=None):
+    """Assessment + summary deterministas (plantilla); LLM opcional con anclaje."""
+    why = ((company.get("currencies") or {}).get("EUR") or {}).get("why_changed") or {}
+    terms = sorted(why.get("terms") or [], key=lambda t: t.get("rank", 99))
+    top = terms[0] if terms else {}
+    facts = build_brief_facts(
+        company_id=company["company_id"],
+        group_id=company.get("group_id"),
+        health_score=_score(last["score"]),
+        trajectory=trajectory,
+        score_status=last.get("score_status"),
+        score_reason=last.get("score_reason"),
+        dependency=dependency,
+        confidence=_score(confidence) if confidence is not None else None,
+        delta_vs_prev=_round(last.get("delta_vs_prev"), 1),
+        main_driver_label=top.get("label") or top.get("feature"),
+        main_driver_impact=_round(top.get("delta_contribution"), 1),
+        episode=last.get("episode"),
+    )
+    return company_brief(facts, completer=completer)
 
 
 def _dimensions(last):
@@ -242,7 +236,7 @@ def _simulation(scenarios=None, health_score=None, has_invoices=True):
     return {"inputs": inputs, "scenarios": out, "example_id": best[0] if best and best[1] != 0 else None, "methodology": METHODOLOGY}
 
 
-def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
+def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, completer=None):
     """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno."""
     currency = "EUR"
     block = (company.get("currencies") or {}).get(currency)
@@ -259,14 +253,15 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None):
     dependency = _num(cash_summary_row.get("support_dependency_ratio")) if cash_summary_row is not None else None
     confidence = (block.get("confidence") or {}).get("confidence")
     cash = _cash_truth(company["company_id"], company.get("group_id"), block.get("cash_truth"), confidence, evidence_rows)
+    brief = _brief_for_company(company, last, trajectory, dependency, confidence, completer=completer)
     return {
         "schema_version": "2.0", "source": "generated", "company_id": company["company_id"],
         "group_id": company.get("group_id"), "as_of": as_of, "currency": currency,
         "health_score": _score(last["score"]), "dimensions": dimensions,
         "health_score_model": {"version": MODEL_VERSION, "provisional": bool(provisional), "weights": WEIGHTS},
-        "assessment": assessment_text(trajectory, last.get("score_status"), last.get("score_reason"), dependency),
+        "assessment": brief.assessment,
         "confidence": _score(confidence), "trajectory": trajectory,
-        "summary": summary_text(last, trajectory, dependency, last.get("score_reason")),
+        "summary": brief.summary,
         "history": [{"month": pd.Timestamp(t["month"]).strftime("%Y-%m-%d"), "health_score": _score(t["score"])} for t in timeline[-24:]],
         "drivers_period": f"{_month_label(last['month'])} · cambio frente al mes anterior",
         "drivers": _drivers(block.get("why_changed")),
@@ -461,10 +456,17 @@ def _sample_evidence(evidence, company_id, window):
     return sample
 
 
-def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED,
-        advisor_dir=PROCESSED_DIR / "advisor_production", verbose=True):
+def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True,
+        advisor_dir=PROCESSED_DIR / "advisor_production", completer=None, llm_companies=None):
+    """Exporta el contrato del frontend.
+
+    `completer`: si se pasa, parafrasea assessment/summary solo para empresas en `llm_companies`
+    (o todas si `llm_companies` es None). Sin completer, todo es plantilla determinista.
+    Los grupos solo incorporan planes de `advisor_dir` generados con `--production-safe`.
+    """
     product_dir, out_dir, advisor_dir = Path(product_dir), Path(out_dir), Path(advisor_dir)
     say = print if verbose else (lambda *a, **k: None)
+    llm_set = None if llm_companies is None else {str(c) for c in llm_companies}
     portfolio = json.loads((product_dir / "portfolio.json").read_text(encoding="utf-8"))
     latest = pd.Timestamp(portfolio["latest_month"])
     summary = pd.read_parquet(product_dir / "cash_truth_summary.parquet")
@@ -479,17 +481,23 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED,
         whatif_groups = {cid: frame for cid, frame in whatif.groupby("company_id", sort=False)}
     else:
         whatif_groups = {}
-    details, written, skipped = {}, 0, 0
+    details, written, skipped, llm_used = {}, 0, 0, 0
     for file in sorted((product_dir / "companies").glob("COMP_*.json")):
         company = json.loads(file.read_text(encoding="utf-8"))
         block = (company.get("currencies") or {}).get("EUR") or {}
         window = [pd.Timestamp(m) for m in (block.get("cash_truth") or {}).get("window_months", [])]
         rows = _sample_evidence(evidence, company["company_id"], window) if window else evidence.iloc[:0]
         summary_row = summary.loc[company["company_id"]].to_dict() if company["company_id"] in summary.index else None
-        detail = company_detail(company, summary_row, rows, whatif_groups.get(company["company_id"]))
+        use_llm = completer is not None and (llm_set is None or company["company_id"] in llm_set)
+        detail = company_detail(
+            company, summary_row, rows, whatif_groups.get(company["company_id"]),
+            completer=completer if use_llm else None,
+        )
         if detail is None:
             skipped += 1
             continue
+        if use_llm:
+            llm_used += 1
         details[company["company_id"]] = detail
         _write_json(out_dir / "companies" / f"{company['company_id']}.json", detail)
         written += 1
@@ -507,10 +515,13 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED,
     manifest = {"model_version": MODEL_VERSION, "latest_month": portfolio["latest_month"], "companies_written": written,
                 "companies_without_score": skipped, "groups_written": groups, "weights": WEIGHTS,
                 "companies_with_scenarios": len(whatif_groups),
+                "llm_companies_attempted": llm_used,
                 "product_manifest_sha256": _sha(product_dir / "_product_manifest.json"),
                 "advisor_manifest_sha256": _sha(advisor_dir / "_advisor_manifest.json")}
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)
     say(f"  empresas {written} (sin score: {skipped}) · grupos {groups} · portfolio {len(portfolio['companies'])} -> {out_dir}")
+    if completer is not None:
+        say(f"  LLM intentado en {llm_used} empresas (fallback a plantilla si el anclaje falla)")
     return manifest
 
 

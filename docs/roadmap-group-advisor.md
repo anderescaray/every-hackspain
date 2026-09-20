@@ -189,9 +189,11 @@ Exactamente los esquemas de la spec §8.1 y §8.2. WP4 escribe fixtures de ejemp
 
 **Ficheros:** `src/xray/group_advisor/llm_providers.py`, `tests/test_group_advisor_llm.py` (con completer falso; sin llamadas de red en tests).
 
-**Depende de:** WP4 y WP5; de una decisión de proveedor y clave (no tomada).
+**Estado (20-09-2026): implementado.** `OpenAICompatibleCompleter` + `completer_from_env()` (temp 0, timeout, max_tokens). `scripts/08_treasury_advisor.py --llm` solo con `--group` / `--company`. Resúmenes de ficha: `src/xray/product/company_brief.py` + `scripts/09_export_frontend.py --llm`. Ver [llm-narrativa.md](./llm-narrativa.md).
 
-**Prompt (resumen):** implementar un `Completer` para el proveedor elegido leyendo la clave de una variable de entorno, temperatura 0, `max_tokens` acotado, timeout; nunca registrar la clave ni el prompt completo en logs; `llm_render` sigue siendo la única entrada y el fallback a plantilla se mantiene. Añadir a `scripts/08_treasury_advisor.py` la opción `--llm`, activa solo si la variable existe. Documentar en decisiones §20 la tasa de fallback observada.
+**Depende de:** WP4 y WP5; clave en `XRAY_LLM_API_KEY` u `OPENAI_API_KEY`.
+
+**Pendiente de medición:** tasa de fallback observada en una pasada real con API (registrar en decisiones §20 cuando se ejecute).
 
 ---
 

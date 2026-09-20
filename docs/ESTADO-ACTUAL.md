@@ -107,6 +107,7 @@ Rama `integracion` de Álvaro mergeada en `main` (red financiera interactiva con
 | Documento | Para qué |
 |---|---|
 | **`checklist-entrega.md`** | **Checklist pre-deploy:** enunciado E1–E9, UI, pipeline, paseo demo y gate Vercel. Rellenar antes de desplegar |
+| **`llm-narrativa.md`** | Resúmenes deterministas + LLM opcional anclado (WP6 / company_brief); env vars y CLI `--llm` |
 | `decisiones.md` | Registro central. §1–§9 datos y limpieza; §10 V1; §13 V2; §14 anotaciones D25–D30; FE10 cobertura; §15 D31 Jev; §16 producto/API; §17 encaje D25–D31; §18 D31 default; §19 frontend (FE-01…FE-05); §20 advisor de grupo (Ander); **§21 motor canónico V2 + ledger** |
 | `hallazgos-datos.md` | Análisis de datos que justifica todo lo anterior (onboarding, ruido blanco, estacionalidad, taxonomía 2025-01, 39 % sin categoría, pólizas, overdue como higiene ERP) |
 | `roadmap-tecnico-mvp.md` | Estado consolidado y plan A/B/C |
