@@ -32,6 +32,8 @@ def main():
     parser.add_argument("--out-dir", type=Path, default=FRONTEND_GENERATED)
     parser.add_argument("--advisor-dir", type=Path, default=PROCESSED_DIR / "advisor_production",
                         help="solo se exportan planes generados con --production-safe")
+    parser.add_argument("--stress-dir", type=Path, default=PROCESSED_DIR / "stress",
+                        help="run 10b opcional; sin latest.json se omite stress_test")
     parser.add_argument("--llm", action="store_true",
                         help="redactar el resumen en viñetas con LLM desde el informe de cada "
                              "empresa (requiere API key en env; 1 llamada por empresa)")
@@ -55,7 +57,7 @@ def main():
             llm_companies = list(DEMO_LLM_COMPANIES)
         else:
             llm_companies = [c.strip() for c in args.llm_companies.split(",") if c.strip()]
-    run(args.product_dir, args.out_dir, advisor_dir=args.advisor_dir,
+    run(args.product_dir, args.out_dir, advisor_dir=args.advisor_dir, stress_dir=args.stress_dir,
         completer=completer, llm_companies=llm_companies)
 
 

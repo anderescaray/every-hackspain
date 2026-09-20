@@ -18,8 +18,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from xray.artifacts import sha256, verify_run
 from xray.paths import PROCESSED_DIR, ROOT
 from xray.product.company_brief import build_brief_facts, company_brief, compose_summary
+from xray.product.actionability import from_sensitivity, unavailable as actionability_unavailable
 
 FRONTEND_GENERATED = ROOT / "frontend" / "public" / "generated"
 MODEL_VERSION = "financial_smoothed_v2+frontend-export-1"
@@ -236,7 +238,64 @@ def _simulation(scenarios=None, health_score=None, has_invoices=True):
     return {"inputs": inputs, "scenarios": out, "example_id": best[0] if best and best[1] != 0 else None, "methodology": METHODOLOGY}
 
 
-def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, completer=None, stats=None):
+def _clamp_unit(value):
+    if value is None:
+        return None
+    return max(0.0, min(1.0, float(value)))
+
+
+def _sanitize_stress(stress):
+    """Alinea el artefacto 10b con el contrato Zod (escenarios vacíos y ratios 0–1)."""
+    if not stress:
+        return stress
+    scenarios = []
+    for scenario in stress.get("scenarios") or []:
+        item = dict(scenario)
+        if item.get("status") != "available":
+            item["results"] = []
+            item["path"] = []
+            item["band_crossing_horizon"] = None
+        else:
+            results = []
+            for result in item.get("results") or []:
+                row = dict(result)
+                if row.get("status") != "available":
+                    row.update(health=None, delta_points=None, band=None, attribution=None, score_terms=None)
+                results.append(row)
+            item["results"] = results
+            item["path"] = [point for point in item.get("path") or [] if point.get("health") is not None and point.get("band") is not None]
+        scenarios.append(item)
+    exposures = dict(stress.get("exposures") or {})
+    costs = dict(exposures.get("costs") or {})
+    gates = {}
+    for name, gate in (costs.get("category_gates") or {}).items():
+        row = dict(gate)
+        row["share_of_outflow"] = _clamp_unit(row.get("share_of_outflow"))
+        gates[name] = row
+    if gates:
+        costs["category_gates"] = gates
+        exposures["costs"] = costs
+    collections = dict(exposures.get("collections") or {})
+    if "largest_customer_share" in collections:
+        collections["largest_customer_share"] = _clamp_unit(collections.get("largest_customer_share"))
+        exposures["collections"] = collections
+    fx = dict(exposures.get("fx") or {})
+    if "non_eur_share" in fx:
+        fx["non_eur_share"] = _clamp_unit(fx.get("non_eur_share"))
+        exposures["fx"] = fx
+    factors = []
+    for factor in stress.get("custom_factors") or []:
+        row = dict(factor)
+        context = dict(row.get("context") or {}) if row.get("context") else None
+        if context and "top1_share" in context:
+            context["top1_share"] = _clamp_unit(context.get("top1_share"))
+            row["context"] = context
+        factors.append(row)
+    return {**stress, "scenarios": scenarios, "exposures": exposures, "custom_factors": factors}
+
+
+def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, completer=None, sensitivity=None,
+                   stress=None, stats=None):
     """Traduce `product/companies/{id}.json` (una moneda) al contrato 2.0. Devuelve None sin score alguno.
 
     Con `completer`, el resumen en viñetas lo escribe el LLM leyendo la ficha ya montada
@@ -275,6 +334,25 @@ def company_detail(company, cash_summary_row, evidence_rows, scenarios=None, com
         "simulation": _simulation(scenarios, _score(last["score"]), has_invoices=_num(last.get("level_collections")) is not None
                                   or _num(last.get("level_payments")) is not None),
     }
+    if sensitivity is not None:
+        if sensitivity.get("company_id") != company["company_id"] or sensitivity.get("currency") != currency:
+            raise ValueError(f"Advisor sensitivity identity mismatch for {company['company_id']}")
+        if sensitivity.get("month") != pd.Timestamp(last["month"]).strftime("%Y-%m-%d"):
+            detail["actionability"] = actionability_unavailable(sensitivity, "insufficient_data", "score_month_not_current")
+        else:
+            advisor_score = _num((sensitivity.get("baseline") or {}).get("score"))
+            if advisor_score is not None and abs(advisor_score - float(last["score"])) > 1e-4:
+                raise ValueError(f"Advisor/V2 score mismatch for {company['company_id']}")
+            detail["actionability"] = from_sensitivity(sensitivity)
+    if stress is not None:
+        if stress.get("as_of") != as_of or stress.get("score_version") != "financial_smoothed_v2":
+            raise ValueError(f"Stress cutoff/method mismatch for {company['company_id']}")
+        if stress.get("exposures", {}).get("company_id") != company["company_id"]:
+            raise ValueError(f"Stress company identity mismatch for {company['company_id']}")
+        baseline = _num(stress.get("baseline_health"))
+        if baseline is None or abs(baseline - float(last["score"])) > 1e-6:
+            raise ValueError(f"Stress/V2 baseline mismatch for {company['company_id']}")
+        detail["stress_test"] = _sanitize_stress(stress)
     if completer is not None:
         summary, source, _fallback = compose_summary(detail, brief.summary, completer)
         detail["summary"] = summary
@@ -467,8 +545,56 @@ def _sample_evidence(evidence, company_id, window):
     return sample
 
 
+def _optional_sensitivities(advisor_dir, company_files):
+    """Adjunta company_sensitivity si existe; no bloquea el export ni exige hashes."""
+    folder = Path(advisor_dir) / "company_sensitivity"
+    if not folder.is_dir():
+        return {}
+    docs = {}
+    for file in company_files:
+        path = folder / f"{file.stem}.json"
+        if path.is_file():
+            docs[file.stem] = json.loads(path.read_text(encoding="utf-8"))
+    return docs
+
+
+def _stress_snapshots(stress_dir, latest, product_inputs):
+    """Strictly preflight one immutable Stress Test run before any JSON is published."""
+    pointer_path = Path(stress_dir) / "latest.json"
+    if not pointer_path.is_file():
+        raise FileNotFoundError(f"Falta Stress Test V2 en {stress_dir}; ejecutá scripts/10b_build_stress.py antes de 09_export_frontend.py")
+    pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    run_id = pointer.get("run_id")
+    if not isinstance(run_id, str) or not run_id or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789-_" for c in run_id):
+        raise ValueError("Invalid Stress Test run pointer")
+    run = Path(stress_dir) / "runs" / run_id
+    if sha256(run / "manifest.json") != pointer.get("manifest_sha256"):
+        raise ValueError("Stress Test manifest pointer hash mismatch")
+    manifest = verify_run(run)
+    if manifest.get("method") != "v2_observed_window_stress_v1" or manifest.get("month") != latest.strftime("%Y-%m-%d"):
+        raise ValueError("Stress Test method/cutoff differs from product")
+    shared = (("scores", "scores"), ("feature_manifest", "feature_manifest"),
+              ("feature_artifact:company_monthly_features.parquet", "features"))
+    inputs = manifest.get("inputs_sha256") or {}
+    if any(not product_inputs.get(product_key) or product_inputs[product_key] != inputs.get(stress_key)
+           for product_key, stress_key in shared):
+        raise ValueError("Product and Stress Test use different V2/features artifacts")
+    docs = {}
+    for relative in manifest.get("outputs_sha256", {}):
+        if relative.startswith("companies/") and relative.endswith(".json"):
+            document = json.loads((run / relative).read_text(encoding="utf-8"))
+            company_id = Path(relative).stem
+            if document.get("exposures", {}).get("company_id") != company_id or document.get("lineage", {}).get("run_id") != run_id:
+                raise ValueError(f"Stress Test identity/lineage mismatch for {company_id}")
+            docs[company_id] = document
+    if len(docs) != manifest.get("company_count"):
+        raise ValueError("Stress Test company count differs from immutable manifest")
+    return run, manifest, docs
+
+
 def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True,
-        advisor_dir=PROCESSED_DIR / "advisor_production", completer=None, llm_companies=None):
+        advisor_dir=PROCESSED_DIR / "advisor_production", stress_dir=PROCESSED_DIR / "stress",
+        completer=None, llm_companies=None):
     """Exporta el contrato del frontend.
 
     `completer`: si se pasa, el resumen en viñetas de cada empresa lo escribe el LLM a partir
@@ -476,7 +602,7 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     Sin completer, todo es plantilla determinista; si el anclaje falla, también.
     Los grupos solo incorporan planes de `advisor_dir` generados con `--production-safe`.
     """
-    product_dir, out_dir, advisor_dir = Path(product_dir), Path(out_dir), Path(advisor_dir)
+    product_dir, out_dir, advisor_dir, stress_dir = Path(product_dir), Path(out_dir), Path(advisor_dir), Path(stress_dir)
     say = print if verbose else (lambda *a, **k: None)
     llm_set = None if llm_companies is None else {str(c) for c in llm_companies}
     portfolio = json.loads((product_dir / "portfolio.json").read_text(encoding="utf-8"))
@@ -493,9 +619,16 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
         whatif_groups = {cid: frame for cid, frame in whatif.groupby("company_id", sort=False)}
     else:
         whatif_groups = {}
+    company_files = sorted((product_dir / "companies").glob("COMP_*.json"))
+    sensitivities = _optional_sensitivities(advisor_dir, company_files)
+    product_manifest = json.loads((product_dir / "_product_manifest.json").read_text(encoding="utf-8")) if (product_dir / "_product_manifest.json").is_file() else {}
+    product_inputs = product_manifest.get("inputs_sha256") or {}
+    stress_docs = {}
+    if (stress_dir / "latest.json").is_file():
+        _, _, stress_docs = _stress_snapshots(stress_dir, latest, product_inputs)
     details, written, skipped, llm_used = {}, 0, 0, 0
     llm_stats = {}
-    for file in sorted((product_dir / "companies").glob("COMP_*.json")):
+    for file in company_files:
         company = json.loads(file.read_text(encoding="utf-8"))
         block = (company.get("currencies") or {}).get("EUR") or {}
         window = [pd.Timestamp(m) for m in (block.get("cash_truth") or {}).get("window_months", [])]
@@ -504,7 +637,10 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
         use_llm = completer is not None and (llm_set is None or company["company_id"] in llm_set)
         detail = company_detail(
             company, summary_row, rows, whatif_groups.get(company["company_id"]),
-            completer=completer if use_llm else None, stats=llm_stats,
+            completer=completer if use_llm else None,
+            sensitivity=sensitivities.get(company["company_id"]),
+            stress=stress_docs.get(company["company_id"]),
+            stats=llm_stats,
         )
         if detail is None:
             skipped += 1
@@ -530,6 +666,8 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
                 "companies_with_scenarios": len(whatif_groups),
                 "llm_companies_attempted": llm_used,
                 "llm_summaries_written": llm_stats.get("llm_summaries", 0),
+                "companies_with_actionability": sum(1 for item in details.values() if item.get("actionability")),
+                "companies_with_stress_test": sum(1 for item in details.values() if item.get("stress_test")),
                 "product_manifest_sha256": _sha(product_dir / "_product_manifest.json"),
                 "advisor_manifest_sha256": _sha(advisor_dir / "_advisor_manifest.json")}
     _write_json(out_dir / "_frontend_export_manifest.json", manifest)

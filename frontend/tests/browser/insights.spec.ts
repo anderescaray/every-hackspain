@@ -27,7 +27,7 @@ for (const id of ["COMP_0356", "COMP_0655", "COMP_1171"]) {
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: id, exact: true })).toBeVisible();
     await expect(page.getByText("Datos de ejemplo")).toBeVisible();
-    for (const name of ["Tendencia", "Origen de la caja", "Escenarios"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+    for (const name of ["Tendencia", "Origen de la caja", "Stress Testing"]) await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
@@ -103,6 +103,12 @@ test("tendencia del Health Score: resumen y gráfico sin tabla desplegable", asy
   await expect(trajectory.getByRole("table")).toHaveCount(0);
 });
 
+test("la ficha de empresa no muestra la sección de alertas", async ({ page }) => {
+  await page.goto("/companies/COMP_0356");
+  await expect(page.getByRole("region", { name: "Alertas priorizadas", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Alertas", exact: true })).toHaveCount(0);
+});
+
 test("crecimiento bajo presión afecta dimensiones, no añade otro score", async ({ page }) => {
   await page.goto("/companies/COMP_1171");
   const drivers = page.getByRole("region", { name: "Factores del Health Score" });
@@ -117,7 +123,7 @@ test("crecimiento bajo presión afecta dimensiones, no añade otro score", async
 
 test("simulador: solo resultados precalculados, sin interpolación y con reset", async ({ page }) => {
   await page.goto("/companies/COMP_0356");
-  const scenario = page.getByRole("region", { name: "Escenarios", exact: true });
+  const scenario = page.getByRole("region", { name: "Stress Testing", exact: true });
   await expect(scenario.getByTestId("scenario-health-score")).toHaveText("72");
   await expect(scenario.getByRole("button", { name: "Restablecer escenario" })).toBeDisabled();
   await scenario.getByRole("button", { name: "Probar ejemplo" }).click();

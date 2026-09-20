@@ -5,6 +5,7 @@ import type { CompanyDetail, EvidenceRef, TransactionEvidenceRef } from "@/types
 import { confidenceLabel, dateLabel, numberLabel, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { HEALTH_DIMENSIONS } from "@/lib/healthScore";
 import { TrajectoryChart } from "./TrajectoryChart";
+import { ActionabilitySection } from "./ActionabilitySection";
 import { CashTruthSection } from "./CashTruthSection";
 import { WhatIfSection } from "./WhatIfSection";
 import { EvidenceDialog } from "./EvidenceDialog";
@@ -112,6 +113,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
         <p className={styles.footnote}>{company.drivers_period}{company.drivers.length > 0 && !isMock ? " · Contribuciones seleccionadas: no suman necesariamente toda la variación." : ""}</p>
       </section>
     </div>
+    <ActionabilitySection actionability={company.actionability} />
     <div id="cash-truth" data-company-section="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>
     <WhatIfSection currentHealthScore={company.health_score} simulation={company.simulation} />
     <footer className={styles.pageFooter}><span>X Ray</span><span>{isMock ? "Sin procesamiento financiero en tiempo real." : "Datos precalculados. Sin procesamiento financiero en tiempo real."}</span></footer>
