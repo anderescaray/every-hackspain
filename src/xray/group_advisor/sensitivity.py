@@ -118,6 +118,18 @@ def _round(value):
     return 0.0 if rounded == 0 else rounded
 
 
+def score_with_baseline_momentum(level, momentum_adjustment):
+    """Same V2 Health mapping used by the advisor grid; momentum is not forecast.
+
+    ``momentum_adjustment`` is the already-computed V2 term. The advisor uses
+    zero only when that term is absent, as in its existing scenario grid.
+    """
+    level, momentum = _num(level), _num(momentum_adjustment)
+    if math.isnan(level):
+        return math.nan
+    return float(np.clip(level + (0.0 if math.isnan(momentum) else momentum), 0.0, 100.0))
+
+
 def _clean(node):
     """Tipos nativos JSON: numpy → Python, NaN/inf → None, floats redondeados; recursivo en dict/list/tuple."""
     if node is None or isinstance(node, str):
@@ -333,14 +345,13 @@ def grid(sub_row, signal_row, lever, reference_state, config):
     rs = [float(r) for r in config.sensitivity_grid if r <= _r_cap(lever, config)]
     levels = {k: _levels(signal_row, lever, rs, k, horizon, reference_state) for k in ks}
     momentum = _get(sub_row, "momentum_adjustment")
-    momentum = 0.0 if math.isnan(momentum) else momentum
     now = quantity_now(signal_row, lever, horizon)
     rows = []
     for i, r in enumerate(rs):
         entry = {"rel_change": r, "quantity_after": quantity_after(now, lever, r)}
         for k in ks:
             entry[f"level_after_k{k}"] = float(levels[k][i])
-        entry[f"score_after_k{horizon}"] = float(np.clip(levels[horizon][i] + momentum, 0.0, 100.0))
+        entry[f"score_after_k{horizon}"] = score_with_baseline_momentum(levels[horizon][i], momentum)
         entry["cash_equivalent"] = cash_equivalent(sub_row, lever, r)
         rows.append(entry)
     return rows

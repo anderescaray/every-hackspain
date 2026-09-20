@@ -5,6 +5,7 @@ import type { CompanyDetail, EvidenceRef, TransactionEvidenceRef } from "@/types
 import { confidenceLabel, dateLabel, numberLabel, severityLabels, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { HEALTH_DIMENSIONS } from "@/lib/healthScore";
 import { TrajectoryChart } from "./TrajectoryChart";
+import { ActionabilitySection } from "./ActionabilitySection";
 import { CashTruthSection } from "./CashTruthSection";
 import { TimeBorrowedSection } from "./TimeBorrowedSection";
 import { WhatIfSection } from "./WhatIfSection";
@@ -116,6 +117,7 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
         <p className={styles.footnote}>{company.drivers_period}{company.drivers.length > 0 && !isMock ? " · Contribuciones seleccionadas: no suman necesariamente toda la variación." : ""}</p>
       </section>
     </div>
+    <ActionabilitySection actionability={company.actionability} />
     <div id="cash-truth" data-company-section="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>
     <div id="time-borrowed" data-company-section="time-borrowed"><TimeBorrowedSection timing={company.time_borrowed} onOpen={openEvidence} /></div>
     <section className={styles.panel} aria-label="Alertas priorizadas">
