@@ -268,6 +268,9 @@ Reglas cerradas:
 6. La dirección la pones con las palabras (sube, baja, resta, aporta, mejora, empeora) y tiene que coincidir con el signo del número o con el campo `direction`/`trajectory` del informe. Nunca escribas «resta -4,3»: o el signo o el verbo, no los dos.
 7. Prioriza: de dónde sale la caja y si el negocio la genera, qué factor ha movido el score y en qué dirección, qué dice la trayectoria, y cualquier dependencia o concentración relevante del informe.
 8. Si un dato no está en el JSON, no lo completes ni lo insinúes: omítelo. No prometas predicciones, no recomiendes acciones, no hables de impago ni de solvencia.
+9. Describe, no juzgues el futuro: nada de «contribuye a mejorar la salud financiera», «situación preocupante» o «buena señal». Di qué se mueve y en qué dirección, y para ahí.
+10. No compares dos cifras del informe para deducir un porcentaje de variación: si el porcentaje no está en el JSON, describe el cambio con palabras.
+11. Una viñeta, una idea. No encadenes dos hechos con «mientras que» ni metas dos cifras que no vayan juntas.
 Tu salida se valida automáticamente: cualquier número o identificador que no exista en el informe la descarta y se sirve la plantilla."""
 
 REPORT_MIN_BULLETS = 2
@@ -310,6 +313,35 @@ def _presentation_forms(value: float) -> set:
     return forms
 
 
+_ISO_IN_DOC = re.compile(r"\b(\d{4})-(\d{2})(?:-(\d{2}))?\b")
+
+
+def _date_anchors(doc) -> set:
+    """Año, mes y día de las fechas del informe.
+
+    En el documento las fechas viven dentro de cadenas («2026-08-31»), así que `collect_numbers`
+    no las ve; en prosa, en cambio, se escriben sueltas («agosto de 2026»). Sin esto, nombrar el
+    mes de cierre —un dato que está en el informe— tumbaba la redacción entera.
+    """
+    found = set()
+
+    def walk(node):
+        if isinstance(node, str):
+            for year, month, day in _ISO_IN_DOC.findall(node):
+                found.update({float(year), float(int(month))})
+                if day:
+                    found.add(float(int(day)))
+        elif isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, (list, tuple)):
+            for value in node:
+                walk(value)
+
+    walk(doc)
+    return found
+
+
 def _anchor_doc(doc: dict) -> dict:
     """Informe más las magnitudes sin signo y los redondeos de presentación de sus propios números.
 
@@ -321,11 +353,13 @@ def _anchor_doc(doc: dict) -> dict:
       concuerde con el signo o con `direction`/`trajectory`, que el validador no comprueba.
     - **Redondeo.** Un importe del informe lleva céntimos y ningún resumen ejecutivo los escribe.
       Se aceptan las formas de `_presentation_forms`, las mismas que ya pinta la ficha.
+    - **Fechas.** Año, mes y día de las fechas del informe, que en prosa van sueltos
+      («agosto de 2026») y dentro del JSON viven en una cadena (`_date_anchors`).
 
     Lo que sigue prohibido es lo importante: cualquier número que no salga de un valor del
     informe —una variación calculada, un porcentaje deducido, una cifra recordada— lo tumba.
     """
-    anchors = set()
+    anchors = set(_date_anchors(doc))
     for number in collect_numbers(doc):
         anchors |= _presentation_forms(number)
         anchors |= _presentation_forms(abs(number))
@@ -348,11 +382,31 @@ def _clean_bullets(text: str) -> list:
     return bullets[:REPORT_MAX_BULLETS]
 
 
-def compose_summary(detail: dict, template_summary: str, completer) -> tuple:
+def _retry_prompt(user: str, text: str, unmatched) -> str:
+    """Segundo intento: se le dice exactamente qué cifras no existen en el informe.
+
+    No relaja la regla —esas cifras siguen prohibidas—, solo evita perder una redacción entera
+    por un porcentaje deducido cuando el resto de las viñetas era correcto.
+    """
+    cifras = ", ".join(f"{value:g}".replace(".", ",") if isinstance(value, (int, float)) else str(value)
+                       for value in unmatched)
+    return "\n".join([
+        user, "",
+        "Tu respuesta anterior fue rechazada:", text, "",
+        f"Estas cifras no existen en el informe: {cifras}.",
+        "Las has calculado (un porcentaje, una diferencia o una media) y eso no está permitido.",
+        "Reescribe las viñetas sin ellas: usa solo cifras que aparezcan literalmente en el informe,",
+        "o describe ese cambio con palabras y sin número.",
+    ])
+
+
+def compose_summary(detail: dict, template_summary: str, completer, retries: int = 1) -> tuple:
     """Viñetas escritas por el LLM sobre el informe completo. Devuelve `(texto, origen, fallback)`.
 
     Cualquier fallo —red, respuesta vacía, formato o un número que no esté en el informe—
-    sirve la plantilla determinista. El LLM nunca calcula.
+    sirve la plantilla determinista. Con `retries`, una cifra sin anclar da lugar a un segundo
+    intento que la nombra (`_retry_prompt`) en vez de descartar la redacción entera. El LLM
+    nunca calcula.
     """
     if completer is None:
         return template_summary, "template", False
@@ -366,16 +420,23 @@ def compose_summary(detail: dict, template_summary: str, completer) -> tuple:
         "",
         f"Escribe entre {REPORT_MIN_BULLETS + 1} y {REPORT_MAX_BULLETS} viñetas, una por línea, solo con hechos del informe.",
     ])
-    try:
-        text = completer.complete(REPORT_SYSTEM_PROMPT, user)
-        if not isinstance(text, str) or not text.strip():
-            raise ValueError("respuesta vacía del completer")
-    except Exception:
-        return template_summary, "template", True
-    bullets = _clean_bullets(text)
-    if len(bullets) < REPORT_MIN_BULLETS:
-        return template_summary, "template", True
-    candidate = "\n".join(bullets)
-    if not validate_grounding(candidate, _anchor_doc(doc)).ok:
-        return template_summary, "template", True
-    return candidate, "llm", False
+    anchor = _anchor_doc(doc)
+    prompt = user
+    for attempt in range(retries + 1):
+        try:
+            text = completer.complete(REPORT_SYSTEM_PROMPT, prompt)
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError("respuesta vacía del completer")
+        except Exception:
+            return template_summary, "template", True
+        bullets = _clean_bullets(text)
+        if len(bullets) < REPORT_MIN_BULLETS:
+            return template_summary, "template", True
+        candidate = "\n".join(bullets)
+        grounding = validate_grounding(candidate, anchor)
+        if grounding.ok:
+            return candidate, "llm", False
+        if attempt == retries:
+            break
+        prompt = _retry_prompt(user, candidate, grounding.unmatched_numbers or grounding.unmatched_ids)
+    return template_summary, "template", True

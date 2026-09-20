@@ -592,14 +592,31 @@ def _stress_snapshots(stress_dir, latest, product_inputs):
     return run, manifest, docs
 
 
+def select_whatif(whatif_groups, whatif_companies):
+    """Escenarios que se publican y qué empresas pedidas se quedaron sin ellos.
+
+    `whatif_companies` a None publica todo lo que haya. Con una lista, solo esas empresas
+    llevan simulador; el resto queda sin sección (`hasSimulator` en el frontend), que es como
+    se evita cargar el despliegue con 81 escenarios por empresa cuando la demo usa unas pocas.
+    """
+    if whatif_companies is None:
+        return whatif_groups, []
+    wanted = {str(company) for company in whatif_companies}
+    selected = {cid: frame for cid, frame in whatif_groups.items() if cid in wanted}
+    return selected, sorted(wanted - set(whatif_groups))
+
+
 def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbose=True,
         advisor_dir=PROCESSED_DIR / "advisor_production", stress_dir=PROCESSED_DIR / "stress",
-        completer=None, llm_companies=None):
+        completer=None, llm_companies=None, whatif_companies=None):
     """Exporta el contrato del frontend.
 
     `completer`: si se pasa, el resumen en viñetas de cada empresa lo escribe el LLM a partir
     de su informe completo, solo para las empresas de `llm_companies` (o todas si es None).
     Sin completer, todo es plantilla determinista; si el anclaje falla, también.
+    `whatif_companies`: si se pasa, solo esas empresas publican escenarios del simulador
+    (las demás quedan sin sección, que es lo que hace `hasSimulator` en el frontend). Sirve
+    para no cargar el despliegue con 81 escenarios por empresa cuando la demo usa unas pocas.
     Los grupos solo incorporan planes de `advisor_dir` generados con `--production-safe`.
     """
     product_dir, out_dir, advisor_dir, stress_dir = Path(product_dir), Path(out_dir), Path(advisor_dir), Path(stress_dir)
@@ -617,6 +634,9 @@ def run(product_dir=PROCESSED_DIR / "product", out_dir=FRONTEND_GENERATED, verbo
     if whatif is not None:
         whatif = whatif[whatif.month.eq(latest)]
         whatif_groups = {cid: frame for cid, frame in whatif.groupby("company_id", sort=False)}
+        whatif_groups, missing = select_whatif(whatif_groups, whatif_companies)
+        if missing:
+            say(f"  aviso: sin escenarios para {', '.join(missing)} (no están en el artefacto del mes)")
     else:
         whatif_groups = {}
     company_files = sorted((product_dir / "companies").glob("COMP_*.json"))

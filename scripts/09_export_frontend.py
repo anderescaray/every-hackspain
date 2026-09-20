@@ -37,6 +37,10 @@ def main():
     parser.add_argument("--llm", action="store_true",
                         help="redactar el resumen en viñetas con LLM desde el informe de cada "
                              "empresa (requiere API key en env; 1 llamada por empresa)")
+    parser.add_argument("--whatif-companies", default=None,
+                        help="publica escenarios del simulador solo para estas empresas "
+                             "(IDs separados por coma, o 'demo'). Por defecto, todas las que "
+                             "tengan escenarios en el artefacto")
     parser.add_argument("--llm-companies", default=None,
                         help="acota el LLM: IDs separados por coma, o 'demo' para las de demo. "
                              "Por defecto, todas las empresas exportadas")
@@ -57,7 +61,12 @@ def main():
             llm_companies = list(DEMO_LLM_COMPANIES)
         else:
             llm_companies = [c.strip() for c in args.llm_companies.split(",") if c.strip()]
-    run(args.product_dir, args.out_dir, advisor_dir=args.advisor_dir, stress_dir=args.stress_dir,
+    whatif_companies = None
+    if args.whatif_companies:
+        selection = args.whatif_companies.strip().lower()
+        whatif_companies = (list(DEMO_LLM_COMPANIES) if selection == "demo"
+                            else [c.strip() for c in args.whatif_companies.split(",") if c.strip()])
+    run(args.product_dir, args.out_dir, advisor_dir=args.advisor_dir, whatif_companies=whatif_companies, stress_dir=args.stress_dir,
         completer=completer, llm_companies=llm_companies)
 
 

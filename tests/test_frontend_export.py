@@ -133,3 +133,24 @@ def test_portfolio_items_map_status_trajectory_and_attention():
     assert items["COMP_0002"]["attention"] == "high" and items["COMP_0002"]["status_reason"] == "Cambio de cuentas activas"
     assert items["COMP_0003"]["health_score"] is None and items["COMP_0003"]["trajectory"] is None and items["COMP_0003"]["has_detail"] is False
     json.dumps(out, allow_nan=False)
+
+
+def test_select_whatif_publishes_everything_when_no_filter_is_given():
+    from xray.product.frontend_export import select_whatif
+
+    groups = {"COMP_0001": "a", "COMP_0764": "b"}
+    assert select_whatif(groups, None) == (groups, [])
+
+
+def test_select_whatif_limits_the_cards_that_carry_the_simulator():
+    """La demo publica escenarios de unas pocas empresas; el resto queda sin sección."""
+    from xray.product.frontend_export import select_whatif
+
+    groups = {"COMP_0001": "a", "COMP_0764": "b", "COMP_0045": "c"}
+    selected, missing = select_whatif(groups, ["COMP_0764", "COMP_0045"])
+    assert set(selected) == {"COMP_0764", "COMP_0045"} and missing == []
+    # Pedir una empresa sin escenarios no es un error silencioso: se devuelve para avisar.
+    selected, missing = select_whatif(groups, ["COMP_0764", "COMP_9999"])
+    assert set(selected) == {"COMP_0764"} and missing == ["COMP_9999"]
+    # Una lista vacía deja el despliegue sin simulador en ninguna ficha.
+    assert select_whatif(groups, []) == ({}, [])
