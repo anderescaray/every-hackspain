@@ -65,9 +65,15 @@ def llm_render(doc, completer, mode="paraphrase", question=None, intent=None, fm
     if mode not in ("paraphrase", "qa"):
         raise ValueError(f"mode debe ser 'paraphrase' o 'qa', no {mode!r}")
     template = _canonical(doc, mode, intent, args, fmt)
+    return grounded_paraphrase(doc, template, completer, system_prompt=SYSTEM_PROMPT, mode=mode, question=question)
+
+
+def grounded_paraphrase(doc, template, completer, system_prompt=None, mode="paraphrase", question=None):
+    """Paráfrasis genérica: el LLM solo reescribe `template` anclado a `doc`; si falla, devuelve la plantilla."""
+    system = system_prompt or SYSTEM_PROMPT
     user = build_user_prompt(doc, template, mode, question)
     try:
-        text = completer.complete(SYSTEM_PROMPT, user)
+        text = completer.complete(system, user)
         if not isinstance(text, str) or not text.strip():
             raise ValueError("respuesta vacía del completer")
     except Exception:

@@ -60,7 +60,32 @@
 }
 .companyMeta { gap: 16px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
 .headerIdentity h1 { margin-bottom: 12px; }
-.headerIdentity p { max-width: 670px; color: var(--muted); font-size: 14px; }
+.headerIdentity p,
+.headerIdentity .summaryLead { max-width: 670px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.summaryPanel {
+  max-width: 100%;
+  width: 100%;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 18px 16px;
+  margin: 4px 0 14px;
+}
+.summaryPanel .summaryLead { margin: 0; }
+.summaryList {
+  max-width: none;
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: disc;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.summaryList li { margin: 0 0 8px; padding: 0; }
+.summaryList li:last-child { margin-bottom: 0; }
 .trajectoryBadge { display: flex; gap: 8px; align-items: center; white-space: nowrap; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 6px 12px; text-transform: capitalize; margin-top: 30px; }
 .trajectoryBadge > span { font-size: 17px; }
 .deteriorating { background: var(--warm-soft); color: #8f4528; }
@@ -83,9 +108,26 @@
 .healthValue > span { color: var(--muted); font-size: 16px; }
 .healthHero .assessment { font-size: 15px; line-height: 1.45; max-width: 380px; margin-bottom: 12px; font-weight: 400; color: var(--ink); }
 .healthHero .trajectoryBadge { margin-top: 0; font-size: 12px; padding: 5px 10px; border-radius: 999px; }
-.analysisConfidence { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; border-top: 1px solid var(--line); padding-top: 14px; margin-top: 16px; font-size: 12px; color: var(--muted); width: 100%; }
+.analysisConfidence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+  width: 100%;
+  max-width: 420px;
+}
 .analysisConfidence .confidence { color: var(--muted); font-size: 11px; }
-.analysisConfidence small { max-width: 335px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.analysisConfidence .confidenceNote {
+  flex: 1 1 12rem;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
 .composition { padding: 0 0 0 32px; min-width: 0; background: transparent; border: 0; border-radius: 0; border-left: 1px solid var(--line); }
 .composition h2 { font-size: 18px; margin: 0 0 4px; }
 .composition > p { font-size: 12px; color: var(--muted); }
