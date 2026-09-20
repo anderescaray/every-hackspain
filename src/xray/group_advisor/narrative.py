@@ -17,6 +17,7 @@ TRAMO_ES = {"red": "rojo", "amber": "ámbar", "green": "verde", "none": "sin tra
 COMPONENT_ES = {"operations": "operaciones", "debt": "deuda", "collections": "cobros", "payments": "pagos"}
 LEVER_ES = {
     "D1": "asunción del servicio de deuda", "P": "financiación del pago a proveedores en plazo",
+    "O": "asunción de pagos operativos (pagos centralizados)",
     "cut_outflow": "salidas operativas", "raise_inflow": "entradas operativas",
     "debt_service_cut": "cuota mensual de deuda", "ap_on_time": "retraso medio de pago a proveedores",
     "ar_faster": "retraso medio de cobro a clientes",
@@ -39,6 +40,8 @@ REASON_ES = {
     "recipient_ap_component_unavailable": "componente de pagos (AP) de la receptora no disponible",
     "recipient_no_ap_delay": "la receptora ya paga a proveedores en plazo (retraso AP cero o negativo)",
     "recipient_no_ap_need": "la receptora no tiene AP vencido ni próximo",
+    "recipient_no_operating_outflow": "la receptora no tiene pagos operativos observados en la ventana",
+    "recipient_margin_unavailable": "el margen operativo de la receptora no es evaluable",
     "recipient_cash_unreliable": "caja reconstruida de la receptora no fiable",
     "recipient_not_liquidity_constrained": "la receptora no está restringida por liquidez (retraso AP por política de pago o higiene ERP)",
     "recipient_level_unavailable": "el nivel de la receptora no es evaluable tras la acción",

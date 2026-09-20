@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 
-GROUP_LEVERS = ("D1", "P")
+GROUP_LEVERS = ("D1", "P", "O")
 SENSITIVITY_LEVERS = ("cut_outflow", "raise_inflow", "debt_service_cut", "ap_on_time", "ar_faster")
 WEIGHTINGS = ("equal", "size")
 TRAMO_LABELS = ("red", "amber", "green")
@@ -34,7 +34,9 @@ def _increasing_fractions(values, name):
 @dataclass(frozen=True)
 class AdvisorConfig:
     month: str | None = None
-    levers: tuple = GROUP_LEVERS
+    # D1 y P son las palancas por defecto. "O" (asunción de pagos operativos, D48) es opcional: se activa
+    # explícitamente (`--levers D1,P,O`) porque cambia los planes publicados.
+    levers: tuple = ("D1", "P")
     fractions: tuple = (0.25, 0.5, 0.75, 1.0)
     donor_buffer_months: float = 2.0
     donor_level_floor_drop: float = 5.0

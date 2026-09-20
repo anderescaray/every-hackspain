@@ -311,3 +311,18 @@ def test_filler_detection_does_not_look_at_the_future():
     full = company(build(fixture_tables([row(1)], invoices=rows)))
     assert short.inv_ar_payment_date_filler.tolist() == full.inv_ar_payment_date_filler.tolist()[:2]
     assert short.inv_ar_delay_median.tolist() == full.inv_ar_delay_median.tolist()[:2]
+
+
+def test_dormant_zero_balance_account_does_not_block_company_cash():
+    # D46: cuenta sin movimientos y saldo 0 -> fiable en 0; con saldo distinto de 0 sigue sin saberse.
+    tables = fixture_tables([row(1, date='2026-08-10', amount=100)])          # solo P1 tiene movimientos
+    tables['balances'].loc[tables['balances'].product_id.eq('P2'), 'balance'] = 0.
+    result = build_features(tables, FeatureConfig(start_month='2026-08-01'))
+    context = result['reconstructed_liquidity_context'].set_index('product_id')
+    assert not context.loc['P2', 'is_reconstruction_unreliable'] and context.loc['P2', 'reconstructed_balance'] == 0
+    liquidity = result['company_currency_liquidity_context'].set_index(['company_id', 'month'])
+    assert liquidity.loc[('C1', pd.Timestamp('2026-08-01')), 'reconstruction_coverage'] == 1
+
+    tables2 = fixture_tables([row(1, date='2026-08-10', amount=100)])         # P2 con saldo 200 y sin movimientos
+    ctx2 = build_features(tables2, FeatureConfig(start_month='2026-08-01'))['reconstructed_liquidity_context'].set_index('product_id')
+    assert ctx2.loc['P2', 'is_reconstruction_unreliable']

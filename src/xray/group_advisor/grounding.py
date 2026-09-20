@@ -10,7 +10,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
-LEVER_IDS = ("D1", "P", "cut_outflow", "raise_inflow", "debt_service_cut", "ap_on_time", "ar_faster")
+LEVER_IDS = ("D1", "P", "O", "cut_outflow", "raise_inflow", "debt_service_cut", "ap_on_time", "ar_faster")
 
 # Números de las frases fijas que no dependen del documento y se aceptan siempre:
 #   1 y 6   -> los k reportados («k=1» próximo cierre, «k=6» régimen, «6 meses») y el «por 1 %» de los rankings;
