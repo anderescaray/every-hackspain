@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CompanyDetail, EvidenceRef, TransactionEvidenceRef } from "@/types/companyDetail";
 import { confidenceLabel, dateLabel, numberLabel, signedNumber, trajectoryLabels } from "@/lib/companyFormat";
 import { HEALTH_DIMENSIONS } from "@/lib/healthScore";
+import { hasSimulator } from "@/lib/analysisNavigation";
 import { TrajectoryChart } from "./TrajectoryChart";
 import { ActionabilitySection } from "./ActionabilitySection";
 import { CashTruthSection } from "./CashTruthSection";
@@ -113,9 +114,9 @@ export function CompanyInsights({ company }: { company: CompanyDetail }) {
         <p className={styles.footnote}>{company.drivers_period}{company.drivers.length > 0 && !isMock ? " · Contribuciones seleccionadas: no suman necesariamente toda la variación." : ""}</p>
       </section>
     </div>
-    <ActionabilitySection actionability={company.actionability} />
+    <ActionabilitySection actionability={company.actionability} simulator={hasSimulator(company.simulation)} />
     <div id="cash-truth" data-company-section="cash-truth"><CashTruthSection cash={company.cash_truth} companyId={company.company_id} groupId={company.group_id} onOpen={openEvidence} /></div>
-    <WhatIfSection currentHealthScore={company.health_score} simulation={company.simulation} />
+    {hasSimulator(company.simulation) && <WhatIfSection currentHealthScore={company.health_score} simulation={company.simulation} />}
     <footer className={styles.pageFooter}><span>X Ray</span><span>{isMock ? "Sin procesamiento financiero en tiempo real." : "Datos precalculados. Sin procesamiento financiero en tiempo real."}</span></footer>
     {evidence && <EvidenceDialog groupId={company.group_id} title={evidence.title} groups={company.evidence.filter((group) => evidence.refs.includes(group.id)).map((group) => evidence.records ? { ...group, rows: group.rows.filter((row) => evidence.records?.some((record) => record.evidence_id === group.id && record.transaction_id === row.id)) } : group)} accounts={company.cash_truth.account_flows?.accounts ?? []} isMock={isMock} onClose={() => setEvidence(null)} />}
   </main>;

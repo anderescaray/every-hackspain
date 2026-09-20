@@ -3,6 +3,7 @@ import { CompanyInsights } from "@/components/insights/CompanyInsights";
 import { CompanyDataState } from "@/components/insights/CompanyDataState";
 import { AnalysisShell } from "@/components/navigation/AnalysisShell";
 import { CompanyDataError, getCompanyDetail } from "@/services/companyData";
+import { hasSimulator } from "@/lib/analysisNavigation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ id: st
     if (!(error instanceof CompanyDataError)) throw error;
     invalid = true;
   }
-  return <AnalysisShell companyId={id} groupId={company?.group_id} view="company">
+  return <AnalysisShell companyId={id} groupId={company?.group_id} view="company" simulator={hasSimulator(company?.simulation)}>
     {company ? <CompanyInsights key={company.company_id} company={company} /> : <CompanyDataState companyId={id} invalid={invalid} />}
   </AnalysisShell>;
 }

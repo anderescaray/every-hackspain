@@ -6,6 +6,16 @@ export const companySections = [
   { id: "scenarios", label: "Stress Testing", icon: "stress" },
 ] as const;
 
+/** El simulador solo existe si el export trajo escenarios precalculados (`scripts/10_build_whatif.py`). */
+export function hasSimulator(simulation: { scenarios?: readonly unknown[] } | null | undefined): boolean {
+  return (simulation?.scenarios?.length ?? 0) > 0;
+}
+
+/** Secciones de empresa realmente presentes en la ficha; sin escenarios no se ofrece el acceso. */
+export function visibleCompanySections(options: { simulator: boolean }) {
+  return companySections.filter((section) => section.id !== "scenarios" || options.simulator);
+}
+
 export function withCompanyContext(href: string, companyId: string | null): string {
   if (!companyId || !/^COMP_\d{4,10}$/.test(companyId) || !href.startsWith("/groups/")) return href;
   const hashIndex = href.indexOf("#");
